@@ -1,0 +1,1077 @@
+--[[
+SPeditor — Animation Set Editor in the style of SFM (adapted for posters).
+
+Three columns, as in SFM:
+  1. Tree: scene objects (animation sets) → control groups
+     (Face / Eyes / Body / Head / RightArm / LeftArm / RightLeg / LeftLeg /
+     RightFingers / LeftFingers / Torso). The right side is red, the left one green.
+  2. Presets (top of the right column) — depend on the selection:
+     model: Default / Zero / Half / One for the face, reset, pose copy / paste,
+             saved poses; light: light presets; camera: lenses.
+  3. Controls (bottom of the right column): face and eye sliders, bone rows
+     "- pos / - rot" (a click selects the bone in the gizmo); a light and a camera show their
+     parameters as controls.
+There is no timeline: SPeditor is for posters.
+]]
+SPeditor = SPeditor or {}
+SPeditor.UI = SPeditor.UI or {}
+local UI = SPeditor.UI
+local C  = SPeditor.Client
+local L  = SPeditor.L
+local COL = UI.PAL
+
+local ICONS = {
+	light = "icon16/lightbulb.png", camera = "icon16/camera.png", effect = "icon16/lightning.png",
+	ragdoll = "icon16/user.png", prop = "icon16/box.png",
+	group = "icon16/folder.png", face = "icon16/emoticon_smile.png", eyes = "icon16/eye.png",
+}
+
+---------------------------------------------------------------------
+-- Bone groups as in SFM
+---------------------------------------------------------------------
+local function sideOf(lname)
+	if string.find(lname, "_r_", 1, true) or string.find(lname, "right", 1, true)
+		or string.sub(lname, -2) == "_r" or string.find(lname, "%.r_") then return "Right" end
+	if string.find(lname, "_l_", 1, true) or string.find(lname, "left", 1, true)
+		or string.sub(lname, -2) == "_l" or string.find(lname, "%.l_") then return "Left" end
+	return nil
+end
+
+local function anyOf(s, list)
+	for _, p in ipairs(list) do
+		if string.find(s, p, 1, true) then return true end
+	end
+	return false
+end
+
+local GROUP_ORDER = { "Body", "Head", "RightArm", "LeftArm", "RightLeg", "LeftLeg",
+"RightFingers", "LeftFingers", "FaceBones", "Unknown" }
+
+function UI.BoneGroupSFM(name)
+	local l = string.lower(name or "")
+	local side = sideOf(l)
+	if anyOf(l, { "finger", "thumb", "index", "pinky", "ring", "middle" }) and side then return side .. "Fingers" end
+	if anyOf(l, { "jaw", "eye", "brow", "lip", "cheek", "tongue", "mouth", "teeth" }) then return "FaceBones" end
+	if anyOf(l, { "clavicle", "upperarm", "forearm", "hand", "shoulder", "elbow", "wrist", "ulna", "bicep", "arm" }) and side then return side .. "Arm" end
+	if anyOf(l, { "thigh", "calf", "foot", "toe", "knee", "ankle", "leg", "hip" }) and side then return side .. "Leg" end
+	if anyOf(l, { "neck", "head" }) then return "Head" end
+	if anyOf(l, { "pelvis", "spine", "root", "hips", "chest", "torso" }) then return "Body" end
+	return "Unknown"
+end
+
+-- Bone group caption. Bones that fell into no group are shown as "Torso" for a
+-- character; props (a crate, a bottle) have no body bones — "Object".
+local function groupLabel(ent, g)
+	if g == "Unknown" then g = C.IsRagdoll(ent) and "Torso" or "Object" end
+	return SPeditor.LN("grp_", g)
+end
+
+local function groupColor(g)
+	if string.sub(g, 1, 5) == "Right" then return COL.RED end
+	if string.sub(g, 1, 4) == "Left" then return COL.GREEN end
+	return COL.BLUE
+end
+
+-- «ValveBiped.Bip01_R_Hand» -> «R_Hand»
+local function shortBone(name)
+	local n = string.gsub(name or "", "^ValveBiped%.", "")
+	n = string.gsub(n, "^Bip01_", "")
+	return n
+end
+
+local function boneGroupsOf(ent)
+	local groups = {}
+	for _, b in ipairs(C.GetBoneList(ent)) do
+		local g = UI.BoneGroupSFM(b.name)
+		groups[g] = groups[g] or {}
+		groups[g][#groups[g] + 1] = b
+	end
+	return groups
+end
+
+local FACE_ORDER = { "Brows", "Eyes", "Nose", "Mouth", "Other" }
+
+local function flexGroupsOf(ent)
+	local groups = {}
+	if ent:GetFlexNum() == 0 then return groups end
+	for _, f in ipairs(C.GetFlexList(ent)) do
+		local g = f.group or "Other"
+		groups[g] = groups[g] or {}
+		groups[g][#groups[g] + 1] = f
+	end
+	return groups
+end
+
+local function isModel(ent) return IsValid(ent) and not C.IsAux(ent) end
+
+-- The model has eyes (an "eyes" attachment or face flexes). Crates, bottles
+-- and other props do not — the "Eyes" section is not shown for them.
+local function hasEyes(ent)
+	if not isModel(ent) then return false end
+	local att = ent:LookupAttachment("eyes")
+	return (att and att > 0) or (ent:GetFlexNum() or 0) > 0
+end
+
+---------------------------------------------------------------------
+-- Light colour: a pop-up with a palette and a mixer
+---------------------------------------------------------------------
+local SWATCHES = {
+	{ 255, 255, 255 }, { 255, 244, 224 }, { 255, 214, 170 }, { 255, 180, 100 }, { 255, 147, 41 }, { 201, 226, 255 }, { 140, 180, 255 },
+	{ 255, 40, 40 },   { 255, 130, 0 },   { 255, 230, 0 },   { 140, 255, 0 },   { 0, 220, 60 },   { 0, 220, 160 },   { 70, 235, 255 },
+	{ 0, 140, 255 },   { 30, 60, 255 },   { 140, 60, 255 },  { 200, 40, 255 },  { 255, 70, 180 }, { 255, 150, 200 }, { 150, 150, 150 },
+}
+
+function UI.OpenColorPopup(title, start, onPick)
+	if IsValid(UI.ColorPopup) then UI.ColorPopup:Remove() end
+	local f = UI.Skin(vgui.Create("DFrame"))
+	f:SetTitle(title)
+	f:SetSize(260, 330)
+	local mx, my = gui.MousePos()
+	f:SetPos(math.Clamp(mx - 130, 0, ScrW() - 260), math.Clamp(my - 20, 0, ScrH() - 330))
+	f:MakePopup()
+	f:SetKeyboardInputEnabled(false)
+	f.Paint = function(s, w, h)
+		surface.SetDrawColor(COL.BG)
+		surface.DrawRect(0, 0, w, h)
+		surface.SetDrawColor(COL.HEADER)
+		surface.DrawRect(0, 0, w, 24)
+		surface.SetDrawColor(COL.BORDER)
+		surface.DrawOutlinedRect(0, 0, w, h, 1)
+	end
+	UI.ColorPopup = f
+
+	local pal = vgui.Create("DPanel", f)
+	pal:Dock(TOP)
+	pal:SetTall(3 * 28)
+	pal.Paint = function() end
+	local mixer
+	for i, rgb in ipairs(SWATCHES) do
+		local sw = vgui.Create("DButton", pal)
+		sw:SetPos(((i - 1) % 7) * 34 + 6, math.floor((i - 1) / 7) * 28 + 2)
+		sw:SetSize(30, 24)
+		sw:SetText("")
+		local col = Color(rgb[1], rgb[2], rgb[3])
+		sw.Paint = function(s, w, h)
+			surface.SetDrawColor(col)
+			surface.DrawRect(0, 0, w, h)
+			surface.SetDrawColor(s:IsHovered() and COL.ORANGE or COL.BORDER)
+			surface.DrawOutlinedRect(0, 0, w, h, s:IsHovered() and 2 or 1)
+		end
+		sw.DoClick = function()
+			if IsValid(mixer) then mixer:SetColor(col) end
+			onPick(col)
+		end
+	end
+
+	mixer = vgui.Create("DColorMixer", f)
+	mixer:Dock(FILL)
+	mixer:DockMargin(4, 4, 4, 4)
+	mixer:SetAlphaBar(false)
+	mixer:SetPalette(false)
+	mixer:SetColor(start)
+	mixer.ValueChanged = function(_, c) onPick(Color(c.r, c.g, c.b)) end
+	return f
+end
+
+---------------------------------------------------------------------
+-- ASE page
+---------------------------------------------------------------------
+function UI.BuildASE(body)
+	local cur = { ent = nil, scope = "all" }   -- what the presets and controls show
+	local rebuildControls, rebuildPresets, rebuildTree
+
+	-----------------------------------------------------------------
+	-- Toolbar: "+", search, gear
+	-----------------------------------------------------------------
+	local bar = vgui.Create("DPanel", body)
+	bar:Dock(TOP)
+	bar:SetTall(28)
+	bar.Paint = function(_, w, h)
+		surface.SetDrawColor(COL.HEADER)
+		surface.DrawRect(0, 0, w, h)
+	end
+
+	local add = vgui.Create("DButton", bar)
+	add:Dock(LEFT)
+	add:DockMargin(4, 3, 0, 3)
+	add:SetWide(26)
+	add:SetText("+")
+	UI.StyleButton(add)
+	add:SetFont("SPeditor.Bold")
+	add:SetTooltip(L("ase_add"))
+	add.DoClick = function()
+		local m = SPeditor.UI.Menu()
+		m:AddOption(L("ase_add_model"), function() UI.ToggleBrowser() end):SetIcon("icon16/user_add.png")
+		m:AddOption(L("act_spawn_camera"), function() C.SendCameraSpawn(C.camera.pos, C.camera.ang) end):SetIcon("icon16/camera_add.png")
+		m:AddOption(L("spawn_spot"), function() UI.SpawnLight(1) end):SetIcon("icon16/lightbulb.png")
+		m:AddOption(L("spawn_point"), function() UI.SpawnLight(0) end):SetIcon("icon16/lightbulb_off.png")
+		UI.LightKindMenu(m)
+		m:AddOption(L("eff_add"), function() UI.ToggleEffects() end):SetIcon("icon16/lightning_add.png")
+		m:AddSpacer()
+		m:AddOption(L("rig_make"), function() C.SpawnLightRig(C.selected) end):SetIcon("icon16/lightbulb_add.png")
+		SPeditor.Mods.RunMenu("create", m)
+		m:Open()
+	end
+
+	local gear = vgui.Create("DButton", bar)
+	gear:Dock(RIGHT)
+	gear:DockMargin(0, 3, 4, 3)
+	gear:SetWide(26)
+	gear:SetText("")
+	gear:SetIcon("icon16/cog.png")
+	gear.Paint = add.Paint
+	gear.DoClick = function()
+		local m = SPeditor.UI.Menu()
+		local o = m:AddOption(L("ase_show_groups"), function() UI.aseShowGroups = not UI.aseShowGroups rebuildTree() end)
+		o:SetChecked(UI.aseShowGroups ~= false)
+		m:AddSpacer()
+		m:AddOption(L("expand_all"), function() UI.ExpandTree(true) end)
+		m:AddOption(L("collapse_all"), function() UI.ExpandTree(false) end)
+		m:Open()
+	end
+	if UI.aseShowGroups == nil then UI.aseShowGroups = true end
+
+	local search = vgui.Create("DTextEntry", bar)
+	search:Dock(FILL)
+	search:DockMargin(6, 4, 6, 4)
+	search:SetFont("SPeditor.Small")
+	search:SetPlaceholderText(L("obj_search"))
+
+	-----------------------------------------------------------------
+	-- Columns
+	-----------------------------------------------------------------
+	local treeHost = vgui.Create("DPanel")
+	treeHost.Paint = function(_, w, h)
+		surface.SetDrawColor(COL.TREE_BG)
+		surface.DrawRect(0, 0, w, h)
+	end
+	local tree = UI.StyleTree(vgui.Create("DTree", treeHost))
+	tree:Dock(FILL)
+	UI.ObjectTree = tree
+
+	local presetHost = vgui.Create("DPanel")
+	presetHost.Paint = function(_, w, h)
+		surface.SetDrawColor(COL.ROW_B)
+		surface.DrawRect(0, 0, w, h)
+	end
+	local presetHdr = vgui.Create("DPanel", presetHost)
+	presetHdr:Dock(TOP)
+	presetHdr:SetTall(20)
+	presetHdr.Paint = function(_, w, h)
+		surface.SetDrawColor(COL.HEADER)
+		surface.DrawRect(0, 0, w, h)
+		surface.SetDrawColor(COL.TAB_ON)
+		surface.DrawRect(2, 2, 74, h - 2)
+		draw.SimpleText(L("ase_presets"), "SPeditor.Small", 39, h / 2 + 1, COL.TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+	end
+	local presets = vgui.Create("DScrollPanel", presetHost)
+	presets:Dock(FILL)
+
+	local ctrlHost = vgui.Create("DPanel")
+	ctrlHost.Paint = function(_, w, h)
+		surface.SetDrawColor(COL.ROW_B)
+		surface.DrawRect(0, 0, w, h)
+	end
+	local ctrlHdr = vgui.Create("DPanel", ctrlHost)
+	ctrlHdr:Dock(TOP)
+	ctrlHdr:SetTall(20)
+	local ctrlTitle = ""
+	ctrlHdr.Paint = function(_, w, h)
+		surface.SetDrawColor(COL.HEADER)
+		surface.DrawRect(0, 0, w, h)
+		draw.SimpleText(ctrlTitle, "SPeditor.Small", 6, h / 2, COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+	end
+	local controls = vgui.Create("DScrollPanel", ctrlHost)
+	controls:Dock(FILL)
+
+	local right = vgui.Create("DVerticalDivider")
+	right:SetTop(presetHost)
+	right:SetBottom(ctrlHost)
+	right:SetDividerHeight(5)
+	right:SetTopMin(60)
+	right:SetBottomMin(80)
+	right:SetTopHeight(200)
+
+	local split = vgui.Create("DHorizontalDivider", body)
+	split:Dock(FILL)
+	split:SetLeft(treeHost)
+	split:SetRight(right)
+	split:SetDividerWidth(5)
+	split:SetLeftMin(120)
+	split:SetRightMin(150)
+	split:SetLeftWidth(200)
+	local sized = false
+	split.Think = function(s)
+		if sized or s:GetWide() < 50 then return end
+		sized = true
+		s:SetLeftWidth(math.floor(s:GetWide() * 0.48))
+		right:SetTopHeight(math.floor(math.max(right:GetTall(), 300) * 0.34))
+	end
+
+	-----------------------------------------------------------------
+	-- Preset column
+	-----------------------------------------------------------------
+	local rowAlt = false
+	local function presetRow(text, fn, col, icon)
+		rowAlt = not rowAlt
+		local b = vgui.Create("DButton", presets)
+		b:Dock(TOP)
+		b:SetTall(18)
+		b:SetText("")
+		local alt = rowAlt
+		b.Paint = function(s, w, h)
+			surface.SetDrawColor(s:IsHovered() and COL.SEL or (alt and COL.ROW_A or COL.ROW_B))
+			surface.DrawRect(0, 0, w, h)
+			draw.SimpleText(text, "SPeditor.Small", w / 2, h / 2, col or COL.TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+		end
+		if icon then b:SetTooltip(icon) end
+		b.DoClick = fn
+		return b
+	end
+	local function presetHeader(text)
+		local p = vgui.Create("DPanel", presets)
+		p:Dock(TOP)
+		p:SetTall(16)
+		p.Paint = function(_, w, h)
+			surface.SetDrawColor(COL.HEADER)
+			surface.DrawRect(0, 0, w, h)
+			draw.SimpleText(text, "SPeditor.Small", 6, h / 2, COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		end
+	end
+
+	-- flexes in the current scope (the whole model or one face group)
+	local function flexesInScope(ent)
+		local out = {}
+		local scopeGroup = string.match(cur.scope, "^face:(.+)$")
+		for _, f in ipairs(C.GetFlexList(ent)) do
+			if not scopeGroup or (f.group or "Other") == scopeGroup then out[#out + 1] = f end
+		end
+		return out
+	end
+
+	local function applyFlexPreset(ent, which)
+		local list = flexesInScope(ent)
+		if #list == 0 then SPeditor.Notify(L("face_no_flex"), 0) return end
+		C.SnapshotThen(ent, "face preset", function()
+			for _, f in ipairs(list) do
+				local v
+				if which == "default" then v = math.Clamp(0, f.min, f.max)
+				elseif which == "zero" then v = f.min
+				elseif which == "half" then v = (f.min + f.max) / 2
+				else v = f.max end
+				C.SendFlex(ent, f.id, v, true)
+			end
+		end)
+	end
+
+	local LENSES = { 18, 24, 35, 50, 85, 135 }
+
+	function rebuildPresets()
+		presets:Clear()
+		rowAlt = false
+		local ent = cur.ent
+		if not IsValid(ent) then
+			presetHeader(L("no_selection"))
+			return
+		end
+
+		if C.IsLight(ent) then
+			presetHeader(L("light_kinds"))
+			for _, k in ipairs(SPeditor.LightKinds or {}) do
+				presetRow(SPeditor.LN("lkind_", k.name), function()
+					C.ApplyLightKind(ent, k)
+					-- the light type may have changed: the controls are rebuilt once it arrives over the network
+					timer.Simple(0.3, function() if IsValid(ent) and cur.ent == ent then rebuildControls() end end)
+				end, Color(math.max(k.r, 150), math.max(k.g, 150), math.max(k.b, 150)))
+			end
+			presetHeader(L("presets"))
+			for _, p in ipairs(SPeditor.LightPresets or {}) do
+				presetRow(SPeditor.LN("preset_", p.name), function()
+					C.SendLightEdit(ent, ent:GetLightType(), Color(p.r, p.g, p.b), p.radius, p.brightness, p.fov, nil, true)
+				end, Color(p.r, p.g, p.b))
+			end
+			presetHeader(L("sec_actions"))
+			presetRow(L("aim_at"), function() C.OpenAimMenu(ent) end)
+			return
+		end
+
+		if C.IsCamera(ent) then
+			presetHeader(L("ase_lenses"))
+			for _, mm in ipairs(LENSES) do
+				local fov = math.deg(2 * math.atan(18 / mm))
+				presetRow(string.format("%d mm  (%d°)", mm, math.Round(fov)), function()
+					C.SendCameraEdit(ent, "fov", fov, true)
+				end)
+			end
+			presetHeader(L("sec_actions"))
+			presetRow(L("aim_at"), function() C.OpenAimMenu(ent) end)
+			presetRow(L("match_cam_work"), function() C.MatchCameraToWork(ent) end)
+			presetRow(L("match_work_cam"), function() C.MatchWorkToCamera(ent) end)
+			presetRow(L("fx_open"), function() UI.OpenRenderDialog(ent) end)
+			return
+		end
+
+		if C.IsEffect(ent) then
+			-- the moment of the effect: how long after its start it is shown
+			presetHeader(L("eff_moments"))
+			for _, t in ipairs({ 0.05, 0.1, 0.25, 0.5, 1, 2, 4 }) do
+				presetRow(string.format(L("eff_moment_s"), t), function() C.SendEffectEdit(ent, { time = t }, true) end)
+			end
+			presetHeader(L("sec_actions"))
+			presetRow(L("eff_play"), function() SPeditor.Effects.Preview(ent) end)
+			presetRow(L("eff_replace"), function() C.Select(ent, -1) UI.ToggleEffects() end)
+			presetRow(L("aim_at"), function() C.OpenAimMenu(ent) end)
+			return
+		end
+
+		if ent:GetFlexNum() > 0 then
+			presetHeader(L("face"))
+			presetRow(L("face_preset_default"), function() applyFlexPreset(ent, "default") end)
+			presetRow(L("face_preset_zero"), function() applyFlexPreset(ent, "zero") end)
+			presetRow(L("face_preset_half"), function() applyFlexPreset(ent, "half") end)
+			presetRow(L("face_preset_one"), function() applyFlexPreset(ent, "one") end)
+		end
+		presetHeader(L("sec_appearance"))
+		presetRow(L("props_open"), function() UI.OpenObjectProps(ent) end)
+		presetHeader(L("pose_scene_section"))
+		presetRow(L("reset_selected"), function() C.ResetPoseFull(ent) end)
+		if ent:GetFlexNum() > 0 then presetRow(L("face_reset"), function() C.ResetFlexes(ent) end) end
+		presetRow(L("pose_copy"), function() C.CopyPose(ent) end)
+		presetRow(L("pose_paste"), function() C.PastePose(ent) end)
+		presetRow(L("pose_save") .. "…", function()
+			Derma_StringRequest(L("pose_save"), L("pose_name_prompt"), "", function(name) C.SavePose(ent, name) end)
+		end)
+
+		local infos = C.ListPoseInfos()
+		if #infos > 0 then
+			presetHeader(L("pose_library"))
+			local model = ent:GetModel()
+			for _, info in ipairs(infos) do
+				local same = (info.model == "" or info.model == model)
+				presetRow(info.name, function() C.LoadPose(ent, info.name) end, same and COL.TEXT or COL.DIM)
+			end
+		end
+	end
+	hook.Add("SPeditor_PoseListChanged", "SPeditor.ASE", function() if IsValid(presets) then rebuildPresets() end end)
+
+	-----------------------------------------------------------------
+	-- Control column
+	-----------------------------------------------------------------
+	local ctrlAlt = false
+	local function ctrl(o)
+		ctrlAlt = not ctrlAlt
+		local c = UI.Control(controls, o)
+		c.alt = ctrlAlt
+		return c
+	end
+	local function ctrlHeader(text, col)
+		local p = vgui.Create("DPanel", controls)
+		p:Dock(TOP)
+		p:SetTall(16)
+		p.Paint = function(_, w, h)
+			surface.SetDrawColor(COL.HEADER)
+			surface.DrawRect(0, 0, w, h)
+			draw.SimpleText(text, "SPeditor.Small", 6, h / 2, col or COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		end
+	end
+
+	local function flexControls(ent, list)
+		for _, f in ipairs(list) do
+			ctrl({
+					label = f.name, min = f.min, max = f.max, value = f.weight,
+					default = math.Clamp(0, f.min, f.max),
+					onChange = function(v) C.EditFlex(ent, f.id, v) end,
+			getter = function() return IsValid(ent) and ent:GetFlexWeight(f.id) or nil end,
+			})
+		end
+	end
+
+	local function eyeControls(ent)
+		local function edit(field, v)
+			local st = C.GetEyeState(ent)
+			st[field] = v
+			if field ~= "on" then st.on = true end
+			C.EditEye(ent, st)
+		end
+		UI.ToggleRow(controls, L("ctl_view_target"), function() return IsValid(ent) and C.GetEyeState(ent).on end,
+		function(v) edit("on", v) end)
+		local st = C.GetEyeState(ent)
+		ctrl({ label = L("ctl_eyes_yaw"), min = -180, max = 180, value = st.yaw, default = 0, decimals = 0,
+				onChange = function(v) edit("yaw", v) end,
+		getter = function() return IsValid(ent) and C.GetEyeState(ent).yaw end })
+		ctrl({ label = L("ctl_eyes_pitch"), min = -90, max = 90, value = st.pitch, default = 0, decimals = 0,
+				onChange = function(v) edit("pitch", v) end,
+		getter = function() return IsValid(ent) and C.GetEyeState(ent).pitch end })
+		ctrl({ label = L("ctl_eyes_dist"), min = 10, max = 500, value = st.dist, default = 100, decimals = 0,
+				onChange = function(v) edit("dist", v) end,
+		getter = function() return IsValid(ent) and C.GetEyeState(ent).dist end })
+	end
+
+	local function boneRows(ent, list, col)
+		for _, b in ipairs(list) do
+			local short = shortBone(b.name)
+			-- every bone can be moved: a physical one moves its physics object, the others
+			-- (clavicles, fingers) get a bone offset
+			UI.LinkRow(controls, short .. " - pos", col, function()
+				return C.selected == ent and C.selBone == b.id and C.gizmo.mode == "move"
+			end, function()
+				C.Select(ent, b.id)
+				C.gizmo.mode = "move"
+			end)
+			UI.LinkRow(controls, short .. " - rot", col, function()
+				return C.selected == ent and C.selBone == b.id and C.gizmo.mode == "rotate"
+			end, function()
+				C.Select(ent, b.id)
+				C.gizmo.mode = "rotate"
+			end)
+			UI.LinkRow(controls, short .. " - scale", col, function()
+				return C.selected == ent and C.selBone == b.id and C.gizmo.mode == "scale"
+			end, function()
+				C.Select(ent, b.id)
+				C.gizmo.mode = "scale"
+			end)
+		end
+	end
+
+	local function lightControls(ent)
+		local col = ent:GetLightColor()
+		local color = Color(math.Round(col.x * 255), math.Round(col.y * 255), math.Round(col.z * 255))
+		local bri, rng, cone
+		local extra = {}     -- controls of the extended settings: [SPeditor.LightFields key] = { ctrl, scale }
+
+		local function send(final)
+			if not IsValid(ent) then return end
+			local sh = {}
+			for key, e in pairs(extra) do sh[key] = e.ctrl:GetValue() / e.scale end
+			C.SendLightEdit(ent, ent:GetLightType(), color, rng:GetValue(), bri:GetValue(),
+				cone and cone:GetValue() or ent:GetLightFOV(), sh, final)
+		end
+		-- toggles and lists: one field changes, the rest is taken from the light state
+		local function sendExtra(sh)
+			if not IsValid(ent) then return end
+			C.SendLightEdit(ent, ent:GetLightType(), color, ent:GetLightRadius(), ent:GetLightBrightness(), ent:GetLightFOV(), sh, true)
+		end
+		-- slider of an extended setting; scale — how many times the interface value is larger than the stored one
+		local function extraCtrl(key, label, min, max, decimals, scale)
+			local def
+			for _, f in ipairs(SPeditor.LightFields) do
+				if f.key == key then def = f end
+			end
+			scale = scale or 1
+			local getter = function() return IsValid(ent) and ent["Get" .. def.nw](ent) * scale end
+			extra[key] = { scale = scale, ctrl = ctrl({ label = label, min = min, max = max, value = getter(), default = def.default * scale,
+					decimals = decimals, onChange = function(_, final) send(final) end, getter = getter }) }
+			-- captions in the narrow column are short; what a setting does is in the tooltip
+			extra[key].ctrl:SetTooltip(L("ctl_tip_" .. key))
+		end
+
+		local ltype = ent:GetLightType()
+		UI.LinkRow(controls, L("light_type") .. ":  " .. (ltype == 1 and L("light_spot") or L("light_point")), COL.ORANGE, nil, function()
+			C.SendLightEdit(ent, 1 - ent:GetLightType(), color, ent:GetLightRadius(), ent:GetLightBrightness(), ent:GetLightFOV(), nil, true)
+			timer.Simple(0.2, function() if IsValid(controls) then rebuildControls() end end)
+		end)
+
+		-- colour: a click opens the palette
+		local cb = vgui.Create("DButton", controls)
+		cb:Dock(TOP)
+		cb:DockMargin(0, 0, 0, 1)
+		cb:SetTall(18)
+		cb:SetText("")
+		cb.Paint = function(s, w, h)
+			surface.SetDrawColor(s:IsHovered() and COL.ROW_A or COL.ROW_B)
+			surface.DrawRect(0, 0, w, h)
+			surface.SetDrawColor(color)
+			surface.DrawRect(4, 3, 28, h - 6)
+			surface.SetDrawColor(COL.BORDER)
+			surface.DrawOutlinedRect(4, 3, 28, h - 6, 1)
+			draw.SimpleText(L("ctl_color"), "SPeditor.Small", w / 2, h / 2, COL.TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+		end
+		cb.DoClick = function()
+			UI.OpenColorPopup(L("light_custom"), color, function(c)
+				color = c
+				send(false)
+			end)
+		end
+		cb.Think = function()
+			if IsValid(UI.ColorPopup) or not IsValid(ent) then return end
+			local v = ent:GetLightColor()
+			color = Color(math.Round(v.x * 255), math.Round(v.y * 255), math.Round(v.z * 255))
+		end
+
+		bri = ctrl({ label = L("ctl_intensity"), min = 0, max = 8, value = ent:GetLightBrightness(), default = 2,
+				onChange = function(_, final) send(final) end,
+		getter = function() return IsValid(ent) and ent:GetLightBrightness() end })
+		rng = ctrl({ label = L(ltype == 1 and "ctl_distance" or "ctl_radius"), min = 32, max = 4000, value = ent:GetLightRadius(),
+				default = 400, decimals = 0,
+				onChange = function(_, final) send(final) end,
+		getter = function() return IsValid(ent) and ent:GetLightRadius() end })
+		if ltype == 1 then
+			cone = ctrl({ label = L("ctl_fov"), min = 5, max = 120, value = ent:GetLightFOV(), default = 60, decimals = 0,
+					onChange = function(_, final) send(final) end,
+			getter = function() return IsValid(ent) and ent:GetLightFOV() end })
+
+			-- soft light (a0.2)
+			ctrlHeader(L("light_sec_soft"))
+			extraCtrl("edge", L("ctl_edge"), 0, 1, 2)
+			extraCtrl("area", L("ctl_area"), 0, 64, 1)
+
+			-- shadows
+			ctrlHeader(L("light_sec_shadows"))
+			UI.ToggleRow(controls, L("ctl_casts_shadows"), function() return IsValid(ent) and ent:GetLightShadows() end, function(v)
+				sendExtra({ shadows = v })
+			end)
+			extraCtrl("soft", L("ctl_shadow_filter"), 0, 5, 2)
+			extraCtrl("bias", L("ctl_shadow_bias"), 0, 10, 2, 10000)
+			extraCtrl("slope", L("ctl_shadow_slope"), 0, 16, 1)
+			extraCtrl("near", L("ctl_shadow_near"), 1, 500, 0)
+
+			-- beam shape and falloff
+			ctrlHeader(L("light_sec_beam"))
+			UI.ToggleRow(controls, L("ctl_ortho"), function() return IsValid(ent) and ent:GetLightOrtho() end, function(v)
+				sendExtra({ ortho = v })
+			end):SetTooltip(L("ctl_ortho_tip"))
+			extraCtrl("osize", L("ctl_ortho_size"), 8, 2000, 0)
+			extraCtrl("attc", L("ctl_att_const"), 0, 10, 2)
+			extraCtrl("attl", L("ctl_att_linear"), 0, 1000, 0)
+			extraCtrl("attq", L("ctl_att_quad"), 0, 2000, 0)
+
+			-- light mask: textures of the Lamp tool
+			-- editor masks, Lamp tool textures and all other light textures from the game and addons
+			local Lt = SPeditor.Lights
+			local texName = Lt.TextureName
+			local texRow
+			texRow = UI.LinkRow(controls, "", COL.TEXT, nil, function()
+				local m = UI.Menu()
+				local now = ent:GetLightTexture()
+				for i, group in ipairs(Lt.TextureList()) do
+					if #group.items > 0 then
+						local sub = m:AddSubMenu(L(group.title) .. "  (" .. #group.items .. ")")
+						for _, path in ipairs(group.items) do
+							sub:AddOption(texName(path), function() sendExtra({ tex = path }) end):SetChecked(path == now)
+						end
+					end
+				end
+				-- any other game texture — by path
+				m:AddSpacer()
+				m:AddOption(L("lmask_custom") .. "…", function()
+					Derma_StringRequest(L("ctl_light_texture"), L("lmask_custom_prompt"), now, function(path)
+						path = string.gsub(string.gsub(string.Trim(path), "\\", "/"), "%.vtf$", "")
+						path = string.gsub(path, "^materials/", "")
+						if path ~= "" and #path <= 96 and not string.find(path, "[^%w_%-/%.]") then
+							sendExtra({ tex = path })
+						else
+							SPeditor.Notify("#lmask_custom_bad", 1)
+						end
+					end)
+				end):SetIcon("icon16/folder_picture.png")
+				m:Open()
+			end)
+			texRow.Paint = function(s, w, h)
+				surface.SetDrawColor(s:IsHovered() and COL.ROW_A or COL.ROW_B)
+				surface.DrawRect(0, 0, w, h)
+				local tex = IsValid(ent) and ent:GetLightTexture() or ""
+				draw.SimpleText(L("ctl_light_texture") .. ":  " .. texName(tex ~= "" and tex or SPeditor.DefaultLightTexture), "SPeditor.Small",
+					w / 2, h / 2, COL.TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+			end
+		end
+	end
+
+	-- visible source (a0.2): glow for any light, beam for a spot
+	local baseLightControls = lightControls
+	lightControls = function(ent)
+		baseLightControls(ent)
+		local function field(key)
+			for _, f in ipairs(SPeditor.LightFields) do
+				if f.key == key then return f end
+			end
+		end
+		local function fx(key, label, min, max, decimals)
+			local def = field(key)
+			local c = ctrl({ label = label, min = min, max = max, default = def.default, decimals = decimals,
+					value = ent["Get" .. def.nw](ent),
+					onChange = function(v, final)
+						if not IsValid(ent) then return end
+						local col = ent:GetLightColor()
+						C.SendLightEdit(ent, ent:GetLightType(), Color(math.Round(col.x * 255), math.Round(col.y * 255), math.Round(col.z * 255)),
+							ent:GetLightRadius(), ent:GetLightBrightness(), ent:GetLightFOV(), { [key] = v }, final)
+					end,
+					getter = function() return IsValid(ent) and ent["Get" .. def.nw](ent) end })
+			c:SetTooltip(L("ctl_tip_" .. key))
+		end
+		ctrlHeader(L("light_sec_visible"))
+		fx("glow", L("ctl_glow"), 0, 400, 0)
+		fx("glowb", L("ctl_glow_bright"), 0, 4, 2)
+		if ent:GetLightType() == 1 then
+			fx("vol", L("ctl_vol"), 0, 1, 2)
+			fx("voll", L("ctl_vol_len"), 0.05, 1, 2)
+		end
+	end
+
+	local function cameraControls(ent)
+		ctrl({ label = L("ctl_fov"), min = 10, max = 120, value = ent:GetCameraFOV(), default = 75, decimals = 1,
+				onChange = function(v, final) C.SendCameraEdit(ent, "fov", v, final) end,
+		getter = function() return IsValid(ent) and ent:GetCameraFOV() end })
+		UI.ToggleRow(controls, L("look_through"), function() return C.GetViewCamera() == ent end, function(v)
+			if v then C.StartViewCamera(ent) else C.StopViewCamera() end
+		end)
+		-- motion: shake and smoothness (SPeditor.CameraFields)
+		ctrlHeader(L("cam_sec_motion"))
+		local DEC = { shake = 1, shakerot = 2, shakefreq = 1, smooth = 2 }
+		for _, f in ipairs(SPeditor.CameraFields) do
+			local getter = function() return IsValid(ent) and ent["Get" .. f.nw](ent) end
+			ctrl({ label = L("cam_" .. f.key), min = f.min, max = f.max, value = getter(), default = f.default, decimals = DEC[f.key] or 2,
+					onChange = function(v, final) C.SendCameraEdit(ent, f.key, v, final) end, getter = getter })
+				:SetTooltip(L("cam_tip_" .. f.key))
+		end
+	end
+
+	local function effectControls(ent)
+		local live = SPeditor.Effects.IsLive(ent)
+		local kind = L("eff_src_" .. ent:GetFxSource())
+		local nameRow = UI.LinkRow(controls, "", COL.ORANGE, nil, function() UI.ToggleEffects() end)
+		nameRow.Paint = function(s, w, h)
+			surface.SetDrawColor(s:IsHovered() and COL.ROW_A or COL.ROW_B)
+			surface.DrawRect(0, 0, w, h)
+			draw.SimpleText(kind .. ":  " .. (IsValid(ent) and ent:GetFxName() or ""), "SPeditor.Small", w / 2, h / 2, COL.ORANGE,
+				TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+		end
+		nameRow:SetTooltip(L("eff_replace"))
+
+		local function field(key, label, min, max, decimals)
+			local def
+			for _, f in ipairs(SPeditor.EffectFields) do
+				if f.key == key then def = f end
+			end
+			local getter = function() return IsValid(ent) and ent["Get" .. def.nw](ent) end
+			local c = ctrl({ label = label, min = min, max = max, value = getter(), default = def.default, decimals = decimals,
+					onChange = function(v, final) C.SendEffectEdit(ent, { [key] = v }, final) end, getter = getter })
+			c:SetTooltip(L("eff_tip_" .. key))
+			return c
+		end
+		field("time", L("eff_time"), 0, 10, 2)
+		if live then field("scale", L("eff_scale"), 0.05, 10, 2) end
+		field("length", L("eff_length"), 0, 2000, 0)
+		UI.LinkRow(controls, L("eff_play"), COL.TEXT, nil, function() SPeditor.Effects.Preview(ent) end)
+
+		-- what the moment means for this kind of effect
+		local note = vgui.Create("DLabel", controls)
+		note:Dock(TOP)
+		note:DockMargin(6, 4, 6, 0)
+		note:SetFont("SPeditor.Small")
+		note:SetTextColor(COL.DIM)
+		note:SetWrap(true)
+		note:SetAutoStretchVertical(true)
+		note:SetText(L(live and "eff_note_live" or "eff_note_pcf"))
+	end
+
+	function rebuildControls()
+		controls:Clear()
+		ctrlAlt = false
+		local ent = cur.ent
+		if not IsValid(ent) then
+			ctrlTitle = L("no_selection")
+			return
+		end
+		ctrlTitle = C.DisplayName(ent) .. ((cur.scope ~= "all") and ("  /  " .. (cur.scopeLabel or cur.scope)) or "")
+
+		if C.IsLight(ent) then lightControls(ent) return end
+		if C.IsCamera(ent) then cameraControls(ent) return end
+		if C.IsEffect(ent) then effectControls(ent) return end
+
+		local scope = cur.scope
+		local faceGroup = string.match(scope, "^face:(.+)$")
+		local boneGroup = string.match(scope, "^bones:(.+)$")
+
+		if (scope == "all" or scope == "eyes") and hasEyes(ent) then
+			if scope == "all" then ctrlHeader(L("grp_eyes")) end
+			eyeControls(ent)
+		end
+		if scope == "all" or scope == "face" or faceGroup then
+			local groups = flexGroupsOf(ent)
+			for _, g in ipairs(FACE_ORDER) do
+				if groups[g] and (not faceGroup or faceGroup == g) then
+					if not faceGroup then ctrlHeader(L("face") .. " / " .. SPeditor.LN("grp_", g)) end
+					flexControls(ent, groups[g])
+				end
+			end
+		end
+		if scope == "all" or boneGroup then
+			local groups = boneGroupsOf(ent)
+			for _, g in ipairs(GROUP_ORDER) do
+				if groups[g] and (not boneGroup or boneGroup == g) then
+					if not boneGroup then ctrlHeader(groupLabel(ent, g), groupColor(g)) end
+					boneRows(ent, groups[g], groupColor(g))
+				end
+			end
+		end
+	end
+
+	local function setScope(ent, scope, label)
+		if cur.ent ~= ent or cur.scope ~= scope then
+			cur.ent, cur.scope, cur.scopeLabel = ent, scope, label
+			rebuildPresets()
+			rebuildControls()
+		end
+		if C.selected ~= ent then C.Select(ent, -1) end
+	end
+
+	-----------------------------------------------------------------
+	-- Tree
+	-----------------------------------------------------------------
+	local function objectMenu(obj)
+		local ent = obj.ent
+		if not IsValid(ent) then return end
+		local m = SPeditor.UI.Menu()
+		if not C.IsAux(ent) then
+			m:AddOption(L("props_open"), function() UI.OpenObjectProps(ent) end):SetIcon("icon16/wrench.png")
+			local look = C.GetLook(ent)
+			local lm = m:AddSubMenu(L("sec_appearance"))
+			lm:AddOption(L("props_color") .. "…", function()
+				local c = ent:GetColor()
+				UI.OpenColorPopup(L("props_color"), Color(c.r, c.g, c.b), function(col)
+					if IsValid(ent) then C.EditLook(ent, { color = { col.r, col.g, col.b, ent:GetColor().a } }) end
+				end)
+			end):SetIcon("icon16/color_wheel.png")
+			lm:AddOption(L("props_mat_remove"), function() UI.RemoveTextures(ent) end):SetIcon("icon16/picture_delete.png")
+			lm:AddOption(L("props_mat_restore"), function() UI.RestoreTextures(ent) end):SetIcon("icon16/picture_go.png")
+			lm:AddOption(L("props_cast_shadow"), function() C.EditLook(ent, { noshadow = not look.noshadow }, true) end)
+				:SetChecked(not look.noshadow)
+			lm:AddSpacer()
+			lm:AddOption(L("props_reset"), function() UI.ResetLook(ent) end)
+			m:AddSpacer()
+		elseif C.IsCamera(ent) then
+			m:AddOption(L("fx_open"), function() UI.OpenRenderDialog(ent) end):SetIcon("icon16/wand.png")
+			m:AddSpacer()
+		elseif C.IsEffect(ent) then
+			m:AddOption(L("eff_play"), function() SPeditor.Effects.Preview(ent) end):SetIcon("icon16/control_play.png")
+			m:AddOption(L("eff_replace"), function() C.Select(ent, -1) UI.ToggleEffects() end):SetIcon("icon16/arrow_refresh.png")
+			m:AddSpacer()
+		end
+		m:AddOption(L("obj_rename"), function()
+			Derma_StringRequest(L("obj_rename"), L("enter_name"), obj.name, function(name) C.SendRename(ent, name) end)
+		end)
+		m:AddOption(L("obj_duplicate"), function() C.SendDuplicate(ent) end)
+		m:AddOption(L("obj_delete"), function() C.SendDelete(ent) C.Select(nil) end)
+		m:AddSpacer()
+		if not C.IsAux(ent) or C.IsEffect(ent) then
+			m:AddOption(L("ase_renderable"), function() C.SendFlags(ent, not obj.hidden, obj.locked) end):SetChecked(not obj.hidden)
+		end
+		m:AddOption(L("ase_selectable"), function() C.SendFlags(ent, obj.hidden, not obj.locked) end):SetChecked(not obj.locked)
+		m:AddSpacer()
+		-- attaching to an object / bone
+		local am = m:AddSubMenu(L("attach_to"))
+		local nTargets = 0
+		for _, o in ipairs(C.BuildEntityList()) do
+			local tgt = o.ent
+			if IsValid(tgt) and tgt ~= ent and o.kind ~= "light" and o.kind ~= "camera" and o.kind ~= "effect" then
+				nTargets = nTargets + 1
+				if o.kind == "ragdoll" then
+					local bm = am:AddSubMenu(o.name)
+					-- clothing, armour, hair for the same skeleton: bends with the bones
+					if not C.IsAux(ent) then
+						bm:AddOption(L("attach_wear"), function() C.SendAttach(ent, tgt, -2) end):SetIcon("icon16/user_suit.png")
+					end
+					bm:AddOption(L("attach_root"), function() C.SendAttach(ent, tgt, -1) end)
+					bm:AddSpacer()
+					for _, b in ipairs(C.GetBoneList(tgt)) do
+						if b.phys then
+							local short = string.gsub(b.name, "^ValveBiped%.Bip01_", "")
+							bm:AddOption(short, function() C.SendAttach(ent, tgt, b.id) end)
+						end
+					end
+				else
+					am:AddOption(o.name, function() C.SendAttach(ent, tgt, -1) end)
+				end
+			end
+		end
+		if nTargets == 0 then
+			local o = am:AddOption(L("aim_none"))
+			if o.SetEnabled then o:SetEnabled(false) end
+		end
+		if C.AttachParent(ent) then
+			m:AddOption(L("attach_detach"), function() C.SendAttach(ent, nil, -1) end)
+		end
+		m:AddSpacer()
+		m:AddOption(L("ase_show_ev"), function() C.Select(ent, -1) SPeditor.Dock.ShowPage("ev") end)
+		m:AddOption(L("obj_focus"), function() C.Select(ent, -1) C.FocusSelected() end)
+		m:AddSpacer()
+
+		if C.IsAux(ent) then
+			m:AddOption(L("aim_at"), function() C.OpenAimMenu(ent) end)
+			if C.IsCamera(ent) then
+				m:AddOption(L("look_through"), function() C.StartViewCamera(ent) end)
+				m:AddOption(L("match_cam_work"), function() C.MatchCameraToWork(ent) end)
+			end
+		else
+			local um = m:AddSubMenu(L("ase_utilities"))
+			um:AddOption(L("drop_floor"), function() C.SendDropToFloor(ent) end)
+			um:AddOption(L("rig_make"), function() C.SpawnLightRig(ent) end)
+			um:AddOption(L("reset_selected"), function() C.ResetPoseFull(ent) end)
+			if obj.kind == "ragdoll" then
+				um:AddOption(L("pose_copy"), function() C.CopyPose(ent) end)
+				um:AddOption(L("pose_paste"), function() C.PastePose(ent) end)
+			end
+			local skins = ent:SkinCount() or 1
+			if skins > 1 then
+				local sk = m:AddSubMenu(L("ase_set_skin"))
+				for i = 0, skins - 1 do
+					sk:AddOption(tostring(i), function() C.SendSkin(ent, i) end):SetChecked(ent:GetSkin() == i)
+				end
+			end
+			local nb = ent:GetNumBodyGroups() or 0
+			local bodyMenu
+			for i = 0, nb - 1 do
+				local n = ent:GetBodygroupCount(i)
+				if n and n > 1 then
+					bodyMenu = bodyMenu or m:AddSubMenu(L("ase_set_body"))
+					local sub = bodyMenu:AddSubMenu(ent:GetBodygroupName(i) or ("#" .. i))
+					for v = 0, n - 1 do
+						sub:AddOption(tostring(v), function() C.SendBodygroup(ent, i, v) end):SetChecked(ent:GetBodygroup(i) == v)
+					end
+				end
+			end
+		end
+		SPeditor.Mods.RunMenu("object", m, ent)
+		m:Open()
+	end
+
+	-- the same menu on a right click in the frame (cl_camera.lua)
+	UI.ObjectMenu = function(ent)
+		for _, o in ipairs(C.BuildEntityList()) do
+			if o.ent == ent then
+				objectMenu(o)
+				return
+			end
+		end
+	end
+
+	local nodesByEnt = {}
+
+	function UI.ExpandTree(open)
+		for _, node in pairs(nodesByEnt) do
+			if IsValid(node) then node:SetExpanded(open) end
+		end
+	end
+
+	local treeSig = ""
+	local function signature()
+		local parts = { search:GetValue() or "", tostring(UI.aseShowGroups) }
+		for _, o in ipairs(C.BuildEntityList()) do
+			parts[#parts + 1] = table.concat({ IsValid(o.ent) and o.ent:EntIndex() or 0, o.name, tostring(o.hidden), tostring(o.locked),
+					IsValid(o.parent) and o.parent:EntIndex() or 0 }, ":")
+		end
+		return table.concat(parts, "|")
+	end
+
+	local function addGroup(parent, text, col, icon, ent, scope)
+		local n = parent:AddNode(text, icon or ICONS.group)
+		UI.NodeColor(n, col)
+		n.DoClick = function() setScope(ent, scope, text) end
+		n.DoRightClick = function() setScope(ent, scope, text) end
+		return n
+	end
+
+	function rebuildTree()
+		treeSig = signature()
+		tree:Clear()
+		nodesByEnt = {}
+		local q = string.lower(string.Trim(search:GetValue() or ""))
+
+		for _, obj in ipairs(C.BuildEntityList()) do
+			local ent = obj.ent
+			if IsValid(ent) and (q == "" or string.find(string.lower(obj.name), q, 1, true)) then
+				-- an attached object shows in the tree what it is attached to
+				local label = obj.name
+				if IsValid(obj.parent) then label = label .. "  → " .. C.DisplayName(obj.parent) end
+				local node = tree:AddNode(label, ICONS[obj.kind] or ICONS.prop)
+				UI.NodeColor(node, (obj.hidden or obj.locked) and COL.DIM or COL.TEXT)
+				nodesByEnt[ent] = node
+				if C.IsMulti(ent) then UI.NodeColor(node, COL.ORANGE) end
+				node.DoClick = function()
+					-- Ctrl+click: add to / remove from the selection
+					if input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL) then
+						C.ToggleMulti(ent)
+						return
+					end
+					setScope(ent, "all")
+				end
+				node.DoRightClick = function()
+					setScope(ent, "all")
+					objectMenu(obj)
+				end
+
+				if UI.aseShowGroups and isModel(ent) then
+					local fg = flexGroupsOf(ent)
+					if next(fg) then
+						local face = addGroup(node, L("face"), COL.BLUE, ICONS.face, ent, "face")
+						for _, g in ipairs(FACE_ORDER) do
+							if fg[g] then addGroup(face, SPeditor.LN("grp_", g), COL.TEXT, nil, ent, "face:" .. g) end
+						end
+					end
+					if hasEyes(ent) then addGroup(node, L("grp_eyes"), COL.BLUE, ICONS.eyes, ent, "eyes") end
+					local bg = boneGroupsOf(ent)
+					for _, g in ipairs(GROUP_ORDER) do
+						if bg[g] then addGroup(node, groupLabel(ent, g), groupColor(g), nil, ent, "bones:" .. g) end
+					end
+				end
+				if ent == cur.ent then
+					node:SetExpanded(true)
+					tree:SetSelectedItem(node)
+				end
+			end
+		end
+	end
+
+	search.OnChange = function() rebuildTree() end
+	hook.Add("SPeditor_MultiChanged", "SPeditor.ASE", function()
+		if IsValid(tree) then rebuildTree() end
+	end)
+
+	-- selection from the viewport / another window
+	hook.Add("SPeditor_Selected", "SPeditor.ASE", function(ent)
+		if not IsValid(tree) then return end
+		if ent ~= cur.ent then
+			cur.ent, cur.scope, cur.scopeLabel = ent, "all", nil
+			rebuildPresets()
+			rebuildControls()
+			local node = nodesByEnt[ent]
+			if IsValid(node) then
+				node:SetExpanded(true)
+				tree:SetSelectedItem(node)
+			end
+		end
+	end)
+
+	local nextCheck = 0
+	tree.Think = function()
+		if RealTime() < nextCheck or not C.active then return end
+		nextCheck = RealTime() + 0.5
+		if signature() ~= treeSig then rebuildTree() end
+		if IsValid(cur.ent) == false and cur.ent ~= nil then
+			cur.ent = nil
+			rebuildPresets()
+			rebuildControls()
+		end
+	end
+
+	cur.ent = C.selected
+	rebuildTree()
+	rebuildPresets()
+	rebuildControls()
+end
+
+-- "Soft light" submenu: create a light of the needed kind right away (SPeditor.LightKinds)
+function UI.LightKindMenu(m)
+	local sub, opt = m:AddSubMenu(L("light_kinds_spawn"))
+	if opt and opt.SetIcon then opt:SetIcon("icon16/weather_sun.png") end
+	for _, k in ipairs(SPeditor.LightKinds or {}) do
+		sub:AddOption(SPeditor.LN("lkind_", k.name), function() C.SpawnLightKind(k) end)
+			:SetIcon(k.ltype == 0 and "icon16/lightbulb_off.png" or "icon16/lightbulb.png")
+	end
+end
+
+-- shared light spawn in front of the work camera
+function UI.SpawnLight(ltype)
+	local cam = C.camera
+	C.SendLightSpawn(ltype, cam.pos + cam.ang:Forward() * 150, cam.ang, Color(255, 244, 224), 400, 2, 60)
+end

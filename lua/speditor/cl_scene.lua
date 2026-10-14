@@ -1,0 +1,606 @@
+-- Selection, object list, mouse picking, bones in world coordinates.
+-- Mouse rays and point projection are computed relative to the Primary Viewport
+-- rectangle (the view lives in a window, not full screen).
+SPeditor.Client = SPeditor.Client or {}
+local C = SPeditor.Client
+
+function C.IsLight(e)   return IsValid(e) and e:GetClass() == "speditor_light" end
+function C.IsCamera(e)  return IsValid(e) and e:GetClass() == "speditor_camera" end
+function C.IsRagdoll(e) return IsValid(e) and e:GetClass() == "prop_ragdoll" end
+function C.IsEffect(e)  return IsValid(e) and e:GetClass() == "speditor_effect" end
+function C.IsAux(e)     return C.IsLight(e) or C.IsCamera(e) or C.IsEffect(e) end
+
+-- An editor object that belongs to this player. On a server with several
+-- editors other players' objects are visible in the world but do not get into the list,
+-- mouse picking or history (the server would not let you change them anyway). Every
+-- player has own object UIDs, so without the owner check undo could find someone else's object.
+function C.IsMine(e)
+	if not SPeditor.IsEditable(e) then return false end
+	local owner = e:GetNW2Entity("SPeditor_OwnerPly")
+	return not IsValid(owner) or owner == LocalPlayer()
+end
+
+local objects, nextScan = {}, 0
+function C.Objects()
+	if RealTime() >= nextScan then
+		nextScan = RealTime() + 0.5
+		objects = {}
+		for _, e in ipairs(ents.GetAll()) do
+			if C.IsMine(e) then objects[#objects + 1] = e end
+		end
+	end
+	return objects
+end
+
+local listCache, listCacheFor
+
+function C.BuildEntityList()
+	local scan = C.Objects()
+	if listCache and listCacheFor == scan then return listCache end
+	local objs = {}
+	for _, e in ipairs(scan) do
+		if IsValid(e) then objs[#objs + 1] = e end
+	end
+	table.sort(objs, function(a, b) return a:EntIndex() < b:EntIndex() end)
+	local list, counters = {}, {}
+	for _, e in ipairs(objs) do
+		local kind, base
+		if C.IsLight(e) then
+			-- the name depends on the light type: Spot Light N / Point Light N
+			kind = "light"
+			base = SPeditor.L((e:GetLightType() == 1) and "obj_name_spot" or "obj_name_point")
+		elseif C.IsCamera(e) then
+			kind, base = "camera", SPeditor.L("obj_name_camera")
+		elseif C.IsEffect(e) then
+			kind, base = "effect", e:GetFxName()
+			if base == "" then base = SPeditor.L("obj_name_effect") end
+		else
+			kind = C.IsRagdoll(e) and "ragdoll" or "prop"
+			base = string.StripExtension(string.GetFileFromFilename(e:GetModel() or "prop") or "prop")
+		end
+		counters[base] = (counters[base] or 0) + 1
+		local custom = e:GetNW2String("SPeditor_Name", "")
+		list[#list + 1] = {
+			ent = e,
+			name = (custom ~= "") and custom or (base .. " " .. counters[base]),
+			custom = custom ~= "",
+			class = e:GetClass(), kind = kind,
+			ltype = C.IsLight(e) and e:GetLightType() or nil,
+			parent = e:GetNW2Entity("SPeditor_Parent"),
+			hidden = e:GetNW2Bool("SPeditor_Hidden", false),
+			locked = e:GetNW2Bool("SPeditor_Locked", false),
+		}
+	end
+	listCache, listCacheFor = list, scan
+	return list
+end
+
+function C.IsHidden(e) return IsValid(e) and e:GetNW2Bool("SPeditor_Hidden", false) end
+function C.IsLocked(e) return IsValid(e) and e:GetNW2Bool("SPeditor_Locked", false) end
+
+-- Hidden models are not drawn (NoDraw on the client); everything comes back when the editor is left.
+local nextVis = 0
+hook.Add("Think", "SPeditor.ApplyVisibility", function()
+	if RealTime() < nextVis then return end
+	nextVis = RealTime() + 0.3
+	for _, e in ipairs(C.Objects()) do
+		if IsValid(e) and not C.IsAux(e) then
+			local hide = C.active and C.IsHidden(e) or false
+			if e.SPHidden ~= hide then
+				e.SPHidden = hide
+				e:SetNoDraw(hide)
+			end
+		end
+	end
+end)
+
+-- Stretching along axes and a disabled shadow (extended properties, see S.ApplyLook).
+-- Stretching is a scale matrix at draw time; the render bounds stretch
+-- with the model, otherwise it would be clipped at the frame edge. The shadow in the spot
+-- lights' shadow maps is removed by skipping the model in the depth pass.
+-- Applies to all editor objects, including other players' and outside the editor.
+local ONE = Vector(1, 1, 1)
+local looked, nextLookScan = {}, 0
+local STUDIO_SHADOWDEPTH = STUDIO_SHADOWDEPTHTEXTURE or 0x40000000
+
+local function noShadowDraw(self, flags)
+	if flags and bit.band(flags, STUDIO_SHADOWDEPTH) ~= 0 then return end
+	self:DrawModel(flags)
+end
+
+local function applyLook(e)
+	local st = e:GetNW2Vector("SPeditor_Stretch", ONE)
+	if e.SPStretch ~= st then
+		e.SPStretch = Vector(st.x, st.y, st.z)
+		e.SPBounds = e.SPBounds or { e:GetRenderBounds() }
+		if st:DistToSqr(ONE) < 1e-6 then
+			e:DisableMatrix("RenderMultiply")
+			e:SetRenderBounds(e.SPBounds[1], e.SPBounds[2])
+		else
+			local m = Matrix()
+			m:Scale(st)
+			e:EnableMatrix("RenderMultiply", m)
+			e:SetRenderBounds(e.SPBounds[1] * st, e.SPBounds[2] * st)
+		end
+	end
+	local ns = e:GetNW2Bool("SPeditor_NoShadow", false)
+	if e.SPNoShadow ~= ns then
+		e.SPNoShadow = ns
+		e:DrawShadow(not ns)
+		if ns then
+			if not e.SPWorn then e.RenderOverride = noShadowDraw end
+		elseif e.RenderOverride == noShadowDraw then
+			e.RenderOverride = nil
+		end
+	end
+end
+
+-- "Worn" objects (attached with "Wear", S.WEAR on the server): clothing made for the same
+-- skeleton must bend with the wearer's bones, so it is drawn by a client-side copy merged into the
+-- wearer's bones (EF_BONEMERGE); the object itself stays invisible at its rigid place, where it
+-- can still be clicked and selected.
+local function drawNothing() end
+
+local function dropWorn(e)
+	if IsValid(e.SPWorn) then e.SPWorn:Remove() end
+	e.SPWorn = nil
+	if e.RenderOverride == drawNothing then e.RenderOverride = e.SPNoShadow and noShadowDraw or nil end
+end
+
+local function applyWorn(e)
+	local parent = e:GetNW2Bool("SPeditor_Merge", false) and C.AttachParent(e) or nil
+	if not parent then
+		if e.SPWorn ~= nil then dropWorn(e) end
+		return
+	end
+	local csm = e.SPWorn
+	if not IsValid(csm) or csm:GetModel() ~= e:GetModel() or csm:GetParent() ~= parent then
+		if IsValid(csm) then csm:Remove() end
+		csm = ClientsideModel(e:GetModel(), RENDERGROUP_OPAQUE)
+		if not IsValid(csm) then return end
+		csm:SetParent(parent)
+		csm:SetLocalPos(vector_origin)
+		csm:SetLocalAngles(angle_zero)
+		csm:AddEffects(bit.bor(EF_BONEMERGE, EF_BONEMERGE_FASTCULL))
+		e.SPWorn = csm
+		e:CallOnRemove("SPeditor.Worn", function(ent) if IsValid(ent.SPWorn) then ent.SPWorn:Remove() end end)
+	end
+	e.RenderOverride = drawNothing
+	-- the copy looks like the object: skin, bodygroups, colour, material, hidden, shadow
+	if csm:GetSkin() ~= e:GetSkin() then csm:SetSkin(e:GetSkin()) end
+	for i = 0, e:GetNumBodyGroups() - 1 do
+		local v = e:GetBodygroup(i)
+		if csm:GetBodygroup(i) ~= v then csm:SetBodygroup(i, v) end
+	end
+	local col = e:GetColor()
+	if csm:GetColor() ~= col then
+		csm:SetColor(col)
+		csm:SetRenderMode(col.a < 255 and RENDERMODE_TRANSCOLOR or RENDERMODE_NORMAL)
+	end
+	if csm:GetMaterial() ~= e:GetMaterial() then csm:SetMaterial(e:GetMaterial()) end
+	csm:SetNoDraw(e:GetNoDraw() or parent:GetNoDraw())
+	csm:DrawShadow(not e.SPNoShadow)
+	csm.RenderOverride = e.SPNoShadow and noShadowDraw or nil
+end
+
+hook.Add("Think", "SPeditor.ApplyLook", function()
+	if RealTime() >= nextLookScan then
+		nextLookScan = RealTime() + 0.5
+		looked = {}
+		for _, e in ipairs(ents.GetAll()) do
+			if SPeditor.IsEditable(e) and not C.IsAux(e) then looked[#looked + 1] = e end
+		end
+	end
+	for _, e in ipairs(looked) do
+		if IsValid(e) then
+			applyLook(e)
+			applyWorn(e)
+		end
+	end
+end)
+
+function C.IsWorn(ent)
+	return IsValid(ent) and ent:GetNW2Bool("SPeditor_Merge", false) and C.AttachParent(ent) ~= nil
+end
+
+-- Full model scale per axis: the uniform one multiplied by the stretch
+function C.ScaleVec(ent)
+	return C.GetStretch(ent) * (ent:GetModelScale() or 1)
+end
+
+-- Display name as in the object list
+function C.DisplayName(ent)
+	if not IsValid(ent) then return "—" end
+	for _, obj in ipairs(C.BuildEntityList()) do
+		if obj.ent == ent then return obj.name end
+	end
+	return SPeditor.L("obj_name_entity") .. " " .. ent:EntIndex()
+end
+
+---------------------------------------------------------------------
+-- Selection. C.selected — the main object (it has the gizmo, bones, properties);
+-- C.multi — additionally selected ones (Ctrl+click): they are moved, rotated,
+-- scaled, duplicated and deleted together with the main one.
+---------------------------------------------------------------------
+C.multi = C.multi or {}
+
+function C.IsMulti(ent)
+	for _, e in ipairs(C.multi) do
+		if e == ent then return true end
+	end
+	return false
+end
+
+function C.ClearMulti()
+	if #C.multi == 0 then return end
+	C.multi = {}
+	hook.Run("SPeditor_MultiChanged")
+end
+
+-- the main object and all additional ones (only live ones)
+function C.SelectionList()
+	local list = {}
+	if IsValid(C.selected) then list[1] = C.selected end
+	for _, e in ipairs(C.multi) do
+		if IsValid(e) and e ~= C.selected then list[#list + 1] = e end
+	end
+	return list
+end
+
+-- keepMulti = true: change the main object without resetting the additional ones
+function C.Select(ent, bone, keepMulti)
+	if ent ~= nil and not C.IsMine(ent) then ent = nil end
+	if not keepMulti then C.ClearMulti() end
+	C.selected = ent
+	C.selBone  = bone or -1
+	C.gizmo.drag = nil
+	hook.Run("SPeditor_Selected", C.selected, C.selBone)
+end
+
+-- Ctrl+click: add an object to the selection or remove it
+function C.ToggleMulti(ent)
+	if not C.IsMine(ent) then return end
+	if not IsValid(C.selected) then
+		C.Select(ent, -1)
+		return
+	end
+	if ent == C.selected then
+		-- deselecting the main one: the first additional object becomes the main one
+		local nxt = table.remove(C.multi, 1)
+		C.Select(IsValid(nxt) and nxt or nil, -1, true)
+		hook.Run("SPeditor_MultiChanged")
+		return
+	end
+	for i, e in ipairs(C.multi) do
+		if e == ent then
+			table.remove(C.multi, i)
+			hook.Run("SPeditor_MultiChanged")
+			return
+		end
+	end
+	C.multi[#C.multi + 1] = ent
+	hook.Run("SPeditor_MultiChanged")
+end
+
+function C.AttachParent(ent)
+	local p = IsValid(ent) and ent:GetNW2Entity("SPeditor_Parent") or nil
+	return IsValid(p) and p or nil
+end
+
+function C.CanScale(ent)
+	return IsValid(ent) and not C.IsAux(ent) and not C.IsRagdoll(ent)
+end
+
+-- Delete everything selected as one history step
+function C.DeleteSelection()
+	local list = C.SelectionList()
+	if #list == 0 then return end
+	local uids = {}
+	for _, e in ipairs(list) do
+		local uid = e:GetNW2Int("SPeditor_UID", 0)
+		if uid ~= 0 then uids[#uids + 1] = uid end
+		C.SendDelete(e, true)
+	end
+	C.Select(nil)
+	if #uids > 0 then
+		C.PushHistory("delete",
+			function() for _, uid in ipairs(uids) do C.SendObjRestore(uid) end end,
+		function() for _, uid in ipairs(uids) do C.SendObjRemove(uid) end end)
+	end
+end
+
+hook.Add("Think", "SPeditor.SelectionWatch", function()
+	if C.selected ~= nil and not IsValid(C.selected) then
+		C.Select(nil, -1, true)
+	end
+	for i = #C.multi, 1, -1 do
+		if not IsValid(C.multi[i]) then
+			table.remove(C.multi, i)
+			hook.Run("SPeditor_MultiChanged")
+		end
+	end
+	if C.pendingSelect then
+		local e = Entity(C.pendingSelect)
+		if IsValid(e) and C.IsMine(e) then
+			C.pendingSelect = nil
+			hook.Run("SPeditor_ObjectSpawned", e)
+			C.Select(e, -1)
+		elseif RealTime() > (C.pendingUntil or 0) then
+			C.pendingSelect = nil
+		end
+	end
+end)
+
+function C.SpawnModel(model)
+	local pos, ang = C.GetView()
+	local spawnPos = pos + ang:Forward() * SPeditor.Config.SpawnDistance
+	C.SendSpawn(model, spawnPos, Angle(0, ang.y + 180, 0))
+end
+
+local function setup(ent)
+	local f = FrameNumber()
+	if ent.SPeditor_Setup ~= f then
+		ent.SPeditor_Setup = f
+		ent:SetupBones()
+	end
+end
+
+function C.GetBoneWorld(ent, bone)
+	setup(ent)
+	local m = ent:GetBoneMatrix(bone)
+	if not m then return nil end
+	return m:GetTranslation(), m:GetAngles()
+end
+
+function C.PhysIndexOfBone(ent, bone)
+	if not C.IsRagdoll(ent) then return nil end
+	local pi = ent:TranslateBoneToPhysBone(bone)
+	if pi and pi >= 0 and ent:TranslatePhysBoneToBone(pi) == bone then
+		return pi
+	end
+	return nil
+end
+
+function C.GetEntityTransform(ent)
+	if C.IsRagdoll(ent) then
+		local p, a = C.GetBoneWorld(ent, ent:TranslatePhysBoneToBone(0))
+		if p then return p, a end
+	end
+	return ent:GetPos(), ent:GetAngles()
+end
+
+---------------------------------------------------------------------
+-- Frame (aspect gate) and viewport geometry.
+-- The frame rect = the rectangle of the actual image inside the Primary Viewport.
+-- MouseRay and ProjectToViewport are inverse to each other and use the half-frame
+-- tangents computed by the engine itself (util.AimVector): FOV in Source
+-- is given for 4:3, so tan(fov/2) is NOT the vertical tangent.
+---------------------------------------------------------------------
+local cvAspect = CreateClientConVar("speditor_aspect", "16:9", true, false)
+local cvSide   = CreateClientConVar("speditor_render_side", "1920", true, false)
+CreateClientConVar("speditor_render_custom", "0", true, false)
+CreateClientConVar("speditor_render_w", "1920", true, false)
+CreateClientConVar("speditor_render_h", "1080", true, false)
+CreateClientConVar("speditor_render_fullbright", "0", true, false)
+CreateClientConVar("speditor_render_format", "png", true, false)
+CreateClientConVar("speditor_render_quality", "90", true, false)
+CreateClientConVar("speditor_render_ss", "1", true, false)          -- smoothing (2x render)
+CreateClientConVar("speditor_dof", "0", true, false)                -- depth of field
+CreateClientConVar("speditor_dof_aperture", "0.6", true, false)     -- aperture radius, units
+CreateClientConVar("speditor_dof_samples", "32", true, false)
+
+function C.GetAspectDef()
+	local id = cvAspect:GetString()
+	for _, a in ipairs(SPeditor.Aspects) do
+		if a.id == id then return a end
+	end
+	return SPeditor.Aspects[2]
+end
+
+-- a number (w/h), or nil if the frame is free
+function C.GetAspect()
+	local a = C.GetAspectDef()
+	if a.w <= 0 or a.h <= 0 then return nil end
+	return a.w / a.h
+end
+
+function C.SetAspect(id)
+	RunConsoleCommand("speditor_aspect", id)
+end
+
+function C.GetRenderSide()
+	local side = math.floor(cvSide:GetFloat())
+	return math.Clamp(side, 256, SPeditor.Config.MaxRenderSide)
+end
+
+function C.SetRenderSide(side)
+	RunConsoleCommand("speditor_render_side", tostring(side))
+end
+
+-- fit a frame with the ratio aspect into a w*h rectangle (centred)
+function C.FitRect(w, h, aspect)
+	if not aspect then return 0, 0, w, h end
+	local iw, ih = w, w / aspect
+	if ih > h then ih, iw = h, h * aspect end
+	return (w - iw) / 2, (h - ih) / 2, iw, ih
+end
+
+-- size of the final render in pixels
+function C.GetRenderSize()
+	if GetConVar("speditor_render_custom"):GetBool() then
+		return math.Clamp(GetConVar("speditor_render_w"):GetInt(), 16, SPeditor.Config.MaxRenderSide),
+		math.Clamp(GetConVar("speditor_render_h"):GetInt(), 16, SPeditor.Config.MaxRenderSide)
+	end
+	local side = C.GetRenderSide()
+	local aspect = C.GetAspect()
+	if not aspect then
+		local _, _, vw, vh = C.ViewportRect()
+		aspect = vw / math.max(vh, 1)
+	end
+	local w, h
+	if aspect >= 1 then
+		w, h = side, side / aspect
+	else
+		w, h = side * aspect, side
+	end
+	return math.max(math.floor(w + 0.5), 16), math.max(math.floor(h + 0.5), 16)
+end
+
+-- the whole Primary Viewport panel (x, y, w, h, isPanel)
+function C.PanelRect()
+	local UI = SPeditor.UI
+	if UI and IsValid(UI.PrimaryVP) and IsValid(UI.PrimaryVP.view) and UI.PageShown and UI.PageShown("primary") then
+		local x, y = UI.PrimaryVP.view:LocalToScreen(0, 0)
+		return x, y, UI.PrimaryVP.view:GetWide(), UI.PrimaryVP.view:GetTall(), true
+	end
+	return 0, 0, ScrW(), ScrH(), false
+end
+
+-- the frame image inside the panel (in screen coordinates)
+function C.ViewportRect()
+	local px, py, pw, ph, isPanel = C.PanelRect()
+	if not isPanel then return px, py, pw, ph end
+	local ix, iy, iw, ih = C.FitRect(pw, ph, C.GetAspect())
+	return px + ix, py + iy, iw, ih
+end
+
+-- The cursor is over the view (and not over a window that covers the viewport)
+function C.MouseInViewport()
+	local px, py, pw, ph, isPanel = C.PanelRect()
+	local mx, my = gui.MousePos()
+	if mx < px or mx > px + pw or my < py or my > py + ph then return false end
+	if isPanel then
+		local view = SPeditor.UI.PrimaryVP.view
+		local hp = vgui.GetHoveredPanel()
+		if not IsValid(hp) or (hp ~= view and not hp:HasParent(view)) then return false end
+	end
+	return true
+end
+
+local projCache = { frame = -1 }
+
+local function halfTangents(ang, fov, vw, vh)
+	local fr = FrameNumber()
+	local c = projCache
+	if c.frame == fr and c.fov == fov and c.vw == vw and c.vh == vh and c.ang == ang then
+		return c.tx, c.ty
+	end
+	local fwd, right, up = ang:Forward(), ang:Right(), ang:Up()
+	local r = util.AimVector(ang, fov, vw, vh * 0.5, vw, vh)   -- right edge of the frame
+	local u = util.AimVector(ang, fov, vw * 0.5, 0, vw, vh)    -- top edge of the frame
+	local tx = r:Dot(right) / math.max(r:Dot(fwd), 1e-6)
+	local ty = u:Dot(up) / math.max(u:Dot(fwd), 1e-6)
+	if not (tx > 0 and ty > 0) or tx ~= tx or ty ~= ty then
+		-- fallback Source formula: fov is given for 4:3
+		ty = math.tan(math.rad(fov) / 2) * 0.75
+		tx = ty * (vw / math.max(vh, 1))
+	end
+	c.frame, c.fov, c.vw, c.vh, c.ang, c.tx, c.ty = fr, fov, vw, vh, Angle(ang.p, ang.y, ang.r), tx, ty
+	return tx, ty
+end
+
+function C.MouseRay()
+	local pos, ang, fov = C.GetView()
+	local vx, vy, vw, vh = C.ViewportRect()
+	local mx, my = gui.MousePos()
+	local tx, ty = halfTangents(ang, fov, math.max(vw, 1), math.max(vh, 1))
+	local fx = ((mx - vx) / math.max(vw, 1)) * 2 - 1
+	local fy = ((my - vy) / math.max(vh, 1)) * 2 - 1
+	local dir = (ang:Forward() + ang:Right() * (fx * tx) - ang:Up() * (fy * ty)):GetNormalized()
+	return pos, dir
+end
+
+-- Projection of a world point into screen coordinates of the frame. Returns x, y, visible.
+function C.ProjectToViewport(p)
+	local pos, ang, fov = C.GetView()
+	local vx, vy, vw, vh = C.ViewportRect()
+	local d = p - pos
+	local depth = d:Dot(ang:Forward())
+	if depth <= 0 then return 0, 0, false end
+	local tx, ty = halfTangents(ang, fov, math.max(vw, 1), math.max(vh, 1))
+	local nx = d:Dot(ang:Right()) / (depth * tx)
+	local ny = d:Dot(ang:Up()) / (depth * ty)
+	if nx < -1.5 or nx > 1.5 or ny < -1.5 or ny > 1.5 then return 0, 0, false end
+	local x = vx + (nx * 0.5 + 0.5) * vw
+	local y = vy + (0.5 - ny * 0.5) * vh
+	return x, y, true
+end
+
+local function rayPointDist(origin, dir, p)
+	local v = p - origin
+	local t = v:Dot(dir)
+	if t <= 0 then return nil end
+	return (v - dir * t):Length(), t
+end
+
+-- IMPORTANT: the filter function in util.TraceLine returns true for entities that
+-- MUST be hit by the ray (the world is always hit). There used to be
+-- "not IsEditable" here, which made the ray ignore exactly the editor objects, and
+-- ragdolls could not be picked by clicking the model.
+function C.PickEntity()
+	local origin, dir = C.MouseRay()
+	local far = 32768
+	local tr = util.TraceLine({
+			start  = origin,
+			endpos = origin + dir * far,
+			filter = function(e) return SPeditor.IsEditable(e) end,
+	})
+	local worldDist = tr.HitWorld and origin:Distance(tr.HitPos) or math.huge
+	local best, bestDist
+	if IsValid(tr.Entity) and C.IsMine(tr.Entity) and not C.IsLight(tr.Entity) and not C.IsEffect(tr.Entity)
+		and not C.IsLocked(tr.Entity) and not C.IsHidden(tr.Entity) then
+		best, bestDist = tr.Entity, origin:Distance(tr.HitPos)
+	end
+	for _, e in ipairs(C.Objects()) do
+		if IsValid(e) and e ~= C.camera.viewEnt and not C.IsLocked(e) and not C.IsHidden(e) then
+			if C.IsLight(e) or C.IsEffect(e) then
+				local d, t = rayPointDist(origin, dir, e:GetPos())
+				if d and d < math.max(16, t * 0.03) and t < worldDist and (not bestDist or t < bestDist) then
+					best, bestDist = e, t
+				end
+			elseif C.IsRagdoll(e) then
+				-- the trace may miss thin parts (fingers, head): look for the physics bone nearest to the ray
+				for b = 0, e:GetBoneCount() - 1 do
+					if C.PhysIndexOfBone(e, b) then
+						local bp = C.GetBoneWorld(e, b)
+						if bp then
+							local d, t = rayPointDist(origin, dir, bp)
+							if d and d < math.max(6, t * 0.02) and t < worldDist and (not bestDist or t < bestDist) then
+								best, bestDist = e, t
+							end
+						end
+					end
+				end
+			else
+				local sc = C.ScaleVec(e)
+				local hit = util.IntersectRayWithOBB(origin, dir * far, e:GetPos(), e:GetAngles(), e:OBBMins() * sc, e:OBBMaxs() * sc)
+				if hit then
+					local t = origin:Distance(hit)
+					if t < worldDist and (not bestDist or t < bestDist) then
+						best, bestDist = e, t
+					end
+				end
+			end
+		end
+	end
+	return best
+end
+
+-- Bone picking by screen distance inside the viewport
+function C.PickBone(ent, radiusPx)
+	local mx, my = gui.MousePos()
+	local best, bestD = nil, radiusPx * radiusPx
+	for b = 0, ent:GetBoneCount() - 1 do
+		if ent:GetBoneName(b) ~= "__INVALIDBONE__" then
+			local p = C.GetBoneWorld(ent, b)
+			if p then
+				local x, y, vis = C.ProjectToViewport(p)
+				if vis then
+					local d = (x - mx) ^ 2 + (y - my) ^ 2
+					if d < bestD then best, bestD = b, d end
+				end
+			end
+		end
+	end
+	return best
+end

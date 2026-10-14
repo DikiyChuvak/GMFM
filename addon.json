@@ -1,0 +1,23 @@
+{
+	"title": "SPeditor",
+	"type": "tool",
+	"tags": [
+		"build",
+		"movie"
+	],
+	"ignore": [
+		"*.psd",
+		"*.vcproj",
+		"*.svn*",
+		"themes/*",
+		"shaders/*",
+		"mods/*",
+		"text_*.txt",
+		"tools/*",
+		"*.md",
+		".git*",
+		".github/*",
+		"LICENSE",
+		"README*"
+	]
+}

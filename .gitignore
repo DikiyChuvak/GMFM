@@ -1,0 +1,7 @@
+# original third-party skin addons kept locally as user themes (their copies with credits are in lua/speditor/skins)
+themes/
+# user shader packs
+shaders/*/
+# local test harness
+lua/speditor/sh_devtest.lua
+*.gma
