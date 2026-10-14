@@ -5,3 +5,8 @@ shaders/*/
 # local test harness
 lua/speditor/sh_devtest.lua
 *.gma
+# wiki build output (build.py); the published site is the gh-pages branch
+wiki/pages/
+wiki/index.html
+wiki/local.html
+wiki/*.pdf

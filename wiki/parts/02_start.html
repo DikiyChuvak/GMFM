@@ -1,0 +1,203 @@
+
+<header class="topbar">
+  <button class="menu-btn" id="menuBtn" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg></button>
+  <a class="brand" href="#home">
+    <img class="reel" src="img/icon128.png" alt="">
+    SPeditor <small>Wiki</small>
+  </a>
+  <span class="spacer"></span>
+  <div class="search">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12z"/></svg>
+    <input id="q" type="search" autocomplete="off" aria-label="Search">
+    <div class="results" id="results" hidden></div>
+  </div>
+  <div class="seg" role="group" aria-label="Language">
+    <button id="lang-en" data-lang="en">EN</button>
+    <button id="lang-ru" data-lang="ru">RU</button>
+  </div>
+</header>
+
+<div class="shell">
+<nav class="rail" id="rail" aria-label="Contents"></nav>
+<main id="main">
+
+<!-- PDF only: cover and contents -->
+<section class="cover">
+  <div>
+    <h1><img class="cover-icon" src="img/icon128.png" alt="">SPeditor</h1>
+    <div class="sub"><span class="l-en">The complete guide</span><span class="l-ru">Полное руководство</span></div>
+    <img src="img/01_overview.jpg" alt="">
+  </div>
+  <div class="meta">
+    <span class="l-en">Poster, scene and animation studio for Garry's Mod · version a0.4 · October 2026</span>
+    <span class="l-ru">Студия постеров, сцен и анимации для Garry's Mod · версия a0.4 · октябрь 2026</span><br>
+    steamcommunity.com/sharedfiles/filedetails/?id=3817852435
+  </div>
+</section>
+<section class="toc">
+  <h2><span class="l-en">Contents</span><span class="l-ru">Содержание</span></h2>
+  <ol id="toc"></ol>
+</section>
+
+<!-- ============================================================ HOME -->
+<section class="page" id="pg-home" data-group="start" data-en="Welcome" data-ru="Добро пожаловать">
+  <h1>SPeditor Wiki</h1>
+  <p class="lede l-en">SPeditor turns Garry's Mod into a small film studio: posters, still scenes and short animations, built on any map with the working habits of Source Filmmaker. This wiki explains every window, button and hotkey.</p>
+  <p class="lede l-ru">SPeditor превращает Garry's Mod в маленькую киностудию: постеры, статичные сцены и короткие анимации прямо на любой карте, с приёмами работы из Source Filmmaker. Здесь описано каждое окно, кнопка и сочетание клавиш.</p>
+
+  <div class="hero">
+    <figure>
+      <img src="img/01_overview.jpg" alt="SPeditor editor window">
+      <figcaption class="l-en"><b>The editor.</b> Animation Set Editor on the left, the Primary and Secondary viewports in the middle and on the right, the Scene / Shadows / Timeline panel at the bottom. The scene is the bundled example <code>shootout_construct</code>.</figcaption>
+      <figcaption class="l-ru"><b>Редактор.</b> Слева Animation Set Editor, в центре и справа Primary и Secondary Viewport, внизу панель Scene / Shadows / Timeline. Сцена — встроенный пример <code>shootout_construct</code>.</figcaption>
+    </figure>
+  </div>
+
+  <h2><span class="l-en">Where to start</span><span class="l-ru">С чего начать</span></h2>
+  <div class="cards">
+    <a class="card" href="#install"><b class="l-en">Installing and opening</b><b class="l-ru">Установка и запуск</b><span class="l-en">Subscribe, open the editor, server access.</span><span class="l-ru">Подписка, как открыть редактор, доступ на сервере.</span></a>
+    <a class="card" href="#first-poster"><b class="l-en">Your first poster</b><b class="l-ru">Первый постер</b><span class="l-en">From an empty map to a PNG in five steps.</span><span class="l-ru">От пустой карты до PNG за пять шагов.</span></a>
+    <a class="card" href="#workspace"><b class="l-en">The workspace</b><b class="l-ru">Рабочее пространство</b><span class="l-en">Windows, tabs, docking and layouts.</span><span class="l-ru">Окна, вкладки, стыковка и раскладки.</span></a>
+    <a class="card" href="#posing"><b class="l-en">Posing characters</b><b class="l-ru">Позы персонажей</b><span class="l-en">Gizmo, bones, IK, faces, pose library.</span><span class="l-ru">Гизмо, кости, IK, лица, библиотека поз.</span></a>
+    <a class="card" href="#lights"><b class="l-en">Lights</b><b class="l-ru">Свет</b><span class="l-en">Spot and point lights, 19 light kinds, soft shadows.</span><span class="l-ru">Прожекторы и точечный свет, 19 видов, мягкие тени.</span></a>
+    <a class="card" href="#render"><b class="l-en">Rendering</b><b class="l-ru">Рендер</b><span class="l-en">Up to 3840 px, depth of field, camera effects.</span><span class="l-ru">До 3840 px, глубина резкости, эффекты камеры.</span></a>
+    <a class="card" href="#sa-basics"><b class="l-en">Animation (SAeditor)</b><b class="l-ru">Анимация (SAeditor)</b><span class="l-en">Keys, timeline, imported animations, video.</span><span class="l-ru">Ключи, таймлайн, импорт анимаций, видео.</span></a>
+    <a class="card" href="#faq"><b class="l-en">Problems and answers</b><b class="l-ru">Проблемы и ответы</b><span class="l-en">The questions players ask most.</span><span class="l-ru">Самые частые вопросы игроков.</span></a>
+  </div>
+
+  <h2><span class="l-en">What SPeditor can do</span><span class="l-ru">Что умеет SPeditor</span></h2>
+  <ul class="l-en">
+    <li><strong>An SFM-like workspace:</strong> dockable windows, tabs you can drag out, saved layouts, eight interface themes.</li>
+    <li><strong>Two viewports</strong> with a frame gate, composition guides and fixed exposure; a free work camera and scene cameras you can look through.</li>
+    <li><strong>Posing:</strong> a gizmo for objects and for every single bone (fingers too), inverse kinematics, face flexes, eye target, skins and bodygroups, a pose library.</li>
+    <li><strong>Objects:</strong> colour and opacity, texture replacement, stretching, attaching a weapon to a hand, wearing clothing that bends with the body.</li>
+    <li><strong>Lights:</strong> point and spot lights, soft edges and penumbra, glow and a visible beam, light masks, 19 ready-made kinds, a three-point rig.</li>
+    <li><strong>Effects:</strong> explosions, fire, smoke, blood and sparks from the game and from Workshop addons, frozen at any moment.</li>
+    <li><strong>Render</strong> to PNG or JPEG up to 3840 px with smoothing, depth of field, soft shadows, camera effects and Workshop shaders.</li>
+    <li><strong>SAeditor:</strong> keyframe animation of everything in the scene, imported model animations, sounds and voices, video export.</li>
+    <li>Scenes, poses and layouts are saved; undo and redo for every edit; English and Russian interface; a mod system for authors.</li>
+  </ul>
+  <ul class="l-ru">
+    <li><strong>Рабочее место как в SFM:</strong> стыкуемые окна, вкладки, которые можно вытащить, сохранённые раскладки, восемь тем интерфейса.</li>
+    <li><strong>Два вьюпорта</strong> с рамкой кадра, сетками композиции и фиксированной экспозицией; свободная рабочая камера и камеры сцены, через которые можно смотреть.</li>
+    <li><strong>Позирование:</strong> гизмо для объектов и для каждой кости (включая пальцы), инверсная кинематика, мимика, направление взгляда, скины и бодигруппы, библиотека поз.</li>
+    <li><strong>Объекты:</strong> цвет и прозрачность, замена текстур, растяжение, оружие в руке, одежда, которая гнётся вместе с телом.</li>
+    <li><strong>Свет:</strong> точечный свет и прожекторы, мягкий край и полутень, свечение и видимый луч, маски света, 19 готовых видов, трёхточечная схема.</li>
+    <li><strong>Эффекты:</strong> взрывы, огонь, дым, кровь и искры из игры и аддонов Workshop, остановленные в любой момент.</li>
+    <li><strong>Рендер</strong> в PNG или JPEG до 3840 px со сглаживанием, глубиной резкости, мягкими тенями, эффектами камеры и шейдерами Workshop.</li>
+    <li><strong>SAeditor:</strong> анимация ключевыми кадрами всего, что есть в сцене, импорт анимаций моделей, звуки и голоса, экспорт видео.</li>
+    <li>Сцены, позы и раскладки сохраняются; отмена и повтор любого действия; английский и русский интерфейс; система модов для авторов.</li>
+  </ul>
+
+  <h2><span class="l-en">Made with SPeditor</span><span class="l-ru">Сделано в SPeditor</span></h2>
+  <div class="gallery">
+    <figure><img src="img/gallery_poster_construct_sunset.jpg" alt="Poster: sunset on gm_construct"></figure>
+    <figure><img src="img/gallery_poster_construct_alyx_dog.jpg" alt="Poster: Alyx and Dog"></figure>
+    <figure><img src="img/gallery_poster_bigcity_gman.jpg" alt="Poster: G-Man in the night city"></figure>
+    <figure><img src="img/gallery_speditor_20261010_220526.jpg" alt="Render: G-Man and the GMod logo"></figure>
+  </div>
+  <div class="note l-en"><p>This wiki describes SPeditor <strong>a0.4</strong> (alpha); the changes of this version are marked <span class="badge new">new</span>. The screenshots show the English interface; switch the language in the top right corner of this page.</p></div>
+  <div class="note l-ru"><p>Описана версия SPeditor <strong>a0.4</strong> (альфа); изменения этой версии отмечены знаком <span class="badge new">new</span>. На скриншотах английский интерфейс; язык этой страницы переключается в правом верхнем углу.</p></div>
+</section>
+
+<!-- ============================================================ INSTALL -->
+<section class="page" id="pg-install" data-group="start" data-en="Installing and opening" data-ru="Установка и запуск">
+  <h1><span class="l-en">Installing and opening</span><span class="l-ru">Установка и запуск</span></h1>
+  <p class="lede l-en">SPeditor is a normal Workshop addon. It works in singleplayer and on servers, on any map.</p>
+  <p class="lede l-ru">SPeditor — обычный аддон из Workshop. Работает в одиночной игре и на серверах, на любой карте.</p>
+
+  <h2><span class="l-en">Installing</span><span class="l-ru">Установка</span></h2>
+  <ol class="steps l-en">
+    <li>Open the <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435">SPeditor page in the Steam Workshop</a> and press <strong>Subscribe</strong>.</li>
+    <li>Start Garry's Mod (or restart it if it was running) and load any map. <code>gm_construct</code> and <code>gm_flatgrass</code> are good for a start.</li>
+    <li>Optional: subscribe to <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3542644649">GShader Library</a> if you want Workshop shaders in your renders (see <a href="#shaders">Shaders</a>).</li>
+  </ol>
+  <ol class="steps l-ru">
+    <li>Откройте <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435">страницу SPeditor в Steam Workshop</a> и нажмите <strong>Подписаться</strong>.</li>
+    <li>Запустите Garry's Mod (или перезапустите, если он был открыт) и загрузите любую карту. Для начала хорошо подходят <code>gm_construct</code> и <code>gm_flatgrass</code>.</li>
+    <li>По желанию: подпишитесь на <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3542644649">GShader Library</a>, если нужны шейдеры из Workshop в рендерах (см. <a href="#shaders">Шейдеры</a>).</li>
+  </ol>
+
+  <h2><span class="l-en">Opening the editor</span><span class="l-ru">Как открыть редактор</span></h2>
+  <p class="l-en">There are three ways. All of them toggle: the same action closes the editor again.</p>
+  <p class="l-ru">Есть три способа. Все работают как переключатель: то же действие снова закрывает редактор.</p>
+  <dl class="defs l-en">
+    <dt>C menu</dt><dd>Hold <kbd>C</kbd> and click the <strong>SPeditor</strong> icon on the desktop of the context menu.</dd>
+    <dt>Q menu</dt><dd>Hold <kbd>Q</kbd>, open the <strong>SPeditor</strong> tab on the right, the <strong>SPeditor</strong> item, then <strong>Toggle editor</strong>.</dd>
+    <dt>Console</dt><dd>Type <code>speditor_toggle</code>. Bind it to a key to open the editor in one press: <code>bind f6 speditor_toggle</code>.</dd>
+  </dl>
+  <dl class="defs l-ru">
+    <dt>Меню C</dt><dd>Зажмите <kbd>C</kbd> и нажмите значок <strong>SPeditor</strong> на рабочем столе контекстного меню.</dd>
+    <dt>Меню Q</dt><dd>Зажмите <kbd>Q</kbd>, откройте вкладку <strong>SPeditor</strong> справа, пункт <strong>SPeditor</strong>, затем <strong>Toggle editor</strong>.</dd>
+    <dt>Консоль</dt><dd>Введите <code>speditor_toggle</code>. Чтобы открывать редактор одной клавишей, привяжите команду: <code>bind f6 speditor_toggle</code>.</dd>
+  </dl>
+  <figure class="mid">
+    <img src="img/46_qmenu.jpg" alt="SPeditor tab in the Q menu">
+    <figcaption class="l-en"><b>Q menu → SPeditor.</b> The <strong>Language</strong> and <strong>Theme</strong> items next to it choose the interface language and look.</figcaption>
+    <figcaption class="l-ru"><b>Меню Q → SPeditor.</b> Соседние пункты <strong>Language</strong> и <strong>Theme</strong> выбирают язык и оформление интерфейса.</figcaption>
+  </figure>
+  <p class="l-en">To leave the editor press <span class="ui">Exit Editor</span> in the top right corner, use <span class="ui">File → Exit Editor</span>, or run <code>speditor_toggle</code> again. Your scene stays on the map.</p>
+  <p class="l-ru">Чтобы выйти, нажмите <span class="ui">Exit Editor</span> в правом верхнем углу, <span class="ui">File → Exit Editor</span> или снова выполните <code>speditor_toggle</code>. Сцена остаётся на карте.</p>
+
+  <h2><span class="l-en">Interface language</span><span class="l-ru">Язык интерфейса</span></h2>
+  <p class="l-en">Q menu → SPeditor → <strong>Language</strong>, or the console: <code>speditor_language en</code> / <code>speditor_language ru</code>. The language is applied the next time the editor is opened.</p>
+  <p class="l-ru">Меню Q → SPeditor → <strong>Language</strong> или консоль: <code>speditor_language ru</code> / <code>speditor_language en</code>. Язык применяется при следующем открытии редактора.</p>
+
+  <h2><span class="l-en">On a server</span><span class="l-ru">На сервере</span></h2>
+  <p class="l-en">By default only admins may use the editor on a server. The server owner changes this with <code>speditor_access</code>:</p>
+  <p class="l-ru">По умолчанию на сервере редактором пользуются только админы. Владелец сервера меняет это командой <code>speditor_access</code>:</p>
+  <div class="tbl"><table>
+    <tr><th><span class="l-en">Value</span><span class="l-ru">Значение</span></th><th><span class="l-en">Who may open the editor</span><span class="l-ru">Кто может открыть редактор</span></th></tr>
+    <tr><td><code>admin</code></td><td class="wrap"><span class="l-en">Admins and superadmins (default)</span><span class="l-ru">Админы и суперадмины (по умолчанию)</span></td></tr>
+    <tr><td><code>superadmin</code></td><td class="wrap"><span class="l-en">Superadmins only</span><span class="l-ru">Только суперадмины</span></td></tr>
+    <tr><td><code>all</code></td><td class="wrap"><span class="l-en">Every player</span><span class="l-ru">Все игроки</span></td></tr>
+  </table></div>
+  <p class="l-en">Each player has a limit of models, lights, cameras and effects. A player without access sees the message “You do not have access to SPeditor on this server”.</p>
+  <p class="l-ru">У каждого игрока есть лимит моделей, источников света, камер и эффектов. Игрок без доступа видит сообщение «У вас нет доступа к SPeditor на этом сервере».</p>
+
+  <h2><span class="l-en">Where your files are</span><span class="l-ru">Где лежат ваши файлы</span></h2>
+  <p class="l-en">Everything SPeditor saves is in <code>garrysmod/data/speditor/</code>:</p>
+  <p class="l-ru">Всё, что сохраняет SPeditor, лежит в <code>garrysmod/data/speditor/</code>:</p>
+  <div class="tbl"><table>
+    <tr><th><span class="l-en">Folder</span><span class="l-ru">Папка</span></th><th><span class="l-en">Contents</span><span class="l-ru">Содержимое</span></th></tr>
+    <tr><td><code>renders/</code></td><td class="wrap"><span class="l-en">Pictures, frame sequences and videos you rendered</span><span class="l-ru">Снятые картинки, последовательности кадров и видео</span></td></tr>
+    <tr><td><code>scenes/&lt;SteamID&gt;/</code></td><td class="wrap"><span class="l-en">Saved scenes and autosaves (on a server they are kept on the server)</span><span class="l-ru">Сохранённые сцены и автосохранения (на сервере — на стороне сервера)</span></td></tr>
+    <tr><td><code>poses/</code></td><td class="wrap"><span class="l-en">The pose library</span><span class="l-ru">Библиотека поз</span></td></tr>
+    <tr><td><code>layouts/</code></td><td class="wrap"><span class="l-en">Window layouts; <code>_last.json</code> is the layout at the moment you closed the editor</span><span class="l-ru">Раскладки окон; <code>_last.json</code> — раскладка в момент закрытия редактора</span></td></tr>
+    <tr><td><code>sounds/</code></td><td class="wrap"><span class="l-en">Your own WAV, MP3 and OGG files for SAeditor</span><span class="l-ru">Ваши файлы WAV, MP3 и OGG для SAeditor</span></td></tr>
+    <tr><td><code>windows.json</code></td><td class="wrap"><span class="l-en">Window properties such as “Always on top”</span><span class="l-ru">Свойства окон, например «Всегда сверху»</span></td></tr>
+  </table></div>
+  <div class="warn l-en"><p>Garry's Mod lets addons write only a few file types. Videos are therefore saved as <code>name.avi.dat</code>: remove <code>.dat</code> from the name and it is a regular AVI file.</p></div>
+  <div class="warn l-ru"><p>Garry's Mod разрешает аддонам записывать только несколько типов файлов. Поэтому видео сохраняется как <code>имя.avi.dat</code>: уберите из имени <code>.dat</code>, и это обычный AVI.</p></div>
+</section>
+
+<!-- ============================================================ FIRST POSTER -->
+<section class="page" id="pg-first-poster" data-group="start" data-en="Your first poster" data-ru="Первый постер">
+  <h1><span class="l-en">Your first poster in five steps</span><span class="l-ru">Первый постер за пять шагов</span></h1>
+  <p class="lede l-en">A short walk through the whole workflow. Every step links to the page that explains it in detail.</p>
+  <p class="lede l-ru">Короткий проход по всему процессу. Каждый шаг ведёт на страницу с подробностями.</p>
+
+  <ol class="steps l-en">
+    <li><strong>Add a character.</strong> Press <span class="ui plain">+</span> at the top of the Animation Set Editor and choose <span class="ui">Model…</span>. Find a model in the <a href="#objects">Model Browser</a> (for example <code>alyx</code>) and double-click it. It appears in front of the work camera.</li>
+    <li><strong>Pose it.</strong> Click the model in the viewport. Press <kbd>1</kbd> to move, <kbd>2</kbd> to rotate. Click a bone marker (a small cube on a joint) to pose a single bone; press <kbd>I</kbd> for inverse kinematics and drag a hand. See <a href="#posing">Posing</a>.</li>
+    <li><strong>Light it.</strong> <span class="ui plain">+</span> → <span class="ui">Soft light</span> → <span class="ui">Softbox</span> for the key light, then a <span class="ui">Rim light</span> behind the character. Or select the model and use <span class="ui">Create 3-point light rig</span>. See <a href="#lights">Lights</a>.</li>
+    <li><strong>Frame it.</strong> Fly the work camera to a good view (hold <kbd>RMB</kbd> and use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>), then <span class="ui plain">+</span> → <span class="ui">Spawn Camera</span>. The camera is created exactly where you look. Choose a frame aspect such as <span class="ui">2:3 (poster)</span> in the <span class="ui">View → Frame aspect</span> menu. See <a href="#cameras">Cameras</a>.</li>
+    <li><strong>Render.</strong> Press <span class="ui">Render</span> in the top right corner, pick your camera, the size (up to 3840 px) and the format, and press <span class="ui">Render</span>. The file appears in <code>garrysmod/data/speditor/renders/</code>. See <a href="#render">Rendering</a>.</li>
+  </ol>
+  <ol class="steps l-ru">
+    <li><strong>Добавьте персонажа.</strong> Нажмите <span class="ui plain">+</span> вверху Animation Set Editor и выберите <span class="ui">Model…</span>. Найдите модель в <a href="#objects">браузере моделей</a> (например, <code>alyx</code>) и дважды щёлкните по ней. Она появится перед рабочей камерой.</li>
+    <li><strong>Поставьте позу.</strong> Щёлкните по модели во вьюпорте. <kbd>1</kbd> — перемещение, <kbd>2</kbd> — вращение. Щёлкните по маркеру кости (маленький кубик на суставе), чтобы двигать одну кость; <kbd>I</kbd> включает инверсную кинематику — тяните за кисть. См. <a href="#posing">Позы</a>.</li>
+    <li><strong>Поставьте свет.</strong> <span class="ui plain">+</span> → <span class="ui">Soft light</span> → <span class="ui">Softbox</span> для основного света, затем <span class="ui">Rim light</span> позади персонажа. Или выделите модель и выберите <span class="ui">Create 3-point light rig</span>. См. <a href="#lights">Свет</a>.</li>
+    <li><strong>Выберите кадр.</strong> Подлетите рабочей камерой к удачному ракурсу (зажмите <kbd>ПКМ</kbd> и используйте <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>), затем <span class="ui plain">+</span> → <span class="ui">Spawn Camera</span>: камера создаётся ровно там, куда вы смотрите. Выберите пропорции кадра, например <span class="ui">2:3 (poster)</span>, в меню <span class="ui">View → Frame aspect</span>. См. <a href="#cameras">Камеры</a>.</li>
+    <li><strong>Отрендерите.</strong> Нажмите <span class="ui">Render</span> в правом верхнем углу, выберите камеру, размер (до 3840 px) и формат и нажмите <span class="ui">Render</span>. Файл появится в <code>garrysmod/data/speditor/renders/</code>. См. <a href="#render">Рендер</a>.</li>
+  </ol>
+  <figure>
+    <img src="img/40_lights_overview.jpg" alt="A lit scene with a scene camera">
+    <figcaption class="l-en"><b>The result of steps 1–4.</b> Left: the work camera shows the light cones and the selected softbox with its gizmo. Right: the Secondary Viewport looks through the scene camera — this is what the render will show.</figcaption>
+    <figcaption class="l-ru"><b>Результат шагов 1–4.</b> Слева рабочая камера показывает конусы света и выделенный софтбокс с гизмо. Справа Secondary Viewport смотрит через камеру сцены — так будет выглядеть рендер.</figcaption>
+  </figure>
+  <div class="tip l-en"><p>Save often: <span class="ui">File → Save Scene…</span>. A scene keeps the objects, the poses, the lights, the camera effects, the frame settings and the animation. Switch on <span class="ui">Autosave scene</span> in the same menu for a backup every 2.5 minutes.</p></div>
+  <div class="tip l-ru"><p>Сохраняйтесь чаще: <span class="ui">File → Save Scene…</span>. Сцена хранит объекты, позы, свет, эффекты камеры, настройки кадра и анимацию. Включите <span class="ui">Autosave scene</span> в том же меню — резервная копия каждые 2,5 минуты.</p></div>
+  <div class="note l-en"><p>Want to see a finished scene first? Open the <strong>Scene</strong> tab at the bottom and load <code>shootout_construct</code> (on the map gm_construct). It is an animated shootout with effects and sounds that comes with the addon.</p></div>
+  <div class="note l-ru"><p>Хотите сначала посмотреть готовую сцену? Откройте вкладку <strong>Scene</strong> внизу и загрузите <code>shootout_construct</code> (карта gm_construct). Это анимированная перестрелка с эффектами и звуками, которая идёт вместе с аддоном.</p></div>
+</section>

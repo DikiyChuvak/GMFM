@@ -18,6 +18,7 @@
 		".git*",
 		".github/*",
 		"LICENSE",
-		"README*"
+		"README*",
+		"wiki/*"
 	]
 }

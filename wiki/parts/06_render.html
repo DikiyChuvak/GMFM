@@ -1,0 +1,82 @@
+
+<!-- ============================================================ RENDER -->
+<section class="page" id="pg-render" data-group="output" data-en="Rendering" data-ru="Рендер">
+  <h1><span class="l-en">Rendering</span><span class="l-ru">Рендер</span></h1>
+  <p class="lede l-en">The Render window turns the scene into a picture. It renders off-screen, so the interface never gets into the file, and shows a live preview of exactly what you will get.</p>
+  <p class="lede l-ru">Окно Render превращает сцену в картинку. Рендер идёт вне экрана, поэтому интерфейс никогда не попадает в файл, а живое превью показывает ровно то, что получится.</p>
+  <p class="l-en">Open it with the <span class="ui">Render</span> button at the top right, <span class="ui">File → Render…</span> or the viewport gear menu.</p>
+  <p class="l-ru">Откройте его кнопкой <span class="ui">Render</span> справа вверху, через <span class="ui">File → Render…</span> или меню-шестерёнку вьюпорта.</p>
+  <figure>
+    <img src="img/47_render_lights.jpg" alt="Render window, still scene">
+    <figcaption class="l-en"><b>The Render window for a still scene.</b> Settings on the left, the preview on the right. The preview grows with the window.</figcaption>
+    <figcaption class="l-ru"><b>Окно рендера для статичной сцены.</b> Слева настройки, справа превью. Превью растёт вместе с окном.</figcaption>
+  </figure>
+
+  <h2><span class="l-en">Settings</span><span class="l-ru">Настройки</span></h2>
+  <div class="tbl"><table>
+    <tr><th><span class="l-en">Setting</span><span class="l-ru">Настройка</span></th><th><span class="l-en">Meaning</span><span class="l-ru">Значение</span></th></tr>
+    <tr><td>Camera</td><td class="wrap"><span class="l-en">A scene camera, or <em>Primary Viewport source</em> (whatever the Primary Viewport shows).</span><span class="l-ru">Камера сцены или <em>Primary Viewport source</em> (то, что показывает главный вьюпорт).</span></td></tr>
+    <tr><td>Frame aspect</td><td class="wrap"><span class="l-en">Free (the viewport's shape), 2:3 poster, A-series paper and other ratios.</span><span class="l-ru">Free (форма вьюпорта), 2:3 постер, формат A и другие пропорции.</span></td></tr>
+    <tr><td>Render size (long side)</td><td class="wrap"><span class="l-en">The long side of the picture, up to 3840 px. <em>Custom size</em> sets width × height exactly. <em>Output size</em> shows the result.</span><span class="l-ru">Длинная сторона картинки, до 3840 px. <em>Custom size</em> задаёт ширину × высоту точно. <em>Output size</em> показывает итог.</span></td></tr>
+    <tr><td>Fullbright (render only)</td><td class="wrap"><span class="l-en">Render without lighting.</span><span class="l-ru">Рендер без освещения.</span></td></tr>
+    <tr><td>Smoothing</td><td class="wrap"><span class="l-en">Renders at 2× and scales down: clean edges.</span><span class="l-ru">Рендер в 2× и уменьшение: чистые края.</span></td></tr>
+    <tr><td>Depth of field</td><td class="wrap"><span class="l-en">Focus on the selection or the frame centre; <em>Blur amount</em> (aperture) and <em>DoF quality</em> (passes).</span><span class="l-ru">Фокус на выделении или центре кадра; <em>Blur amount</em> (диафрагма) и <em>DoF quality</em> (проходы).</span></td></tr>
+    <tr><td>Soft shadows (passes)</td><td class="wrap"><span class="l-en">How many times the scene is rendered for lights with a <em>source size</em>. More passes, smoother penumbra, longer render.</span><span class="l-ru">Сколько раз сцена рендерится для источников с <em>source size</em>. Больше проходов — плавнее полутень, дольше рендер.</span></td></tr>
+    <tr><td>Engine frame</td><td class="wrap"><span class="l-en">Lets the game's own renderer draw the picture so that post-processing addons and Workshop shaders get in. See <a href="#shaders">Shaders</a>.</span><span class="l-ru">Картинку рисует сам рендерер игры, и в неё попадают аддоны постобработки и шейдеры Workshop. См. <a href="#shaders">Шейдеры</a>.</span></td></tr>
+    <tr><td>Format · JPEG quality</td><td class="wrap"><span class="l-en">PNG (lossless) or JPEG.</span><span class="l-ru">PNG (без потерь) или JPEG.</span></td></tr>
+    <tr><td>File name</td><td class="wrap"><span class="l-en">Empty means date and time. Files go to <code>data/speditor/renders/</code>.</span><span class="l-ru">Пусто — дата и время. Файлы попадают в <code>data/speditor/renders/</code>.</span></td></tr>
+  </table></div>
+  <div class="warn l-en"><p>Close the ESC menu while rendering. A large render with depth of field and soft shadows can take a while — the preview shows the progress (“DoF preview: 12 of 96 samples”).</p></div>
+  <div class="warn l-ru"><p>Закройте меню ESC во время рендера. Большой рендер с глубиной резкости и мягкими тенями может занять время — превью показывает прогресс («DoF preview: 12 of 96 samples»).</p></div>
+
+  <h2><span class="l-en">Camera effects</span><span class="l-ru">Эффекты камеры</span></h2>
+  <figure>
+    <img src="img/23_render_fx2.jpg" alt="Camera effects list">
+    <figcaption class="l-en"><b>Camera effects</b> at the bottom of the settings. They belong to the chosen scene camera and are saved with it.</figcaption>
+    <figcaption class="l-ru"><b>Эффекты камеры</b> внизу настроек. Они принадлежат выбранной камере сцены и сохраняются вместе с ней.</figcaption>
+  </figure>
+  <div class="tbl"><table>
+    <tr><th><span class="l-en">Section</span><span class="l-ru">Раздел</span></th><th><span class="l-en">Effects</span><span class="l-ru">Эффекты</span></th></tr>
+    <tr><td>Camera (as in SFM)</td><td class="wrap"><span class="l-en">Depth of field of this camera (focus distance, aperture, quality) · Exposure (tone map scale)</span><span class="l-ru">Глубина резкости этой камеры (дистанция фокуса, диафрагма, качество) · Экспозиция (tone map scale)</span></td></tr>
+    <tr><td>Lens</td><td class="wrap"><span class="l-en">Fisheye (strength) · Vignette (strength, clear radius)</span><span class="l-ru">Fisheye (сила) · Vignette (сила, чистый радиус)</span></td></tr>
+    <tr><td>Tone and colour</td><td class="wrap"><span class="l-en">Curves for RGB and each channel (click to add a point, drag to move, right-click to remove) · HDR</span><span class="l-ru">Кривые для RGB и каждого канала (щелчок — точка, перетаскивание — сдвиг, правый щелчок — удалить) · HDR</span></td></tr>
+    <tr><td>Shaders</td><td class="wrap">Bloom · Sharpen · Sobel (outlines) · Toy Town</td></tr>
+    <tr><td>Custom shaders</td><td class="wrap"><span class="l-en">Up to three shader materials from the Workshop, addons or the shader folder</span><span class="l-ru">До трёх шейдерных материалов из Workshop, аддонов или папки шейдеров</span></td></tr>
+    <tr><td>Texturize · Overlay</td><td class="wrap"><span class="l-en">A texture pattern over the picture · any material over the picture</span><span class="l-ru">Текстурный узор поверх картинки · любой материал поверх картинки</span></td></tr>
+  </table></div>
+  <p class="l-en">The effects show in the preview and in the final render; the viewports stay clean. The work camera has no effects — choose a scene camera. <em>Turn all effects off</em> resets them.</p>
+  <p class="l-ru">Эффекты видны в превью и в итоговом рендере; вьюпорты остаются чистыми. У рабочей камеры эффектов нет — выберите камеру сцены. <em>Turn all effects off</em> сбрасывает их.</p>
+
+  <h2><span class="l-en">Animated scenes</span><span class="l-ru">Анимированные сцены</span></h2>
+  <figure>
+    <img src="img/21_render.jpg" alt="Render window, animated scene">
+    <figcaption class="l-en"><b>When the scene has an animation</b> the window starts with SAeditor settings: whole animation or the current frame, video format, video size and passes, and a player under the preview.</figcaption>
+    <figcaption class="l-ru"><b>Если в сцене есть анимация</b>, окно начинается с настроек SAeditor: вся анимация или текущий кадр, формат и размер видео, проходы, а под превью — плеер.</figcaption>
+  </figure>
+  <p class="l-en">See <a href="#sa-render">Animation → Video</a> for the formats.</p>
+  <p class="l-ru">Форматы описаны в разделе <a href="#sa-render">Анимация → Видео</a>.</p>
+  <div class="tip l-en"><p><code>speditor_render</code> in the console renders with the current settings — bind it to a key for quick test shots.</p></div>
+  <div class="tip l-ru"><p><code>speditor_render</code> в консоли рендерит с текущими настройками — привяжите к клавише для быстрых пробных кадров.</p></div>
+</section>
+
+<!-- ============================================================ SHADERS -->
+<section class="page" id="pg-shaders" data-group="output" data-en="Workshop shaders" data-ru="Шейдеры Workshop">
+  <h1><span class="l-en">Workshop shaders</span><span class="l-ru">Шейдеры Workshop</span></h1>
+  <p class="lede l-en">Post-processing addons and shader packs from the Workshop can get into your renders in two ways: through <strong>Engine frame</strong> or as <strong>custom shaders</strong>.</p>
+  <p class="lede l-ru">Аддоны постобработки и шейдерные паки из Workshop попадают в рендер двумя путями: через <strong>Engine frame</strong> или как <strong>пользовательские шейдеры</strong>.</p>
+  <figure>
+    <img src="img/24_shaders.jpg" alt="Addon shaders window">
+    <figcaption class="l-en"><b>Windows → Addon shaders.</b> Every post-processing effect registered in the game, with its category. Double-click turns an effect on or off; its own settings panel appears on the right.</figcaption>
+    <figcaption class="l-ru"><b>Windows → Addon shaders.</b> Все эффекты постобработки, зарегистрированные в игре, с категориями. Двойной щелчок включает или выключает эффект; справа появляется его собственная панель настроек.</figcaption>
+  </figure>
+  <h2>Engine frame</h2>
+  <p class="l-en">Tick <em>Engine frame</em> in the Render window. The picture is then drawn by the game's renderer through the chosen camera with every enabled effect — standard GMod effects, Workshop shaders and shaders built on GShader Library — and taken from the screen.</p>
+  <p class="l-ru">Отметьте <em>Engine frame</em> в окне рендера. Тогда картинку рисует рендерер игры через выбранную камеру со всеми включёнными эффектами — стандартными эффектами GMod, шейдерами Workshop и шейдерами на GShader Library — и снимает её с экрана.</p>
+  <div class="warn l-en"><p>Engine frame limits: the picture is no larger than the screen, and 2× smoothing, penumbra and the editor's depth of field are not applied. The Render window shows the source size, e.g. “source: 1494 × 1080 px of the screen”.</p></div>
+  <div class="warn l-ru"><p>Ограничения Engine frame: картинка не больше экрана, 2× сглаживание, полутень и глубина резкости редактора не применяются. Окно рендера показывает исходный размер, например «source: 1494 × 1080 px of the screen».</p></div>
+  <h2><span class="l-en">The shader folder</span><span class="l-ru">Папка шейдеров</span></h2>
+  <p class="l-en">The <em>Shader folder</em> tab of the same window: put a downloaded shader pack (with <code>materials/</code> and <code>shaders/fxc/</code>, or loose <code>.vmt</code> and <code>.vcs</code> files) into <code>garrysmod/addons/speditor/shaders/</code> (create the folder if it is missing) and press <em>Rescan</em>. The pack is mounted without restarting the game, and its shaders appear in <em>Camera effects → Custom shader</em>. Lua from a pack is not run: addons with Lua are installed the usual way and work through Engine frame.</p>
+  <p class="l-ru">Вкладка <em>Shader folder</em> того же окна: положите скачанный пак (с <code>materials/</code> и <code>shaders/fxc/</code> или просто файлы <code>.vmt</code> и <code>.vcs</code>) в <code>garrysmod/addons/speditor/shaders/</code> (создайте папку, если её нет) и нажмите <em>Rescan</em>. Пак подключается без перезапуска игры, а его шейдеры появляются в <em>Camera effects → Custom shader</em>. Lua из пака не запускается: аддоны с Lua ставятся обычным способом и работают через Engine frame.</p>
+  <div class="note l-en"><p>On Linux the folder name and the files inside must be lowercase, otherwise the game cannot read them.</p></div>
+  <div class="note l-ru"><p>На Linux имя папки и файлов внутри должно быть в нижнем регистре, иначе игра не сможет их прочитать.</p></div>
+</section>

@@ -1,0 +1,202 @@
+
+<!-- ============================================================ LIGHTS -->
+<section class="page" id="pg-lights" data-group="scene" data-en="Lights" data-ru="Свет">
+  <h1><span class="l-en">Lights</span><span class="l-ru">Свет</span></h1>
+  <p class="lede l-en">Light makes a poster. SPeditor has point lights and spot lights; spot lights cast shadows and have a soft edge, penumbra, a glow and a visible beam.</p>
+  <p class="lede l-ru">Постер делает свет. В SPeditor есть точечный свет и прожекторы; прожекторы отбрасывают тени, у них есть мягкий край, полутень, свечение и видимый луч.</p>
+  <figure>
+    <img src="img/40_lights_overview.jpg" alt="Lighting demo">
+    <figcaption class="l-en"><b>Six lights:</b> a warm softbox as the key light, a blue rim light, orange “light through blinds” on the wall, a stage spot with a beam, two neon glows. The selected softbox shows its cone and its controls in the Animation Set Editor.</figcaption>
+    <figcaption class="l-ru"><b>Шесть источников:</b> тёплый софтбокс как основной свет, синий контровой, оранжевый «свет сквозь жалюзи» на стене, сценический прожектор с лучом, два неоновых свечения. У выделенного софтбокса видны конус и настройки в Animation Set Editor.</figcaption>
+  </figure>
+
+  <h2><span class="l-en">Point and spot</span><span class="l-ru">Точечный и прожектор</span></h2>
+  <div class="tbl"><table>
+    <tr><th></th><th><span class="l-en">Point light</span><span class="l-ru">Точечный свет</span></th><th><span class="l-en">Spot light</span><span class="l-ru">Прожектор</span></th></tr>
+    <tr><td><span class="l-en">Shines</span><span class="l-ru">Светит</span></td><td class="wrap"><span class="l-en">in all directions</span><span class="l-ru">во все стороны</span></td><td class="wrap"><span class="l-en">in a cone or through a mask</span><span class="l-ru">конусом или через маску</span></td></tr>
+    <tr><td><span class="l-en">Shadows</span><span class="l-ru">Тени</span></td><td class="wrap"><span class="l-en">no (an engine limit)</span><span class="l-ru">нет (ограничение движка)</span></td><td class="wrap"><span class="l-en">yes, soft, adjustable</span><span class="l-ru">да, мягкие, настраиваемые</span></td></tr>
+    <tr><td><span class="l-en">Good for</span><span class="l-ru">Подходит для</span></td><td class="wrap"><span class="l-en">fill light, neon, fire, bulbs, muzzle flashes</span><span class="l-ru">заполняющий свет, неон, огонь, лампы, вспышки выстрелов</span></td><td class="wrap"><span class="l-en">key and rim light, sun, windows, lamps</span><span class="l-ru">основной и контровой свет, солнце, окна, фонари</span></td></tr>
+  </table></div>
+  <p class="l-en">Switch a light between the two kinds with its <em>Type</em> control in the Animation Set Editor.</p>
+  <p class="l-ru">Тип источника переключается полем <em>Type</em> в Animation Set Editor.</p>
+
+  <h2><span class="l-en">Light kinds</span><span class="l-ru">Виды света</span></h2>
+  <p class="l-en"><span class="ui plain">+</span> → <span class="ui">Soft light</span> creates a light already set up for a purpose. With a light selected, the <em>Light kinds</em> list at the top of the right column turns that light into another kind.</p>
+  <p class="l-ru"><span class="ui plain">+</span> → <span class="ui">Soft light</span> создаёт источник, уже настроенный под задачу. Если источник выделен, список <em>Light kinds</em> вверху правой колонки превращает его в другой вид.</p>
+  <div class="tbl"><table>
+    <tr><th><span class="l-en">Kind</span><span class="l-ru">Вид</span></th><th><span class="l-en">What it is</span><span class="l-ru">Что это</span></th></tr>
+    <tr><td>Softbox</td><td class="wrap"><span class="l-en">Large soft key light, the studio standard.</span><span class="l-ru">Большой мягкий основной свет, студийный стандарт.</span></td></tr>
+    <tr><td>Strip light</td><td class="wrap"><span class="l-en">A narrow tall softbox for edges and reflections.</span><span class="l-ru">Узкий высокий софтбокс для контуров и бликов.</span></td></tr>
+    <tr><td>Beauty dish</td><td class="wrap"><span class="l-en">Round, contrasty portrait light.</span><span class="l-ru">Круглый контрастный портретный свет.</span></td></tr>
+    <tr><td>Ring light</td><td class="wrap"><span class="l-en">Ring around the lens: flat face light, round catchlights.</span><span class="l-ru">Кольцо вокруг объектива: ровный свет на лице, круглые блики в глазах.</span></td></tr>
+    <tr><td>Rim light</td><td class="wrap"><span class="l-en">Back light that outlines the silhouette.</span><span class="l-ru">Контровой свет, обводящий силуэт.</span></td></tr>
+    <tr><td>Window light</td><td class="wrap"><span class="l-en">Daylight through a window frame.</span><span class="l-ru">Дневной свет через оконную раму.</span></td></tr>
+    <tr><td>Light through blinds</td><td class="wrap"><span class="l-en">Stripes of light, the noir look.</span><span class="l-ru">Полосы света, нуарный стиль.</span></td></tr>
+    <tr><td>Sun through leaves</td><td class="wrap"><span class="l-en">Dappled sunlight.</span><span class="l-ru">Пятнистый солнечный свет сквозь листву.</span></td></tr>
+    <tr><td>Golden hour sun</td><td class="wrap"><span class="l-en">Low warm sun with long shadows.</span><span class="l-ru">Низкое тёплое солнце с длинными тенями.</span></td></tr>
+    <tr><td>Sunset gel</td><td class="wrap"><span class="l-en">A coloured gradient of sunset light.</span><span class="l-ru">Цветной градиент закатного света.</span></td></tr>
+    <tr><td>Moonlight</td><td class="wrap"><span class="l-en">Cold dim parallel light.</span><span class="l-ru">Холодный тусклый параллельный свет.</span></td></tr>
+    <tr><td>Stage spot</td><td class="wrap"><span class="l-en">Hard round spot with a visible beam.</span><span class="l-ru">Жёсткое круглое пятно с видимым лучом.</span></td></tr>
+    <tr><td>Street lamp</td><td class="wrap"><span class="l-en">Warm cone from above.</span><span class="l-ru">Тёплый конус сверху.</span></td></tr>
+    <tr><td>Headlight</td><td class="wrap"><span class="l-en">Car headlight with a glow.</span><span class="l-ru">Автомобильная фара со свечением.</span></td></tr>
+    <tr><td>Red and blue beacon</td><td class="wrap"><span class="l-en">Police lights.</span><span class="l-ru">Полицейская мигалка.</span></td></tr>
+    <tr><td>Eye slit</td><td class="wrap"><span class="l-en">A narrow strip of light across the eyes.</span><span class="l-ru">Узкая полоса света на глазах.</span></td></tr>
+    <tr><td>Candle · Light bulb · Neon glow</td><td class="wrap"><span class="l-en">Small point sources with a visible glow.</span><span class="l-ru">Небольшие точечные источники с видимым свечением.</span></td></tr>
+  </table></div>
+  <p class="l-en"><strong>Presets</strong> (colour only): Soft white, Warm lamp, Cool moonlight, Neon cyan, Neon magenta, Fire. <strong>Create 3-point light rig</strong> places key, fill and rim lights around the selected model.</p>
+  <p class="l-ru"><strong>Presets</strong> (только цвет): Soft white, Warm lamp, Cool moonlight, Neon cyan, Neon magenta, Fire. <strong>Create 3-point light rig</strong> ставит основной, заполняющий и контровой свет вокруг выделенной модели.</p>
+
+  <h2><span class="l-en">Light settings</span><span class="l-ru">Настройки источника</span></h2>
+  <div class="row">
+    <figure class="fit"><img src="img/41_light_controls.jpg" alt="Spot light controls" style="--w:220px"></figure>
+    <div style="flex:1 1 320px;min-width:0">
+      <dl class="defs l-en">
+        <dt>color · intensity</dt><dd>Colour (click the swatch for a palette and a mixer) and brightness.</dd>
+        <dt>distance · fieldOfView</dt><dd>How far the light reaches; the cone angle of a spot.</dd>
+        <dt>edge softness</dt><dd>0 keeps the mask as it is, 1 fades the light from the centre to the edge.</dd>
+        <dt>source size</dt><dd>Size of the lamp: a larger source gives softer shadows that blur with distance (penumbra). Calculated in the render and its preview.</dd>
+        <dt>castsShadows · shadowFilterSize</dt><dd>Shadows on/off and the blur of their edge.</dd>
+        <dt>shadowDepthBias · shadowSlopeBias</dt><dd>Raise if lit surfaces get stripes; lower if the shadow detaches from the object.</dd>
+        <dt>nearZ</dt><dd>The light starts at this distance from the source.</dd>
+        <dt>orthographic · orthoSize</dt><dd>A parallel square beam like sunlight: shadows keep their size at any distance.</dd>
+        <dt>constant / linear / quadratic attenuation</dt><dd>Falloff with distance. Quadratic is like a real lamp; constant does not fade at all (good for far subjects).</dd>
+        <dt>texture (light mask)</dt><dd>The shape of the beam: soft masks of SPeditor (softbox, strip, round, ring, window, blinds, bars, slit, leaves, sunset…), Lamp tool textures, other game textures or any texture by path.</dd>
+        <dt>glow size · glow brightness</dt><dd>A visible glow around the source, like a headlight or a beacon.</dd>
+        <dt>beam in the air · beam length</dt><dd>A visible cone of light, as in dust or fog.</dd>
+      </dl>
+      <dl class="defs l-ru">
+        <dt>color · intensity</dt><dd>Цвет (щелчок по образцу — палитра и смеситель) и яркость.</dd>
+        <dt>distance · fieldOfView</dt><dd>Дальность света; угол конуса прожектора.</dd>
+        <dt>edge softness</dt><dd>0 — маска как есть, 1 — свет плавно гаснет от центра к краю.</dd>
+        <dt>source size</dt><dd>Размер лампы: чем больше, тем мягче тень, размывающаяся с расстоянием (полутень). Считается в рендере и его превью.</dd>
+        <dt>castsShadows · shadowFilterSize</dt><dd>Тени вкл/выкл и размытие их края.</dd>
+        <dt>shadowDepthBias · shadowSlopeBias</dt><dd>Увеличьте, если на освещённых поверхностях полосы; уменьшите, если тень отрывается от объекта.</dd>
+        <dt>nearZ</dt><dd>Свет начинается на этом расстоянии от источника.</dd>
+        <dt>orthographic · orthoSize</dt><dd>Параллельный квадратный луч как солнце: тени не меняют размер с расстоянием.</dd>
+        <dt>constant / linear / quadratic attenuation</dt><dd>Затухание с расстоянием. Квадратичное — как у настоящей лампы; постоянное — не затухает вовсе (для дальних объектов).</dd>
+        <dt>texture (light mask)</dt><dd>Форма луча: мягкие маски SPeditor (софтбокс, полоса, круг, кольцо, окно, жалюзи, решётка, щель, листва, закат…), текстуры инструмента Lamp, другие текстуры игры или любая текстура по пути.</dd>
+        <dt>glow size · glow brightness</dt><dd>Видимое свечение вокруг источника, как у фары или маячка.</dd>
+        <dt>beam in the air · beam length</dt><dd>Видимый конус света, как в пыли или тумане.</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="warn l-en"><p>Every shadow-casting spot light costs FPS. The <a href="#shadows">Shadows tab</a> limits how many of them cast shadows at once. Penumbra (<em>source size</em>) is only calculated in the render; the viewports show a sharp shadow.</p></div>
+  <div class="warn l-ru"><p>Каждый прожектор с тенями стоит FPS. <a href="#shadows">Вкладка Shadows</a> ограничивает, сколько из них отбрасывают тени одновременно. Полутень (<em>source size</em>) считается только в рендере; во вьюпортах тень резкая.</p></div>
+</section>
+
+<!-- ============================================================ SHADOWS -->
+<section class="page" id="pg-shadows" data-group="scene" data-en="Shadows" data-ru="Тени">
+  <h1><span class="l-en">Shadows</span><span class="l-ru">Тени</span></h1>
+  <p class="lede l-en">The Shadows tab of the bottom window controls two different things: shadows of the editor's spot lights and the simple prop shadows the map's own lighting casts.</p>
+  <p class="lede l-ru">Вкладка Shadows нижнего окна управляет двумя разными вещами: тенями прожекторов редактора и простыми тенями пропов от освещения самой карты.</p>
+  <figure><img src="img/30_shadows.jpg" alt="Shadows tab"></figure>
+
+  <h2><span class="l-en">Shadows from spot lights</span><span class="l-ru">Тени от прожекторов</span></h2>
+  <dl class="defs l-en">
+    <dt>Spot lights cast shadows</dt><dd>The master switch.</dd>
+    <dt>Shadow map quality</dt><dd>Low, Medium, High, Ultra. The engine reads it at start: after a change you may need <code>vid_restart</code> or the launch option <code>+r_flashlightdepthres 2048</code>.</dd>
+    <dt>Max shadow-casting lights</dt><dd>Only the N lights nearest to the camera cast shadows. The line below shows how many cast now.</dd>
+    <dt>Shadow draw distance</dt><dd>A light whose lit area is farther than this casts no shadow (0 = unlimited). Saves FPS in large scenes.</dd>
+    <dt>Softness multiplier</dt><dd>Multiplies the edge blur of every light.</dd>
+    <dt>Slope bias (global)</dt><dd>Removes stripes on surfaces lit at a shallow angle; each light can override it.</dd>
+  </dl>
+  <dl class="defs l-ru">
+    <dt>Spot lights cast shadows</dt><dd>Общий выключатель.</dd>
+    <dt>Shadow map quality</dt><dd>Low, Medium, High, Ultra. Движок читает значение при запуске: после изменения может понадобиться <code>vid_restart</code> или параметр запуска <code>+r_flashlightdepthres 2048</code>.</dd>
+    <dt>Max shadow-casting lights</dt><dd>Тени отбрасывают только N ближайших к камере источников. Строка ниже показывает, сколько их сейчас.</dd>
+    <dt>Shadow draw distance</dt><dd>Источник, освещённая область которого дальше этого расстояния, теней не даёт (0 — без ограничения). Экономит FPS в больших сценах.</dd>
+    <dt>Softness multiplier</dt><dd>Умножает размытие края тени у всех источников.</dd>
+    <dt>Slope bias (global)</dt><dd>Убирает полосы на поверхностях, освещённых под острым углом; у каждого источника может быть своё значение.</dd>
+  </dl>
+
+  <h2><span class="l-en">Prop shadows from map lighting</span><span class="l-ru">Тени пропов от освещения карты</span></h2>
+  <p class="l-en">These are the soft blobs or silhouettes that props and ragdolls drop from the map's sun. <em>Draw prop shadows</em>, <em>Detailed shadows instead of blobs</em> and <em>Max prop shadows drawn</em> are local engine settings. Length, colour and direction belong to the map: tick <em>Override map shadow settings</em> to change them (this affects every player on a server; untick to restore). <em>Disable prop shadows on the map</em> removes them entirely.</p>
+  <p class="l-ru">Это мягкие пятна или силуэты, которые пропы и рэгдоллы отбрасывают от солнца карты. <em>Draw prop shadows</em>, <em>Detailed shadows instead of blobs</em> и <em>Max prop shadows drawn</em> — локальные настройки движка. Длина, цвет и направление принадлежат карте: отметьте <em>Override map shadow settings</em>, чтобы их менять (на сервере это действует на всех игроков; снимите отметку, чтобы вернуть). <em>Disable prop shadows on the map</em> убирает их совсем.</p>
+</section>
+
+<!-- ============================================================ CAMERAS -->
+<section class="page" id="pg-cameras" data-group="scene" data-en="Cameras" data-ru="Камеры">
+  <h1><span class="l-en">Cameras</span><span class="l-ru">Камеры</span></h1>
+  <p class="lede l-en">Scene cameras are objects of the scene. A render is always taken through a scene camera (or through the Primary Viewport), and camera effects belong to scene cameras.</p>
+  <p class="lede l-ru">Камеры сцены — объекты сцены. Рендер всегда снимается через камеру сцены (или через Primary Viewport), а эффекты камеры принадлежат камерам сцены.</p>
+
+  <h2><span class="l-en">Creating and aiming</span><span class="l-ru">Создание и наведение</span></h2>
+  <ul class="l-en">
+    <li><span class="ui plain">+</span> → <span class="ui">Spawn Camera</span> creates a camera exactly at the work camera's position and angle.</li>
+    <li><strong>Match camera to work view</strong> (object menu) moves an existing camera to where you look now.</li>
+    <li><strong>Aim camera at object…</strong> turns it towards any object.</li>
+    <li>Move and rotate it with the gizmo like any object.</li>
+  </ul>
+  <ul class="l-ru">
+    <li><span class="ui plain">+</span> → <span class="ui">Spawn Camera</span> создаёт камеру точно в позиции и под углом рабочей камеры.</li>
+    <li><strong>Match camera to work view</strong> (меню объекта) переносит существующую камеру туда, куда вы сейчас смотрите.</li>
+    <li><strong>Aim camera at object…</strong> поворачивает её к любому объекту.</li>
+    <li>Двигайте и вращайте её гизмо, как любой объект.</li>
+  </ul>
+
+  <h2><span class="l-en">Looking through a camera</span><span class="l-ru">Взгляд через камеру</span></h2>
+  <div class="row">
+    <figure><img src="img/44_camera_view.jpg" alt="Primary Viewport looking through Demo camera"></figure>
+    <div style="flex:1 1 260px;min-width:0">
+      <p class="l-en">Select a camera and press <kbd>V</kbd>, choose it in the viewport's camera list, or tick <em>Look through this camera</em>. The header then shows the camera name. Flying with <kbd>RMB</kbd>+<kbd>WASD</kbd> now moves the scene camera itself — the fastest way to frame a shot. <kbd>V</kbd> goes back to the work camera.</p>
+      <p class="l-ru">Выделите камеру и нажмите <kbd>V</kbd>, выберите её в списке камер вьюпорта или отметьте <em>Look through this camera</em>. В заголовке появится имя камеры. Полёт с <kbd>ПКМ</kbd>+<kbd>WASD</kbd> теперь двигает саму камеру сцены — самый быстрый способ выстроить кадр. <kbd>V</kbd> возвращает рабочую камеру.</p>
+    </div>
+  </div>
+
+  <h2><span class="l-en">Camera settings</span><span class="l-ru">Настройки камеры</span></h2>
+  <div class="row">
+    <figure class="fit"><img src="img/43_camera_controls.jpg" alt="Camera controls" style="--w:220px"></figure>
+    <dl class="defs l-en" style="flex:1 1 300px">
+      <dt>Lenses</dt><dd>Ready focal lengths: 18 mm (90°), 24 mm (74°), 35 mm (54°), 50 mm (40°) and longer.</dd>
+      <dt>fieldOfView</dt><dd>Any angle.</dd>
+      <dt>Shake, units / degrees</dt><dd>How far the camera is thrown about and turned. A small value gives a handheld camera.</dd>
+      <dt>Shake speed</dt><dd>Shakes per second: 1–2 handheld, 8+ an explosion or an engine.</dd>
+      <dt>Smoothness, s</dt><dd>In an animation the camera floats through its keys instead of stopping at each one.</dd>
+    </dl>
+    <dl class="defs l-ru" style="flex:1 1 300px">
+      <dt>Lenses</dt><dd>Готовые фокусные расстояния: 18 мм (90°), 24 мм (74°), 35 мм (54°), 50 мм (40°) и длиннее.</dd>
+      <dt>fieldOfView</dt><dd>Любой угол.</dd>
+      <dt>Shake, units / degrees</dt><dd>Насколько камеру бросает и поворачивает. Малое значение — съёмка с рук.</dd>
+      <dt>Shake speed</dt><dd>Толчков в секунду: 1–2 — с рук, от 8 — взрыв или двигатель.</dd>
+      <dt>Smoothness, s</dt><dd>В анимации камера плавно проходит через ключи, не останавливаясь на каждом.</dd>
+    </dl>
+  </div>
+  <p class="l-en">A camera's own <strong>depth of field</strong> (focus distance, aperture, quality) and <strong>exposure</strong>, as in SFM, are set in the Render window under <em>Camera effects → Camera (as in SFM)</em>. See <a href="#render">Rendering</a>.</p>
+  <p class="l-ru">Собственная <strong>глубина резкости</strong> камеры (дистанция фокуса, диафрагма, качество) и <strong>экспозиция</strong>, как в SFM, задаются в окне рендера в разделе <em>Camera effects → Camera (as in SFM)</em>. См. <a href="#render">Рендер</a>.</p>
+</section>
+
+<!-- ============================================================ EFFECTS -->
+<section class="page" id="pg-effects" data-group="scene" data-en="Effects" data-ru="Эффекты">
+  <h1><span class="l-en">Effects</span><span class="l-ru">Эффекты</span></h1>
+  <p class="lede l-en">Explosions, fire, smoke, blood, sparks and muzzle flashes are objects too. A particle effect can be stopped at any moment and stays frozen in the viewport and in the render.</p>
+  <p class="lede l-ru">Взрывы, огонь, дым, кровь, искры и вспышки выстрелов — тоже объекты. Эффект частиц можно остановить в любой момент, и он остаётся застывшим во вьюпорте и в рендере.</p>
+  <figure>
+    <img src="img/17_effect_browser.jpg" alt="Effect Browser">
+    <figcaption class="l-en"><b>Effect Browser</b> (<span class="ui plain">+</span> → <span class="ui">Add an effect…</span>). Groups on the left, effects and the file they come from on the right. Double-click adds the effect to the scene.</figcaption>
+    <figcaption class="l-ru"><b>Браузер эффектов</b> (<span class="ui plain">+</span> → <span class="ui">Add an effect…</span>). Слева группы, справа эффекты и файл, из которого они взяты. Двойной щелчок добавляет эффект в сцену.</figcaption>
+  </figure>
+
+  <h2><span class="l-en">Kinds of effects</span><span class="l-ru">Виды эффектов</span></h2>
+  <div class="tbl"><table>
+    <tr><th><span class="l-en">Group</span><span class="l-ru">Группа</span></th><th><span class="l-en">Can be frozen</span><span class="l-ru">Можно остановить</span></th><th><span class="l-en">Notes</span><span class="l-ru">Заметки</span></th></tr>
+    <tr><td>Particles of the game / of addons</td><td>✓</td><td class="wrap"><span class="l-en">The best choice for stills and frame-by-frame video. Includes every particle file of installed Workshop addons.</span><span class="l-ru">Лучший выбор для статичных кадров и покадрового видео. Включает все файлы частиц установленных аддонов.</span></td></tr>
+    <tr><td>Emitter tool effects</td><td>—</td><td class="wrap"><span class="l-en">Play by themselves; a still render starts them and waits for the chosen moment.</span><span class="l-ru">Играют сами; рендер кадра запускает их и ждёт выбранного момента.</span></td></tr>
+    <tr><td>Engine effects · Lua effects</td><td>—</td><td class="wrap"><span class="l-en">Some need a weapon or a character and show nothing alone.</span><span class="l-ru">Некоторым нужно оружие или персонаж, без них они ничего не показывают.</span></td></tr>
+  </table></div>
+
+  <h2><span class="l-en">Effect settings</span><span class="l-ru">Настройки эффекта</span></h2>
+  <dl class="defs l-en">
+    <dt>Moment, s</dt><dd>How long after its start the effect is shown. 0 means it has not started yet. After a move or a change of the moment the effect is replayed up to that moment, which takes as long as the moment itself.</dd>
+    <dt>Size</dt><dd>Scale of the effect (not every effect uses it).</dd>
+    <dt>Length</dt><dd>Distance to the second point: where a tracer or a beam goes. 0 means a one-point effect.</dd>
+  </dl>
+  <dl class="defs l-ru">
+    <dt>Moment, s</dt><dd>Через сколько секунд после начала показан эффект. 0 — он ещё не начался. После перемещения или смены момента эффект проигрывается заново до этого момента — это занимает столько же времени, сколько сам момент.</dd>
+    <dt>Size</dt><dd>Масштаб эффекта (используют не все эффекты).</dd>
+    <dt>Length</dt><dd>Расстояние до второй точки: куда летит трассер или луч. 0 — эффект из одной точки.</dd>
+  </dl>
+  <p class="l-en">Effects can be attached to an object or a bone (a flash on a muzzle), duplicated, hidden, aimed and saved with the scene. In SAeditor, <strong>Play the effect from this frame</strong> keys the moment for you.</p>
+  <p class="l-ru">Эффекты можно привязать к объекту или кости (вспышка на стволе), дублировать, скрывать, наводить и сохранять в сцене. В SAeditor пункт <strong>Play the effect from this frame</strong> сам расставляет ключи момента.</p>
+  <div class="warn l-en"><p>An effect advances one game frame at a time. Render animations with the game window focused: an unfocused game runs at about 20 FPS, and effects shorter than a frame (a muzzle flash lasts ~0.03 s) may not show.</p></div>
+  <div class="warn l-ru"><p>Эффект продвигается на один игровой кадр за раз. Рендерите анимации, когда окно игры в фокусе: без фокуса игра идёт примерно на 20 FPS, и эффекты короче кадра (вспышка выстрела длится ~0,03 с) могут не показаться.</p></div>
+</section>

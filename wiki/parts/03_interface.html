@@ -1,0 +1,196 @@
+
+<!-- ============================================================ WORKSPACE -->
+<section class="page" id="pg-workspace" data-group="ui" data-en="The workspace" data-ru="Рабочее пространство">
+  <h1><span class="l-en">The workspace</span><span class="l-ru">Рабочее пространство</span></h1>
+  <p class="lede l-en">The editor covers the screen with dockable windows, like Source Filmmaker. Each window holds one or more tabs; tabs can be moved between windows or torn off into a window of their own.</p>
+  <p class="lede l-ru">Редактор заполняет экран стыкуемыми окнами, как Source Filmmaker. В каждом окне одна или несколько вкладок; вкладки можно переносить между окнами или вытаскивать в отдельное окно.</p>
+  <figure>
+    <img src="img/01_overview.jpg" alt="Default layout">
+    <figcaption class="l-en"><b>The default layout (“SFM default”).</b></figcaption>
+    <figcaption class="l-ru"><b>Стандартная раскладка («SFM default»).</b></figcaption>
+  </figure>
+
+  <h2><span class="l-en">Parts of the screen</span><span class="l-ru">Части экрана</span></h2>
+  <div class="tbl"><table>
+    <tr><th><span class="l-en">Part</span><span class="l-ru">Часть</span></th><th><span class="l-en">What it is for</span><span class="l-ru">Для чего</span></th></tr>
+    <tr><td><span class="l-en">Menu bar</span><span class="l-ru">Строка меню</span></td><td class="wrap"><span class="l-en"><strong>File, Edit, Windows, View, Help</strong> on the left; <strong>Render</strong> and <strong>Exit Editor</strong> on the right.</span><span class="l-ru"><strong>File, Edit, Windows, View, Help</strong> слева; <strong>Render</strong> и <strong>Exit Editor</strong> справа.</span></td></tr>
+    <tr><td>Animation Set Editor</td><td class="wrap"><span class="l-en">The object tree and the controls of the selected object: bones, face, eyes, light and camera settings. See <a href="#objects">Objects</a>.</span><span class="l-ru">Дерево объектов и управление выделенным объектом: кости, лицо, глаза, настройки света и камеры. См. <a href="#objects">Объекты</a>.</span></td></tr>
+    <tr><td>Element Viewer</td><td class="wrap"><span class="l-en">Every property of the selected object as a list of numbers you can type in.</span><span class="l-ru">Все свойства выделенного объекта списком чисел, которые можно вводить вручную.</span></td></tr>
+    <tr><td>Primary Viewport</td><td class="wrap"><span class="l-en">The main 3D view where you select and edit. Shows the work camera or a scene camera.</span><span class="l-ru">Главный 3D-вид, где вы выделяете и редактируете. Показывает рабочую камеру или камеру сцены.</span></td></tr>
+    <tr><td>Secondary Viewport</td><td class="wrap"><span class="l-en">A second view, usually through the scene camera, so you see the final frame while you work.</span><span class="l-ru">Второй вид, обычно через камеру сцены — вы видите итоговый кадр во время работы.</span></td></tr>
+    <tr><td>Scene · Shadows · Timeline</td><td class="wrap"><span class="l-en">The bottom window: scene and pose library, shadow settings, and the SAeditor timeline.</span><span class="l-ru">Нижнее окно: сцены и библиотека поз, настройки теней и таймлайн SAeditor.</span></td></tr>
+    <tr><td><span class="l-en">Status bar</span><span class="l-ru">Строка состояния</span></td><td class="wrap"><span class="l-en">Hints on the left; on the right the number of models, the selection, the tool, FPS and the render size.</span><span class="l-ru">Слева подсказки; справа число моделей, выделение, инструмент, FPS и размер рендера.</span></td></tr>
+  </table></div>
+
+  <h2><span class="l-en">Windows and tabs</span><span class="l-ru">Окна и вкладки</span></h2>
+  <ul class="l-en">
+    <li><strong>Move a tab:</strong> drag it by its tab bar and drop it on the edge of another window (it docks beside it) or on another window's tab bar (it becomes a tab there). Hold <kbd>Ctrl</kbd> while dropping to keep it floating.</li>
+    <li><strong>Maximize:</strong> double-click the tab bar. Double-click again to restore.</li>
+    <li><strong>Resize:</strong> drag the gap between two docked windows; neighbours follow.</li>
+    <li><strong>Window properties:</strong> right-click the tab bar → <span class="ui">Window properties</span> → <span class="ui">Always on top</span> keeps the window above the others (the Model Browser is on top by default).</li>
+    <li><strong>Reopen a closed window:</strong> the <span class="ui">Windows</span> menu lists all of them.</li>
+  </ul>
+  <ul class="l-ru">
+    <li><strong>Перенести вкладку:</strong> перетащите её за строку вкладок и отпустите на краю другого окна (встанет рядом) или на строке вкладок другого окна (станет его вкладкой). Удерживайте <kbd>Ctrl</kbd> при отпускании, чтобы окно осталось плавающим.</li>
+    <li><strong>Развернуть:</strong> двойной щелчок по строке вкладок. Повторный — вернуть.</li>
+    <li><strong>Изменить размер:</strong> тяните промежуток между двумя состыкованными окнами; соседи подстраиваются.</li>
+    <li><strong>Свойства окна:</strong> правый щелчок по строке вкладок → <span class="ui">Window properties</span> → <span class="ui">Always on top</span> держит окно поверх остальных (браузер моделей поверх по умолчанию).</li>
+    <li><strong>Вернуть закрытое окно:</strong> все окна перечислены в меню <span class="ui">Windows</span>.</li>
+  </ul>
+
+  <h2><span class="l-en">Layouts</span><span class="l-ru">Раскладки</span></h2>
+  <div class="row">
+    <figure class="fit"><img src="img/32_menu_layout.jpg" alt="Windows → Layout menu"></figure>
+    <div style="flex:1 1 300px;min-width:0">
+      <p class="l-en"><span class="ui">Windows → Layout</span> has three presets: <strong>SFM default</strong>, <strong>Wide Primary Viewport</strong> (one large viewport) and <strong>No bottom panel</strong>. <span class="ui">Save layout as…</span> keeps your own arrangement under a name; <span class="ui">Load layout</span> brings it back.</p>
+      <p class="l-ru"><span class="ui">Windows → Layout</span> содержит три пресета: <strong>SFM default</strong>, <strong>Wide Primary Viewport</strong> (один большой вьюпорт) и <strong>No bottom panel</strong>. <span class="ui">Save layout as…</span> сохраняет вашу раскладку под именем, <span class="ui">Load layout</span> возвращает её.</p>
+      <p class="l-en"><strong>Snap windows</strong> makes floating windows stick to edges. <strong>Lock layout</strong> stops windows from being moved by accident.</p>
+      <p class="l-ru"><strong>Snap windows</strong> притягивает плавающие окна к краям. <strong>Lock layout</strong> защищает окна от случайного перемещения.</p>
+      <p class="l-en">The editor remembers the layout you had when you closed it and restores it next time.</p>
+      <p class="l-ru">Редактор запоминает раскладку в момент закрытия и восстанавливает её при следующем открытии.</p>
+    </div>
+  </div>
+  <div class="note l-en"><p><span class="badge new">new</span> On screens narrower than about 1430 px (1366×768, 1280×720, 1024×768) the default layout used to break: the left panel covered the viewport and windows became floating. Since a0.4 the layout fits to any screen, and a saved layout that does not fit the current screen is replaced by the default one.</p></div>
+  <div class="note l-ru"><p><span class="badge new">new</span> На экранах уже примерно 1430 px (1366×768, 1280×720, 1024×768) стандартная раскладка раньше ломалась: левая панель закрывала вьюпорт, окна становились плавающими. С a0.4 раскладка подстраивается под любой экран, а сохранённая раскладка, которая не помещается на текущий экран, заменяется стандартной.</p></div>
+</section>
+
+<!-- ============================================================ MENUS -->
+<section class="page" id="pg-menus" data-group="ui" data-en="Menus" data-ru="Меню">
+  <h1><span class="l-en">Menus</span><span class="l-ru">Меню</span></h1>
+  <p class="lede l-en">A reference of every item in the menu bar.</p>
+  <p class="lede l-ru">Справочник по всем пунктам строки меню.</p>
+
+  <h2>File</h2>
+  <div class="row">
+    <figure class="fit"><img src="img/02_menu_file.jpg" alt="File menu" style="--w:260px"></figure>
+    <dl class="defs l-en" style="flex:1 1 300px">
+      <dt>Save Scene…</dt><dd>Save the scene under a name.</dd>
+      <dt>Load Scene…</dt><dd>Opens the Scene tab with the list of scenes.</dd>
+      <dt>Render…</dt><dd>Opens the <a href="#render">Render window</a>.</dd>
+      <dt>Autosave scene</dt><dd>A backup every 2.5 minutes; several older copies are kept.</dd>
+      <dt>Clear Scene</dt><dd>Deletes every object (asks first).</dd>
+      <dt>Render animation…</dt><dd>Added by SAeditor: the animation render.</dd>
+      <dt>Exit Editor</dt><dd>Closes the editor.</dd>
+    </dl>
+    <dl class="defs l-ru" style="flex:1 1 300px">
+      <dt>Save Scene…</dt><dd>Сохранить сцену под именем.</dd>
+      <dt>Load Scene…</dt><dd>Открывает вкладку Scene со списком сцен.</dd>
+      <dt>Render…</dt><dd>Открывает <a href="#render">окно рендера</a>.</dd>
+      <dt>Autosave scene</dt><dd>Резервная копия каждые 2,5 минуты; хранятся несколько предыдущих копий.</dd>
+      <dt>Clear Scene</dt><dd>Удаляет все объекты (с подтверждением).</dd>
+      <dt>Render animation…</dt><dd>Добавлено SAeditor: рендер анимации.</dd>
+      <dt>Exit Editor</dt><dd>Закрыть редактор.</dd>
+    </dl>
+  </div>
+
+  <h2>Edit</h2>
+  <div class="row">
+    <figure class="fit"><img src="img/03_menu_edit.jpg" alt="Edit menu" style="--w:240px"></figure>
+    <dl class="defs l-en" style="flex:1 1 300px">
+      <dt>Undo / Redo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd>. Every edit can be undone, including deleting objects.</dd>
+      <dt>Duplicate / Delete</dt><dd><kbd>Ctrl</kbd>+<kbd>D</kbd> / <kbd>Del</kbd> for the selection.</dd>
+      <dt>Properties…</dt><dd>The <a href="#objects">Object Properties</a> window.</dd>
+      <dt>Copy / Paste pose</dt><dd><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd>, also between different models with the same skeleton.</dd>
+      <dt>Drop to floor</dt><dd>Puts the object on the surface below it.</dd>
+      <dt>Create</dt><dd>Model, camera, spot or point light, effect, three-point rig.</dd>
+      <dt>Deselect</dt><dd>Clears the selection.</dd>
+      <dt>Animation</dt><dd>SAeditor commands (keys, import, sounds).</dd>
+    </dl>
+    <dl class="defs l-ru" style="flex:1 1 300px">
+      <dt>Undo / Redo</dt><dd><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd>. Отменяется любое действие, включая удаление объектов.</dd>
+      <dt>Duplicate / Delete</dt><dd><kbd>Ctrl</kbd>+<kbd>D</kbd> / <kbd>Del</kbd> для выделения.</dd>
+      <dt>Properties…</dt><dd>Окно <a href="#objects">свойств объекта</a>.</dd>
+      <dt>Copy / Paste pose</dt><dd><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd>, в том числе между разными моделями с одинаковым скелетом.</dd>
+      <dt>Drop to floor</dt><dd>Опускает объект на поверхность под ним.</dd>
+      <dt>Create</dt><dd>Модель, камера, прожектор или точечный свет, эффект, трёхточечная схема.</dd>
+      <dt>Deselect</dt><dd>Снять выделение.</dd>
+      <dt>Animation</dt><dd>Команды SAeditor (ключи, импорт, звуки).</dd>
+    </dl>
+  </div>
+
+  <h2>Windows</h2>
+  <div class="row">
+    <figure class="fit"><img src="img/04_menu_windows.jpg" alt="Windows menu" style="--w:240px"></figure>
+    <div style="flex:1 1 300px;min-width:0">
+      <p class="l-en">Shows any window or tab: Animation Set Editor, Element Viewer, both viewports, Scene, Shadows, Model Browser, Render, <a href="#shaders">Addon shaders</a>, <a href="#mods">Mods</a>, Timeline. <strong>Notifications</strong> sets up the pop-up messages; <strong>Layout</strong> is described on the <a href="#workspace">workspace</a> page.</p>
+      <p class="l-ru">Показывает любое окно или вкладку: Animation Set Editor, Element Viewer, оба вьюпорта, Scene, Shadows, браузер моделей, Render, <a href="#shaders">Addon shaders</a>, <a href="#mods">Mods</a>, Timeline. <strong>Notifications</strong> настраивает всплывающие сообщения; <strong>Layout</strong> описан на странице <a href="#workspace">рабочего пространства</a>.</p>
+    </div>
+  </div>
+
+  <h2>View</h2>
+  <div class="row">
+    <figure class="fit"><img src="img/05_menu_view.jpg" alt="View menu" style="--w:240px"></figure>
+    <dl class="defs l-en" style="flex:1 1 300px">
+      <dt>Fullbright</dt><dd>Shows the scene without lighting — handy when building in the dark.</dd>
+      <dt>Exposure</dt><dd>Fixed brightness of the viewports or <em>Auto (engine)</em>.</dd>
+      <dt>Toggle Skeleton (B)</dt><dd>Bone markers on characters.</dd>
+      <dt>Bone size</dt><dd>Tiny, Small, Medium, Large markers.</dd>
+      <dt>Camera View (V)</dt><dd>Look through the selected scene camera.</dd>
+      <dt>World/Local (3)</dt><dd>Gizmo axes in world or object space.</dd>
+      <dt>Frame guides</dt><dd>Rule of thirds, center cross, safe areas, golden ratio.</dd>
+      <dt>Frame aspect</dt><dd>The shape of the picture (Free, 2:3 poster, A-series and others).</dd>
+      <dt>Interface Theme</dt><dd>See <a href="#themes">Themes</a>.</dd>
+    </dl>
+    <dl class="defs l-ru" style="flex:1 1 300px">
+      <dt>Fullbright</dt><dd>Сцена без освещения — удобно строить в темноте.</dd>
+      <dt>Exposure</dt><dd>Фиксированная яркость вьюпортов или <em>Auto (engine)</em>.</dd>
+      <dt>Toggle Skeleton (B)</dt><dd>Маркеры костей на персонажах.</dd>
+      <dt>Bone size</dt><dd>Размер маркеров: Tiny, Small, Medium, Large.</dd>
+      <dt>Camera View (V)</dt><dd>Смотреть через выделенную камеру сцены.</dd>
+      <dt>World/Local (3)</dt><dd>Оси гизмо в мировых или локальных координатах.</dd>
+      <dt>Frame guides</dt><dd>Правило третей, центр, безопасные зоны, золотое сечение.</dd>
+      <dt>Frame aspect</dt><dd>Пропорции картинки (Free, 2:3 poster, A-series и другие).</dd>
+      <dt>Interface Theme</dt><dd>См. <a href="#themes">Темы</a>.</dd>
+    </dl>
+  </div>
+
+  <h2>Help</h2>
+  <div class="row">
+    <figure class="fit"><img src="img/06_menu_help.jpg" alt="Help menu" style="--w:240px"></figure>
+    <p class="l-en" style="flex:1 1 300px"><strong>Hotkeys</strong> lists every key (also those of mods), <strong>Camera Settings…</strong> sets the work camera speed and FOV, <strong>About SPeditor</strong> shows the version, the news and the credits.</p>
+    <p class="l-ru" style="flex:1 1 300px"><strong>Hotkeys</strong> — список всех клавиш (и клавиш модов), <strong>Camera Settings…</strong> — скорость и FOV рабочей камеры, <strong>About SPeditor</strong> — версия, новости и благодарности.</p>
+  </div>
+  <div class="note l-en"><p><span class="badge new">new</span> In a0.3 the keys in the Edit menu were drawn with a square box instead of a gap (“Undo□Ctrl+Z”). Since a0.4 they are aligned on the right, as in the screenshot above.</p></div>
+  <div class="note l-ru"><p><span class="badge new">new</span> В a0.3 клавиши в меню Edit рисовались с квадратиком вместо отступа («Undo□Ctrl+Z»). С a0.4 они выровнены справа, как на скриншоте.</p></div>
+</section>
+
+<!-- ============================================================ VIEWPORTS -->
+<section class="page" id="pg-viewports" data-group="ui" data-en="Viewports and the work camera" data-ru="Вьюпорты и рабочая камера">
+  <h1><span class="l-en">Viewports and the work camera</span><span class="l-ru">Вьюпорты и рабочая камера</span></h1>
+  <p class="lede l-en">You look at the scene through the <strong>work camera</strong> — a free camera that is not part of the scene and never appears in renders.</p>
+  <p class="lede l-ru">Вы смотрите на сцену через <strong>рабочую камеру</strong> — свободную камеру, которая не входит в сцену и никогда не попадает в рендер.</p>
+
+  <h2><span class="l-en">Moving around</span><span class="l-ru">Перемещение</span></h2>
+  <div class="tbl"><table>
+    <tr><th><span class="l-en">Input</span><span class="l-ru">Ввод</span></th><th><span class="l-en">Action</span><span class="l-ru">Действие</span></th></tr>
+    <tr><td><kbd>RMB</kbd> + <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td class="wrap"><span class="l-en">Fly. <kbd>Q</kbd> / <kbd>E</kbd> go down / up, <kbd>Shift</kbd> is faster, <kbd>Ctrl</kbd> slower. Moving the mouse with the right button held turns the camera.</span><span class="l-ru">Полёт. <kbd>Q</kbd> / <kbd>E</kbd> — вниз / вверх, <kbd>Shift</kbd> быстрее, <kbd>Ctrl</kbd> медленнее. Движение мыши с зажатой правой кнопкой поворачивает камеру.</span></td></tr>
+    <tr><td><kbd>Alt</kbd> + <kbd>LMB</kbd></td><td class="wrap"><span class="l-en">Orbit around the selection.</span><span class="l-ru">Облёт вокруг выделения.</span></td></tr>
+    <tr><td><span class="l-en">Wheel</span><span class="l-ru">Колесо</span></td><td class="wrap"><span class="l-en">Move forward / back (dolly).</span><span class="l-ru">Вперёд / назад (наезд).</span></td></tr>
+    <tr><td><kbd>Alt</kbd> + <span class="l-en">Wheel</span><span class="l-ru">колесо</span></td><td class="wrap"><span class="l-en">Change the field of view (zoom lens).</span><span class="l-ru">Изменить угол обзора (зум-объектив).</span></td></tr>
+    <tr><td><kbd>F</kbd></td><td class="wrap"><span class="l-en">Focus on the selected object or bone.</span><span class="l-ru">Сфокусироваться на выделенном объекте или кости.</span></td></tr>
+    <tr><td><kbd>V</kbd></td><td class="wrap"><span class="l-en">Look through the selected scene camera; <kbd>V</kbd> again goes back.</span><span class="l-ru">Смотреть через выделенную камеру сцены; повторное <kbd>V</kbd> — вернуться.</span></td></tr>
+  </table></div>
+  <div class="row">
+    <figure class="fit"><img src="img/28_camera_settings.jpg" alt="Camera Settings" style="--w:400px"></figure>
+    <p class="l-en" style="flex:1 1 280px"><span class="ui">Help → Camera Settings…</span> sets the <strong>fly speed</strong>, the <strong>wheel step</strong> and its <strong>smoothness</strong>, and the <strong>FOV</strong> of the work camera. <strong>Reset to defaults</strong> brings back 400 / 1.00 / 0.85 / 75°.</p>
+    <p class="l-ru" style="flex:1 1 280px"><span class="ui">Help → Camera Settings…</span> задаёт <strong>скорость полёта</strong>, <strong>шаг колеса</strong> и его <strong>плавность</strong>, а также <strong>FOV</strong> рабочей камеры. <strong>Reset to defaults</strong> возвращает 400 / 1.00 / 0.85 / 75°.</p>
+  </div>
+
+  <h2><span class="l-en">The viewport header and toolbar</span><span class="l-ru">Заголовок и панель вьюпорта</span></h2>
+  <p class="l-en">The header shows the camera on the left (<em>Work Camera</em> or the scene camera's name), the scene name, the frame aspect and size in the middle, and the field of view on the right. The dark bars around the picture are the <strong>frame gate</strong>: only what is inside them gets into the render.</p>
+  <p class="l-ru">В заголовке слева камера (<em>Work Camera</em> или имя камеры сцены), в центре имя сцены, пропорции и размер кадра, справа угол обзора. Тёмные поля вокруг картинки — <strong>рамка кадра</strong>: в рендер попадает только то, что внутри.</p>
+  <p class="l-en">The toolbar under the picture holds the tool buttons (move, rotate, scale, world/local axes, IK), view toggles (frame guides, skeleton, fullbright), the camera list and the gear menu.</p>
+  <p class="l-ru">Панель под картинкой: кнопки инструментов (перемещение, вращение, масштаб, мировые/локальные оси, IK), переключатели вида (сетки кадра, скелет, fullbright), список камер и меню-шестерёнка.</p>
+  <div class="row">
+    <figure class="fit"><img src="img/45_gear_menu.jpg" alt="Viewport gear menu" style="--w:220px"></figure>
+    <p class="l-en" style="flex:1 1 280px">The <strong>gear menu</strong> of a viewport: Focus selected, Camera Settings, Render, Exposure, Frame aspect, Hide viewport. The camera list chooses what the viewport shows; in the Secondary Viewport <strong>Auto</strong> shows the selected scene camera, and the work view while you look through a camera in the Primary one.</p>
+    <p class="l-ru" style="flex:1 1 280px"><strong>Меню-шестерёнка</strong> вьюпорта: Focus selected, Camera Settings, Render, Exposure, Frame aspect, Hide viewport. Список камер выбирает, что показывает вьюпорт; во втором вьюпорте <strong>Auto</strong> показывает выделенную камеру сцены, а пока Primary смотрит через камеру — рабочий вид.</p>
+  </div>
+  <div class="row">
+    <figure class="fit"><img src="img/34_menu_guides.jpg" alt="Frame guides" style="--w:340px"></figure>
+    <p class="l-en" style="flex:1 1 280px"><strong>Frame guides</strong> help with composition: rule of thirds, a center cross, safe areas and the golden ratio. They are drawn only in the viewport, never in the render.</p>
+    <p class="l-ru" style="flex:1 1 280px"><strong>Сетки кадра</strong> помогают с композицией: правило третей, центральный крест, безопасные зоны и золотое сечение. Они рисуются только во вьюпорте, в рендер не попадают.</p>
+  </div>
+  <div class="tip l-en"><p>The Primary and Secondary viewports pause while the Render window is open, to give the preview all the speed. The FPS counter reads about 20 when the game window is not focused — that is the engine saving power, not SPeditor.</p></div>
+  <div class="tip l-ru"><p>Пока открыто окно рендера, оба вьюпорта на паузе, чтобы превью работало быстрее. Когда окно игры не в фокусе, счётчик FPS показывает около 20 — это экономия движка, а не SPeditor.</p></div>
+</section>

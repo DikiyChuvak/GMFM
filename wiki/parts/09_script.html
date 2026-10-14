@@ -1,0 +1,177 @@
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var GROUPS = {
+    start:  { en: "Getting started", ru: "Начало работы" },
+    ui:     { en: "Interface", ru: "Интерфейс" },
+    scene:  { en: "Building a scene", ru: "Сборка сцены" },
+    output: { en: "Output", ru: "Результат" },
+    anim:   { en: "Animation (SAeditor)", ru: "Анимация (SAeditor)" },
+    files:  { en: "Files and settings", ru: "Файлы и настройки" },
+    ref:    { en: "Reference", ru: "Справочник" }
+  };
+  var UI = {
+    search: { en: "Search the wiki…", ru: "Поиск по вики…" },
+    none:   { en: "Nothing found. Try another word.", ru: "Ничего не найдено. Попробуйте другое слово." },
+    prev:   { en: "Previous", ru: "Назад" },
+    next:   { en: "Next", ru: "Далее" },
+    home:   { en: "SPeditor Wiki", ru: "SPeditor Wiki" },
+    ver:    { en: "Describes SPeditor a0.4.", ru: "Описывает SPeditor a0.4." }
+  };
+  var pages = Array.prototype.slice.call(document.querySelectorAll("section.page"));
+  var byId = {};
+  pages.forEach(function (p) { p.dataset.id = p.id.replace(/^pg-/, ""); byId[p.dataset.id] = p; });
+  var rail = document.getElementById("rail");
+  var q = document.getElementById("q");
+  var results = document.getElementById("results");
+
+  // print mode for the PDF: #print-en / #print-ru
+  var printMatch = /^#print-(en|ru)$/.exec(location.hash);
+  var lang = "en";
+  try { lang = localStorage.getItem("speditor-wiki-lang") || ""; } catch (e) { lang = ""; }
+  if (lang !== "en" && lang !== "ru") lang = (navigator.language || "").toLowerCase().indexOf("ru") === 0 ? "ru" : "en";
+  if (printMatch) lang = printMatch[1];
+
+  function t(o) { return o[lang] || o.en; }
+  function title(p) { return p.getAttribute("data-" + lang) || p.getAttribute("data-en"); }
+
+  function buildRail() {
+    var html = "", last = null;
+    pages.forEach(function (p) {
+      var g = p.getAttribute("data-group");
+      if (g !== last) { html += "<h4>" + t(GROUPS[g]) + "</h4>"; last = g; }
+      html += '<a href="#' + p.dataset.id + '" data-id="' + p.dataset.id + '">' + title(p) + "</a>";
+    });
+    html += '<div class="ver">' + t(UI.ver) + "</div>";
+    rail.innerHTML = html;
+  }
+
+  function buildPagers() {
+    pages.forEach(function (p, i) {
+      var old = p.querySelector(".pager"); if (old) old.remove();
+      var crumbs = p.querySelector(".crumbs"); if (crumbs) crumbs.remove();
+      if (p.dataset.id !== "home") {
+        var c = document.createElement("div");
+        c.className = "crumbs";
+        c.innerHTML = '<a href="#home">' + t(UI.home) + "</a> › " + t(GROUPS[p.getAttribute("data-group")]);
+        p.insertBefore(c, p.firstChild);
+      }
+      var nav = document.createElement("nav");
+      nav.className = "pager";
+      var prev = pages[i - 1], next = pages[i + 1];
+      nav.innerHTML = (prev ? '<a href="#' + prev.dataset.id + '"><small>← ' + t(UI.prev) + "</small>" + title(prev) + "</a>" : "") +
+        (next ? '<a class="next" href="#' + next.dataset.id + '"><small>' + t(UI.next) + " →</small>" + title(next) + "</a>" : "");
+      p.appendChild(nav);
+    });
+  }
+
+  function setLang(l, keep) {
+    lang = l;
+    root.setAttribute("data-lang", l);
+    root.setAttribute("lang", l);
+    try { if (!keep) localStorage.setItem("speditor-wiki-lang", l); } catch (e) {}
+    document.getElementById("lang-en").setAttribute("aria-pressed", l === "en");
+    document.getElementById("lang-ru").setAttribute("aria-pressed", l === "ru");
+    q.placeholder = t(UI.search);
+    buildRail();
+    buildPagers();
+    show(current, true);
+    if (q.value) runSearch();
+  }
+
+  var current = "home";
+  function show(id, quiet) {
+    if (!byId[id]) id = "home";
+    current = id;
+    pages.forEach(function (p) { p.classList.toggle("on", p.dataset.id === id); });
+    rail.querySelectorAll("a").forEach(function (a) {
+      if (a.getAttribute("data-id") === id) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    });
+    document.title = (id === "home" ? "" : title(byId[id]) + " · ") + "SPeditor Wiki";
+    if (!quiet) window.scrollTo(0, 0);
+    rail.classList.remove("open");
+  }
+
+  function route() {
+    var h = location.hash.replace(/^#/, "");
+    if (/^print-/.test(h)) return;
+    show(h || "home");
+  }
+
+  // search: titles first, then page text in the current language
+  function textOf(p) {
+    var clone = p.cloneNode(true);
+    clone.querySelectorAll(lang === "en" ? ".l-ru" : ".l-en").forEach(function (n) { n.remove(); });
+    clone.querySelectorAll(".pager, .crumbs").forEach(function (n) { n.remove(); });
+    return clone.textContent.replace(/\s+/g, " ");
+  }
+  var cache = {};
+  function runSearch() {
+    var s = q.value.trim().toLowerCase();
+    if (s.length < 2) { results.hidden = true; return; }
+    var hits = [];
+    pages.forEach(function (p) {
+      var key = p.dataset.id + lang;
+      var txt = cache[key] || (cache[key] = textOf(p));
+      var ttl = title(p).toLowerCase();
+      var low = txt.toLowerCase();
+      var at = low.indexOf(s);
+      if (ttl.indexOf(s) >= 0 || at >= 0) {
+        var snip = at >= 0 ? txt.substr(Math.max(0, at - 40), 120) : "";
+        hits.push({ p: p, score: (ttl.indexOf(s) >= 0 ? 2 : 0) + (at >= 0 ? 1 : 0), snip: snip });
+      }
+    });
+    hits.sort(function (a, b) { return b.score - a.score; });
+    results.innerHTML = hits.length ? hits.slice(0, 12).map(function (h) {
+      var safe = h.snip.replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; });
+      return '<button type="button" data-id="' + h.p.dataset.id + '"><b>' + title(h.p) + "</b><span>…" + safe + "…</span></button>";
+    }).join("") : '<div class="none">' + t(UI.none) + "</div>";
+    results.hidden = false;
+  }
+  q.addEventListener("input", runSearch);
+  q.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { q.value = ""; results.hidden = true; }
+    if (e.key === "Enter") { var b = results.querySelector("button"); if (b) b.click(); }
+  });
+  results.addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-id]");
+    if (!b) return;
+    location.hash = b.getAttribute("data-id");
+    results.hidden = true;
+    q.blur();
+  });
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest(".search")) results.hidden = true;
+  });
+
+  document.querySelectorAll(".seg button").forEach(function (b) {
+    b.addEventListener("click", function () { setLang(b.getAttribute("data-lang")); });
+  });
+  document.getElementById("menuBtn").addEventListener("click", function () { rail.classList.toggle("open"); });
+
+  // click a screenshot to see it full size
+  var zoom = document.getElementById("zoom");
+  document.getElementById("main").addEventListener("click", function (e) {
+    var img = e.target.closest("figure img");
+    if (!img || root.classList.contains("print")) return;
+    zoom.querySelector("img").src = img.src;
+    zoom.querySelector("img").alt = img.alt;
+    zoom.hidden = false;
+  });
+  zoom.addEventListener("click", function () { zoom.hidden = true; });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") zoom.hidden = true; });
+
+  window.addEventListener("hashchange", route);
+
+  root.setAttribute("data-lang", lang);
+  if (printMatch) {
+    root.classList.add("print");
+    document.querySelectorAll("img").forEach(function (i) { i.loading = "eager"; });
+    var toc = document.getElementById("toc");
+    toc.innerHTML = pages.map(function (p) { return "<li>" + title(p) + "</li>"; }).join("");
+  }
+  setLang(lang, true);
+  route();
+})();
+</script>

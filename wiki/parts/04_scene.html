@@ -1,0 +1,254 @@
+
+<!-- ============================================================ OBJECTS -->
+<section class="page" id="pg-objects" data-group="scene" data-en="Objects" data-ru="Объекты">
+  <h1><span class="l-en">Objects</span><span class="l-ru">Объекты</span></h1>
+  <p class="lede l-en">A scene is made of four kinds of objects: <strong>models</strong> (props and characters), <strong>lights</strong>, <strong>cameras</strong> and <strong>effects</strong>. All of them are listed in the Animation Set Editor.</p>
+  <p class="lede l-ru">Сцена состоит из объектов четырёх видов: <strong>модели</strong> (пропы и персонажи), <strong>свет</strong>, <strong>камеры</strong> и <strong>эффекты</strong>. Все они перечислены в Animation Set Editor.</p>
+
+  <h2><span class="l-en">Adding objects: the + menu</span><span class="l-ru">Добавление: меню +</span></h2>
+  <div class="row">
+    <figure class="fit"><img src="img/42_plus_menu.jpg" alt="The + menu with Soft light kinds" style="--w:400px"></figure>
+    <dl class="defs l-en" style="flex:1 1 280px">
+      <dt>Model…</dt><dd>Opens the Model Browser.</dd>
+      <dt>Spawn Camera</dt><dd>A scene camera exactly where the work camera looks.</dd>
+      <dt>Spawn spot / point light in front</dt><dd>A plain light in front of the camera.</dd>
+      <dt>Soft light</dt><dd>One of 19 ready-made light kinds (see <a href="#lights">Lights</a>).</dd>
+      <dt>Add an effect…</dt><dd>Opens the Effect Browser (see <a href="#effects">Effects</a>).</dd>
+      <dt>Create 3-point light rig</dt><dd>Key, fill and rim lights around the selected model.</dd>
+    </dl>
+    <dl class="defs l-ru" style="flex:1 1 280px">
+      <dt>Model…</dt><dd>Открывает браузер моделей.</dd>
+      <dt>Spawn Camera</dt><dd>Камера сцены ровно там, куда смотрит рабочая камера.</dd>
+      <dt>Spawn spot / point light in front</dt><dd>Простой источник света перед камерой.</dd>
+      <dt>Soft light</dt><dd>Один из 19 готовых видов света (см. <a href="#lights">Свет</a>).</dd>
+      <dt>Add an effect…</dt><dd>Открывает браузер эффектов (см. <a href="#effects">Эффекты</a>).</dd>
+      <dt>Create 3-point light rig</dt><dd>Основной, заполняющий и контровой свет вокруг выделенной модели.</dd>
+    </dl>
+  </div>
+
+  <h2><span class="l-en">The Model Browser</span><span class="l-ru">Браузер моделей</span></h2>
+  <figure>
+    <img src="img/16_model_browser.jpg" alt="Model Browser">
+    <figcaption class="l-en"><b>Model Browser.</b> Folders on the left: <em>All models</em> and the game's spawnlists; icons on the right. Click an icon to add the model to the scene.</figcaption>
+    <figcaption class="l-ru"><b>Браузер моделей.</b> Слева папки: <em>All models</em> и списки создаваемого из игры; справа иконки. Щёлкните по иконке, чтобы добавить модель в сцену.</figcaption>
+  </figure>
+  <ul class="l-en">
+    <li><strong>Search</strong> by part of the name or the path, e.g. <code>alyx</code>, <code>combine</code>, <code>props_c17</code>.</li>
+    <li><strong>Spawn by path</strong>: type a full path such as <code>models/player/group01/male_07.mdl</code> and press <kbd>Enter</kbd> — handy for models from addons that are not in any spawnlist.</li>
+    <li>Any model works: props, ragdolls, player models and NPC models from the game and from the Workshop. Models with a physics skeleton become posable <strong>ragdolls</strong>; the others are <strong>props</strong> that can still have bones.</li>
+    <li>The status line shows how many models are indexed; the list of <em>All models</em> grows while indexing runs in the background.</li>
+  </ul>
+  <ul class="l-ru">
+    <li><strong>Поиск</strong> по части имени или пути, например <code>alyx</code>, <code>combine</code>, <code>props_c17</code>.</li>
+    <li><strong>Создание по пути</strong>: введите полный путь, например <code>models/player/group01/male_07.mdl</code>, и нажмите <kbd>Enter</kbd> — удобно для моделей из аддонов, которых нет в списках.</li>
+    <li>Подходит любая модель: пропы, рэгдоллы, модели игроков и NPC из игры и из Workshop. Модели с физическим скелетом становятся позируемыми <strong>рэгдоллами</strong>, остальные — <strong>пропами</strong>, у которых тоже могут быть кости.</li>
+    <li>В строке состояния — сколько моделей проиндексировано; список <em>All models</em> растёт, пока индексация идёт в фоне.</li>
+  </ul>
+
+  <h2><span class="l-en">The object tree</span><span class="l-ru">Дерево объектов</span></h2>
+  <div class="row">
+    <figure class="fit"><img src="img/08_ase.jpg" alt="Animation Set Editor" style="--w:340px"></figure>
+    <div style="flex:1 1 300px;min-width:0">
+      <p class="l-en">The left column of the Animation Set Editor lists every object of the scene. Icons tell the kind: a person for characters, a box for props, a bulb for lights, a camera, a lightning bolt for effects. An attached object shows its parent after an arrow: <em>Rebel 1 weapon → Rebel 1</em>.</p>
+      <p class="l-ru">Левая колонка Animation Set Editor перечисляет все объекты сцены. Значок показывает вид: человек — персонаж, ящик — проп, лампочка — свет, камера, молния — эффект. У привязанного объекта после стрелки указан родитель: <em>Rebel 1 weapon → Rebel 1</em>.</p>
+      <p class="l-en">Expand a character to see its <strong>control groups</strong>: Face, Eyes, Body, Head, RightArm, LeftArm, RightLeg, LeftLeg, RightFingers, LeftFingers. Clicking a group shows only its controls in the right column.</p>
+      <p class="l-ru">Раскройте персонажа, чтобы увидеть <strong>группы управления</strong>: Face, Eyes, Body, Head, RightArm, LeftArm, RightLeg, LeftLeg, RightFingers, LeftFingers. Щелчок по группе показывает в правой колонке только её элементы.</p>
+      <p class="l-en">The right column holds the controls of the selection: face presets and flex sliders, eye target, bone rows (<em>Bone - pos</em>, <em>- rot</em>, <em>- scale</em>), or the settings of a light or camera.</p>
+      <p class="l-ru">Правая колонка — элементы управления выделенным объектом: пресеты и слайдеры лица, направление взгляда, строки костей (<em>Bone - pos</em>, <em>- rot</em>, <em>- scale</em>) или настройки света и камеры.</p>
+      <p class="l-en">The search field filters the tree. The gear button holds tree options (expand / collapse all).</p>
+      <p class="l-ru">Поле поиска фильтрует дерево. Кнопка-шестерёнка — настройки дерева (развернуть / свернуть всё).</p>
+    </div>
+  </div>
+
+  <h2><span class="l-en">Selecting</span><span class="l-ru">Выделение</span></h2>
+  <ul class="l-en">
+    <li><kbd>LMB</kbd> on an object in a viewport or in the tree selects it. <kbd>LMB</kbd> on a bone marker selects that bone.</li>
+    <li><kbd>Ctrl</kbd> + <kbd>LMB</kbd> adds an object to the selection or removes it. Several selected objects are moved, rotated, scaled, duplicated and deleted together.</li>
+    <li>Click on empty space or use <span class="ui">Edit → Deselect</span> to clear the selection.</li>
+  </ul>
+  <ul class="l-ru">
+    <li><kbd>ЛКМ</kbd> по объекту во вьюпорте или в дереве выделяет его. <kbd>ЛКМ</kbd> по маркеру кости выделяет эту кость.</li>
+    <li><kbd>Ctrl</kbd> + <kbd>ЛКМ</kbd> добавляет объект к выделению или убирает его. Несколько выделенных объектов двигаются, вращаются, масштабируются, дублируются и удаляются вместе.</li>
+    <li>Щелчок по пустому месту или <span class="ui">Edit → Deselect</span> снимает выделение.</li>
+  </ul>
+
+  <h2><span class="l-en">The object menu</span><span class="l-ru">Меню объекта</span></h2>
+  <p class="l-en">A short <kbd>RMB</kbd> click on an object (without moving the mouse) in the viewport or in the tree opens its menu.</p>
+  <p class="l-ru">Короткий щелчок <kbd>ПКМ</kbd> по объекту (не двигая мышь) во вьюпорте или в дереве открывает его меню.</p>
+  <div class="row">
+    <figure class="fit"><img src="img/13_object_menu_anim.jpg" alt="Object menu of a character" style="--w:460px"></figure>
+    <dl class="defs l-en" style="flex:1 1 280px">
+      <dt>Properties…</dt><dd>Colour, textures, size, shadow (below).</dd>
+      <dt>Appearance</dt><dd>Quick colour, remove / restore textures, cast shadow, reset.</dd>
+      <dt>Rename… / Duplicate / Delete</dt><dd>As named.</dd>
+      <dt>Renderable</dt><dd>Off: the object is hidden in viewports and renders.</dd>
+      <dt>Selectable</dt><dd>Off: the object is locked and cannot be clicked by accident.</dd>
+      <dt>Attach to…</dt><dd>See <a href="#attach">Attaching and wearing</a>.</dd>
+      <dt>Show in Element Viewer / Focus</dt><dd>As named.</dd>
+      <dt>Utilities</dt><dd>Drop to floor, 3-point rig, reset pose, copy / paste pose.</dd>
+      <dt>Set Skin / Set Body</dt><dd>Skins and bodygroups of the model.</dd>
+      <dt>Animation</dt><dd>SAeditor: set a key, import an animation, add a sound.</dd>
+    </dl>
+    <dl class="defs l-ru" style="flex:1 1 280px">
+      <dt>Properties…</dt><dd>Цвет, текстуры, размер, тень (ниже).</dd>
+      <dt>Appearance</dt><dd>Быстрый цвет, убрать / вернуть текстуры, тень, сброс.</dd>
+      <dt>Rename… / Duplicate / Delete</dt><dd>Переименовать, дублировать, удалить.</dd>
+      <dt>Renderable</dt><dd>Выключено: объект скрыт во вьюпортах и в рендере.</dd>
+      <dt>Selectable</dt><dd>Выключено: объект заблокирован, его нельзя случайно выделить.</dd>
+      <dt>Attach to…</dt><dd>См. <a href="#attach">Привязка и одежда</a>.</dd>
+      <dt>Show in Element Viewer / Focus</dt><dd>Показать в Element Viewer / навести камеру.</dd>
+      <dt>Utilities</dt><dd>На пол, трёхточечный свет, сброс позы, копировать / вставить позу.</dd>
+      <dt>Set Skin / Set Body</dt><dd>Скины и бодигруппы модели.</dd>
+      <dt>Animation</dt><dd>SAeditor: ключ, импорт анимации, звук.</dd>
+    </dl>
+  </div>
+  <p class="l-en">Cameras and lights also have <strong>Aim camera at object…</strong>; cameras have <strong>Look through this camera</strong> and <strong>Match camera to work view</strong>; effects have <strong>Play from the start</strong> and <strong>Choose another effect…</strong>.</p>
+  <p class="l-ru">У камер и света есть <strong>Aim camera at object…</strong> (навести на объект); у камер — <strong>Look through this camera</strong> и <strong>Match camera to work view</strong>; у эффектов — <strong>Play from the start</strong> и <strong>Choose another effect…</strong>.</p>
+
+  <h2><span class="l-en">Object Properties</span><span class="l-ru">Свойства объекта</span></h2>
+  <div class="row">
+    <figure class="fit"><img src="img/14_props.jpg" alt="Object Properties" style="--w:360px"></figure>
+    <div style="flex:1 1 300px;min-width:0">
+      <dl class="defs l-en">
+        <dt>Colour</dt><dd>Tint and opacity (the fourth field is alpha: below 255 the object becomes see-through). <em>Reset colour</em> returns white.</dd>
+        <dt>Material</dt><dd>Replace textures for the <em>Whole model</em> or one material slot. Pick a material from the grid or type a path such as <code>models/shiny</code>. <em>Remove textures</em> makes the model plain white so it takes the object colour; <em>Restore original textures</em> undoes it.</dd>
+        <dt>Size</dt><dd>Props only: overall scale and stretching in length (X), width (Y) and height (Z). The Scale tool <kbd>4</kbd> does the same with the mouse.</dd>
+        <dt>Shadow</dt><dd><em>Cast shadow</em> off removes the object from shadow maps — useful for an object in front of a lamp.</dd>
+        <dt>Reset appearance</dt><dd>Everything back to the original.</dd>
+      </dl>
+      <dl class="defs l-ru">
+        <dt>Colour</dt><dd>Оттенок и прозрачность (четвёртое поле — альфа: ниже 255 объект становится прозрачным). <em>Reset colour</em> возвращает белый.</dd>
+        <dt>Material</dt><dd>Замена текстур для всей модели (<em>Whole model</em>) или одного слота материала. Выберите материал из сетки или введите путь, например <code>models/shiny</code>. <em>Remove textures</em> делает модель белой, и она принимает цвет объекта; <em>Restore original textures</em> возвращает текстуры.</dd>
+        <dt>Size</dt><dd>Только пропы: общий масштаб и растяжение по длине (X), ширине (Y) и высоте (Z). Инструмент масштаба <kbd>4</kbd> делает то же мышью.</dd>
+        <dt>Shadow</dt><dd>Выключенный <em>Cast shadow</em> убирает объект из теней — полезно для предмета перед лампой.</dd>
+        <dt>Reset appearance</dt><dd>Вернуть всё как было.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <h2>Element Viewer</h2>
+  <div class="row">
+    <figure class="fit"><img src="img/15_element_viewer.jpg" alt="Element Viewer" style="--w:340px"></figure>
+    <p class="l-en" style="flex:1 1 280px">The Element Viewer tab (next to the Animation Set Editor) shows every property of the selection as numbers: name, model, position x/y/z, pitch/yaw/roll, scale, skin, renderable, selectable, and for lights and cameras all their settings with SFM names (<em>intensity, fieldOfView, castsShadows, shadowFilterSize…</em>). Type a value for exact placement.</p>
+    <p class="l-ru" style="flex:1 1 280px">Вкладка Element Viewer (рядом с Animation Set Editor) показывает все свойства выделения числами: имя, модель, позиция x/y/z, pitch/yaw/roll, масштаб, скин, renderable, selectable, а для света и камер — все настройки с именами из SFM (<em>intensity, fieldOfView, castsShadows, shadowFilterSize…</em>). Вводите значения для точной расстановки.</p>
+  </div>
+  <div class="tip l-en"><p>Any slider in SPeditor: <kbd>Shift</kbd> + drag is fine, <kbd>Ctrl</kbd> + drag is coarse; right-click a slider for <em>Reset to default</em> and <em>Enter value…</em>.</p></div>
+  <div class="tip l-ru"><p>Любой слайдер в SPeditor: <kbd>Shift</kbd> + перетаскивание — точно, <kbd>Ctrl</kbd> + перетаскивание — грубо; правый щелчок по слайдеру — <em>Reset to default</em> и <em>Enter value…</em>.</p></div>
+</section>
+
+<!-- ============================================================ POSING -->
+<section class="page" id="pg-posing" data-group="scene" data-en="Posing" data-ru="Позы">
+  <h1><span class="l-en">Posing</span><span class="l-ru">Позы</span></h1>
+  <p class="lede l-en">Everything is posed with one gizmo: whole objects and single bones, including fingers.</p>
+  <p class="lede l-ru">Всё позируется одним гизмо: объекты целиком и отдельные кости, включая пальцы.</p>
+
+  <h2><span class="l-en">The gizmo</span><span class="l-ru">Гизмо</span></h2>
+  <div class="row">
+    <figure><img src="img/09_gizmo_move.jpg" alt="Move gizmo"><figcaption class="l-en"><b>Move</b> <kbd>1</kbd></figcaption><figcaption class="l-ru"><b>Перемещение</b> <kbd>1</kbd></figcaption></figure>
+    <figure><img src="img/10_gizmo_rotate.jpg" alt="Rotate gizmo"><figcaption class="l-en"><b>Rotate</b> <kbd>2</kbd></figcaption><figcaption class="l-ru"><b>Вращение</b> <kbd>2</kbd></figcaption></figure>
+  </div>
+  <div class="tbl"><table>
+    <tr><th><span class="l-en">Key</span><span class="l-ru">Клавиша</span></th><th><span class="l-en">Tool</span><span class="l-ru">Инструмент</span></th></tr>
+    <tr><td><kbd>1</kbd></td><td class="wrap"><span class="l-en"><strong>Move.</strong> Drag an arrow to move along an axis, the centre to move in the screen plane.</span><span class="l-ru"><strong>Перемещение.</strong> Тяните стрелку для движения по оси, центр — для движения в плоскости экрана.</span></td></tr>
+    <tr><td><kbd>2</kbd></td><td class="wrap"><span class="l-en"><strong>Rotate.</strong> Drag a ring to turn around its axis.</span><span class="l-ru"><strong>Вращение.</strong> Тяните кольцо, чтобы повернуть вокруг его оси.</span></td></tr>
+    <tr><td><kbd>4</kbd></td><td class="wrap"><span class="l-en"><strong>Scale.</strong> The centre scales evenly, an axis stretches along it. Works on props and on bones of any model.</span><span class="l-ru"><strong>Масштаб.</strong> Центр — равномерно, ось — растяжение по ней. Работает на пропах и на костях любой модели.</span></td></tr>
+    <tr><td><kbd>3</kbd></td><td class="wrap"><span class="l-en"><strong>World / local axes.</strong> Local axes follow the object's own rotation.</span><span class="l-ru"><strong>Мировые / локальные оси.</strong> Локальные оси следуют повороту самого объекта.</span></td></tr>
+    <tr><td><kbd>I</kbd></td><td class="wrap"><span class="l-en"><strong>Inverse kinematics.</strong> Move a hand or a foot and the whole arm or leg follows.</span><span class="l-ru"><strong>Инверсная кинематика.</strong> Двигайте кисть или стопу — рука или нога следует за ней.</span></td></tr>
+  </table></div>
+
+  <h2><span class="l-en">Bones</span><span class="l-ru">Кости</span></h2>
+  <div class="row">
+    <figure class="fit"><img src="img/11_bone_ik.jpg" alt="A hand bone with IK" style="--w:520px"><figcaption class="l-en"><b>The left hand selected with IK on.</b> The small white cubes are bone markers.</figcaption><figcaption class="l-ru"><b>Выделена левая кисть, IK включён.</b> Маленькие белые кубики — маркеры костей.</figcaption></figure>
+    <div style="flex:1 1 280px;min-width:0">
+      <p class="l-en">Click a bone marker to select the bone, or click a row <em>Bone - pos / - rot / - scale</em> in the Animation Set Editor: it selects the bone and the matching tool at once.</p>
+      <p class="l-ru">Щёлкните по маркеру кости, чтобы выделить её, или по строке <em>Кость - pos / - rot / - scale</em> в Animation Set Editor: она сразу выделяет кость и нужный инструмент.</p>
+      <p class="l-en">Bones with a physics body (pelvis, spine, head, upper arms, forearms, hands, thighs, calves, feet) move the ragdoll itself. Bones without one (clavicles, fingers, toes, face bones) are moved with bone offsets. Both are saved in poses and animated by SAeditor.</p>
+      <p class="l-ru">Кости с физическим телом (таз, позвоночник, голова, плечи, предплечья, кисти, бёдра, голени, стопы) двигают сам рэгдолл. Кости без него (ключицы, пальцы, пальцы ног, кости лица) двигаются смещениями костей. И то, и другое сохраняется в позах и анимируется SAeditor.</p>
+      <p class="l-en">With <span class="ui">View → Toggle Skeleton (B)</span> the markers are hidden; <span class="ui">View → Bone size</span> makes them larger or smaller.</p>
+      <p class="l-ru"><span class="ui">View → Toggle Skeleton (B)</span> прячет маркеры; <span class="ui">View → Bone size</span> делает их больше или меньше.</p>
+    </div>
+  </div>
+  <h3><span class="l-en">Scaling bones</span><span class="l-ru">Масштаб костей</span> <span class="badge new">new</span></h3>
+  <p class="l-en">Select any bone and press <kbd>4</kbd> (or click its <em>- scale</em> row): a big head, long arms, a giant hand. In a0.3 the Scale tool worked only on bones without physics (fingers) and silently acted as Move on a hand or the head; a0.4 scales every bone.</p>
+  <p class="l-ru">Выделите любую кость и нажмите <kbd>4</kbd> (или строку <em>- scale</em>): большая голова, длинные руки, огромная кисть. В a0.3 масштаб работал только на костях без физики (пальцах), а на кисти или голове молча превращался в перемещение; в a0.4 масштабируется любая кость.</p>
+
+  <h2><span class="l-en">Face and eyes</span><span class="l-ru">Лицо и глаза</span></h2>
+  <ul class="l-en">
+    <li><strong>Face presets</strong> at the top: <em>Default, Zero, Half, One</em> set all flexes at once.</li>
+    <li><strong>Flex sliders</strong> are grouped as Brows, Eyes, Nose, Mouth, Other (e.g. <em>smile, jaw_drop, blink</em>). Models without face flexes do not show the section.</li>
+    <li><strong>Eyes:</strong> tick <em>viewTarget</em> to aim the eyes; <em>eyes_rightleft</em>, <em>eyes_updown</em> and <em>eyes_distance</em> set where they look.</li>
+    <li><strong>Skins and bodygroups</strong>: object menu → <span class="ui">Set Skin</span> / <span class="ui">Set Body</span>.</li>
+  </ul>
+  <ul class="l-ru">
+    <li><strong>Пресеты лица</strong> вверху: <em>Default, Zero, Half, One</em> задают все флексы сразу.</li>
+    <li><strong>Слайдеры мимики</strong> сгруппированы: Brows, Eyes, Nose, Mouth, Other (например, <em>smile, jaw_drop, blink</em>). У моделей без мимики раздела нет.</li>
+    <li><strong>Глаза:</strong> включите <em>viewTarget</em>, чтобы направить взгляд; <em>eyes_rightleft</em>, <em>eyes_updown</em> и <em>eyes_distance</em> задают, куда он смотрит.</li>
+    <li><strong>Скины и бодигруппы</strong>: меню объекта → <span class="ui">Set Skin</span> / <span class="ui">Set Body</span>.</li>
+  </ul>
+
+  <h2><span class="l-en">Poses: copy, paste, library</span><span class="l-ru">Позы: копирование и библиотека</span></h2>
+  <ul class="l-en">
+    <li><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd> copy the pose of the selected character and paste it onto another. Between different models with the same skeleton the pose is carried over by bone names, keeping each model's proportions.</li>
+    <li>The <strong>Pose library</strong> in the Scene tab: <em>Save pose</em>, <em>Load pose</em>, <em>Delete</em>. The list shows the pose name and the model it was made on.</li>
+    <li><span class="ui">Utilities → Reset pose of selected</span> returns bones, face and eyes to the original.</li>
+  </ul>
+  <ul class="l-ru">
+    <li><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd> копируют позу выделенного персонажа и вставляют её другому. Между разными моделями с одинаковым скелетом поза переносится по именам костей с сохранением пропорций каждой модели.</li>
+    <li><strong>Библиотека поз</strong> во вкладке Scene: <em>Save pose</em>, <em>Load pose</em>, <em>Delete</em>. В списке — имя позы и модель, на которой она сделана.</li>
+    <li><span class="ui">Utilities → Reset pose of selected</span> возвращает кости, лицо и глаза в исходное состояние.</li>
+  </ul>
+  <div class="warn l-en"><p>Addons that change ragdolls (active ragdoll systems, Fedhoria-like mods) can fight SPeditor and make limbs impossible to pose. If limbs jump back or fall, disable such addons while you work in the editor.</p></div>
+  <div class="warn l-ru"><p>Аддоны, меняющие рэгдоллы (активные рэгдоллы, моды наподобие Fedhoria), могут мешать SPeditor, и конечности перестают позироваться. Если конечности отскакивают или падают, отключите такие аддоны на время работы в редакторе.</p></div>
+</section>
+
+<!-- ============================================================ ATTACH -->
+<section class="page" id="pg-attach" data-group="scene" data-en="Attaching and wearing" data-ru="Привязка и одежда">
+  <h1><span class="l-en">Attaching and wearing</span><span class="l-ru">Привязка и одежда</span></h1>
+  <p class="lede l-en">Objects can follow other objects: a weapon in a hand, a hat on a head, a muzzle flash on a gun, or clothing that bends with the body.</p>
+  <p class="lede l-ru">Объекты могут следовать за другими: оружие в руке, шляпа на голове, вспышка на стволе или одежда, которая гнётся вместе с телом.</p>
+  <figure>
+    <img src="img/12_object_menu.jpg" alt="Attach to menu">
+    <figcaption class="l-en"><b>Object menu → Attach to… → a character.</b> At the top <em>Wear</em>, then <em>(whole object)</em>, then every physics bone.</figcaption>
+    <figcaption class="l-ru"><b>Меню объекта → Attach to… → персонаж.</b> Вверху <em>Wear</em>, затем <em>(whole object)</em>, затем все физические кости.</figcaption>
+  </figure>
+
+  <h2><span class="l-en">Three ways to attach</span><span class="l-ru">Три способа привязки</span></h2>
+  <div class="tbl"><table>
+    <tr><th><span class="l-en">Choice</span><span class="l-ru">Пункт</span></th><th><span class="l-en">Result</span><span class="l-ru">Результат</span></th><th><span class="l-en">Use for</span><span class="l-ru">Для чего</span></th></tr>
+    <tr><td><strong>R_Hand</strong>, <strong>Head1</strong>… </td><td class="wrap"><span class="l-en">Follows that bone rigidly, keeping its offset.</span><span class="l-ru">Жёстко следует за костью, сохраняя смещение.</span></td><td class="wrap"><span class="l-en">Weapons, props in hands, hats, helmets as separate props.</span><span class="l-ru">Оружие, предметы в руках, шляпы, шлемы-пропы.</span></td></tr>
+    <tr><td><strong>(whole object)</strong></td><td class="wrap"><span class="l-en">Follows the object's root (pelvis of a character).</span><span class="l-ru">Следует за корнем объекта (тазом персонажа).</span></td><td class="wrap"><span class="l-en">A rider on a vehicle, a light on a car.</span><span class="l-ru">Наездник на транспорте, фара на машине.</span></td></tr>
+    <tr><td><strong>Wear</strong> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Every bone of the worn model follows the bone with the same name on the wearer (bone merge).</span><span class="l-ru">Каждая кость надетой модели следует за одноимённой костью носителя (bone merge).</span></td><td class="wrap"><span class="l-en">Clothing, armour, hair, accessories made for the same skeleton (e.g. ValveBiped).</span><span class="l-ru">Одежда, броня, волосы, аксессуары под тот же скелет (например, ValveBiped).</span></td></tr>
+  </table></div>
+
+  <h2><span class="l-en">Putting clothes on a character</span><span class="l-ru">Как надеть одежду на персонажа</span></h2>
+  <ol class="steps l-en">
+    <li>Add the clothing model (from a clothing addon) and the character.</li>
+    <li>Right-click the clothing → <span class="ui">Attach to…</span> → the character → <span class="ui">Wear (clothing: follows the skeleton)</span>.</li>
+    <li>Pose the character: the clothing bends with every limb. Skin, bodygroups and colour of the clothing still work.</li>
+    <li>To take it off: object menu → <span class="ui">Detach</span>.</li>
+  </ol>
+  <ol class="steps l-ru">
+    <li>Добавьте модель одежды (из аддона с одеждой) и персонажа.</li>
+    <li>Правый щелчок по одежде → <span class="ui">Attach to…</span> → персонаж → <span class="ui">Wear (одежда: гнётся по скелету)</span>.</li>
+    <li>Позируйте персонажа: одежда гнётся вместе с каждой конечностью. Скин, бодигруппы и цвет одежды продолжают работать.</li>
+    <li>Чтобы снять: меню объекта → <span class="ui">Detach</span>.</li>
+  </ol>
+  <div class="note l-en"><p>Before a0.4 clothing could only be attached rigidly to one bone, so it did not follow the arms and legs. <em>Wear</em> arrives in a0.4; it is saved with the scene, survives duplicating and can be undone.</p></div>
+  <div class="note l-ru"><p>До a0.4 одежду можно было привязать только жёстко к одной кости, поэтому она не следовала за руками и ногами. <em>Wear</em> появляется в a0.4; он сохраняется в сцене, переживает дублирование и отменяется.</p></div>
+  <div class="warn l-en"><p>Wearing works only when the bone names match. A model made for another skeleton (TF2, a custom rig) stays at the wearer's root. You can still click and select the worn object: its invisible copy stays where it was attached.</p></div>
+  <div class="warn l-ru"><p>Одежда работает только при совпадении имён костей. Модель под другой скелет (TF2, свой риг) остаётся у корня носителя. Надетый объект по-прежнему можно выделить щелчком: его невидимая копия стоит там, где его привязали.</p></div>
+
+  <h2><span class="l-en">Rules</span><span class="l-ru">Правила</span></h2>
+  <ul class="l-en">
+    <li>Move an attached object by hand and the new offset is kept.</li>
+    <li>Chains are allowed (a scope on a gun in a hand); an object cannot be attached to its own child.</li>
+    <li>When the parent is deleted, the object stays where it was.</li>
+    <li>Attachments are saved in scenes and followed in SAeditor animations.</li>
+  </ul>
+  <ul class="l-ru">
+    <li>Сдвиньте привязанный объект вручную — новое смещение сохранится.</li>
+    <li>Цепочки разрешены (прицел на оружии в руке); объект нельзя привязать к его же потомку.</li>
+    <li>Если родителя удалить, объект остаётся на месте.</li>
+    <li>Привязки сохраняются в сценах и работают в анимациях SAeditor.</li>
+  </ul>
+</section>
