@@ -104,6 +104,41 @@ end
 
 local function isModel(ent) return IsValid(ent) and not C.IsAux(ent) end
 
+---------------------------------------------------------------------
+-- The skeleton tree (as in Ragdoll Mover): bones in their real hierarchy
+---------------------------------------------------------------------
+local cvTree    = CreateClientConVar("speditor_ase_tree", "groups", true, false)     -- groups / skeleton / none
+local cvNonPhys = CreateClientConVar("speditor_ase_nonphys", "1", true, false)       -- show bones without a physics object
+local cvMerged  = CreateClientConVar("speditor_ase_merged", "1", true, false)        -- show bonemerged models
+
+function UI.AseTreeMode()
+	local m = cvTree:GetString()
+	if m ~= "skeleton" and m ~= "none" then m = "groups" end
+	return m
+end
+
+-- a bone kind: physical (has a physics object), procedural (driven by the model), plain
+local BONE_ICONS = { phys = "icon16/brick.png", plain = "icon16/connect.png", proc = "icon16/cog.png" }
+local function boneKind(ent, b)
+	if C.PhysIndexOfBone(ent, b.id) then return "phys" end
+	if BONE_ALWAYS_PROCEDURAL and ent:BoneHasFlag(b.id, BONE_ALWAYS_PROCEDURAL) then return "proc" end
+	return "plain"
+end
+
+-- the bone under the cursor in the tree is marked in the viewports
+UI.TreeHover = nil
+hook.Add("PostDrawTranslucentRenderables", "SPeditor.TreeHover", function(depth, sky)
+	local h = UI.TreeHover
+	if depth or sky or not h or not C.active or C.exporting then return end
+	if not IsValid(h.ent) or RealTime() - h.t > 0.15 then return end
+	local pos = C.GetBoneWorld(h.ent, h.bone)
+	if not pos then return end
+	local c = COL.ORANGE
+	render.SetColorMaterial()
+	render.DrawWireframeSphere(pos, 3, 10, 10, Color(c.r, c.g, c.b), false)
+	render.DrawSphere(pos, 1.5, 8, 8, Color(c.r, c.g, c.b, 200))
+end)
+
 -- The model has eyes (an "eyes" attachment or face flexes). Crates, bottles
 -- and other props do not — the "Eyes" section is not shown for them.
 local function hasEyes(ent)
@@ -178,7 +213,7 @@ end
 ---------------------------------------------------------------------
 function UI.BuildASE(body)
 	local cur = { ent = nil, scope = "all" }   -- what the presets and controls show
-	local rebuildControls, rebuildPresets, rebuildTree
+	local rebuildControls, rebuildPresets, rebuildTree, addSkeleton
 
 	-----------------------------------------------------------------
 	-- Toolbar: "+", search, gear
@@ -222,14 +257,30 @@ function UI.BuildASE(body)
 	gear.Paint = add.Paint
 	gear.DoClick = function()
 		local m = SPeditor.UI.Menu()
-		local o = m:AddOption(L("ase_show_groups"), function() UI.aseShowGroups = not UI.aseShowGroups rebuildTree() end)
-		o:SetChecked(UI.aseShowGroups ~= false)
+		-- what is shown under a model: SFM groups, the skeleton as in Ragdoll Mover, or nothing
+		local mode = UI.AseTreeMode()
+		for _, id in ipairs({ "groups", "skeleton", "none" }) do
+			m:AddOption(L("ase_tree_" .. id), function()
+				RunConsoleCommand("speditor_ase_tree", id)
+				timer.Simple(0, rebuildTree)
+			end):SetChecked(mode == id)
+		end
+		if mode == "skeleton" then
+			local sub = m:AddSubMenu(L("ase_tree_show"))
+			sub:AddOption(L("ase_bone_nonphys"), function()
+				RunConsoleCommand("speditor_ase_nonphys", GetConVar("speditor_ase_nonphys"):GetBool() and "0" or "1")
+				timer.Simple(0, rebuildTree)
+			end):SetChecked(GetConVar("speditor_ase_nonphys"):GetBool())
+			sub:AddOption(L("ase_bone_merged"), function()
+				RunConsoleCommand("speditor_ase_merged", GetConVar("speditor_ase_merged"):GetBool() and "0" or "1")
+				timer.Simple(0, rebuildTree)
+			end):SetChecked(GetConVar("speditor_ase_merged"):GetBool())
+		end
 		m:AddSpacer()
 		m:AddOption(L("expand_all"), function() UI.ExpandTree(true) end)
 		m:AddOption(L("collapse_all"), function() UI.ExpandTree(false) end)
 		m:Open()
 	end
-	if UI.aseShowGroups == nil then UI.aseShowGroups = true end
 
 	local search = vgui.Create("DTextEntry", bar)
 	search:Dock(FILL)
@@ -298,13 +349,14 @@ function UI.BuildASE(body)
 	split:SetRight(right)
 	split:SetDividerWidth(5)
 	split:SetLeftMin(120)
-	split:SetRightMin(150)
+	split:SetRightMin(110)
 	split:SetLeftWidth(200)
 	local sized = false
 	split.Think = function(s)
 		if sized or s:GetWide() < 50 then return end
 		sized = true
-		s:SetLeftWidth(math.floor(s:GetWide() * 0.48))
+		-- the skeleton is deeper than the groups: its column is wider
+		s:SetLeftWidth(math.floor(s:GetWide() * (UI.AseTreeMode() == "skeleton" and 0.6 or 0.48)))
 		right:SetTopHeight(math.floor(math.max(right:GetTall(), 300) * 0.34))
 	end
 
@@ -781,6 +833,20 @@ function UI.BuildASE(body)
 		local scope = cur.scope
 		local faceGroup = string.match(scope, "^face:(.+)$")
 		local boneGroup = string.match(scope, "^bones:(.+)$")
+		local oneBone = tonumber(string.match(scope, "^bone:(%d+)$") or "")
+		if oneBone then
+			-- one bone of the skeleton tree, and the bones below it
+			local list, under = {}, { [oneBone] = true }
+			for _, b in ipairs(C.GetBoneList(ent)) do
+				if b.id == oneBone or under[b.parent] then
+					under[b.id] = true
+					list[#list + 1] = b
+				end
+			end
+			local g = UI.BoneGroupSFM(ent:GetBoneName(oneBone))
+			boneRows(ent, list, groupColor(g))
+			return
+		end
 
 		if (scope == "all" or scope == "eyes") and hasEyes(ent) then
 			if scope == "all" then ctrlHeader(L("grp_eyes")) end
@@ -910,6 +976,12 @@ function UI.BuildASE(body)
 			if obj.kind == "ragdoll" then
 				um:AddOption(L("pose_copy"), function() C.CopyPose(ent) end)
 				um:AddOption(L("pose_paste"), function() C.PastePose(ent) end)
+				-- a physical bone is selected: it can hold on to another bone (cl_gizmo.lua)
+				if C.selected == ent and C.selBone >= 0 then C.BoneLockMenu(m, ent, C.selBone) end
+			end
+			-- a model without physics: the animation its bone offsets are put on (cl_ui_props.lua)
+			if UI.IsPoseProp(ent) then
+				m:AddOption(L("bpose_title") .. "…", function() UI.OpenBasePose(ent) end):SetIcon("icon16/user_edit.png")
 			end
 			local skins = ent:SkinCount() or 1
 			if skins > 1 then
@@ -955,7 +1027,7 @@ function UI.BuildASE(body)
 
 	local treeSig = ""
 	local function signature()
-		local parts = { search:GetValue() or "", tostring(UI.aseShowGroups) }
+		local parts = { search:GetValue() or "", UI.AseTreeMode(), cvNonPhys:GetString(), cvMerged:GetString() }
 		for _, o in ipairs(C.BuildEntityList()) do
 			parts[#parts + 1] = table.concat({ IsValid(o.ent) and o.ent:EntIndex() or 0, o.name, tostring(o.hidden), tostring(o.locked),
 					IsValid(o.parent) and o.parent:EntIndex() or 0 }, ":")
@@ -971,9 +1043,79 @@ function UI.BuildASE(body)
 		return n
 	end
 
+	-- The skeleton under a model node: face and eyes first, then the bones in their
+	-- hierarchy (a bone without a shown parent hangs on the nearest shown ancestor),
+	-- then the models bonemerged onto it by other tools
+	function addSkeleton(node, ent)
+		local fg = flexGroupsOf(ent)
+		if next(fg) then addGroup(node, L("face"), COL.BLUE, ICONS.face, ent, "face") end
+		if hasEyes(ent) then addGroup(node, L("grp_eyes"), COL.BLUE, ICONS.eyes, ent, "eyes") end
+		local showPlain = cvNonPhys:GetBool()
+		local list = C.GetBoneList(ent)
+		local byId, shown = {}, {}
+		for _, b in ipairs(list) do byId[b.id] = b end
+		local nodes = {}
+		for _, b in ipairs(list) do
+			local kind = boneKind(ent, b)
+			if kind == "phys" or showPlain then
+				-- the nearest shown ancestor
+				local p = b.parent
+				while p and p >= 0 and not nodes[p] do p = byId[p] and byId[p].parent or -1 end
+				local parentNode = (p and p >= 0 and nodes[p]) or node
+				local g = UI.BoneGroupSFM(b.name)
+				local col = (string.sub(g, 1, 5) == "Right") and COL.RED or ((string.sub(g, 1, 4) == "Left") and COL.GREEN or COL.TEXT)
+				local n = parentNode:AddNode(shortBone(b.name), BONE_ICONS[kind])
+				UI.NodeColor(n, col)
+				n:SetTooltip(b.name .. "\n" .. L("ase_bone_" .. kind))
+				n.DoClick = function()
+					setScope(ent, "bone:" .. b.id, shortBone(b.name))
+					C.Select(ent, b.id)
+				end
+				n.DoRightClick = function()
+					n.DoClick()
+					if kind == "phys" and C.IsRagdoll(ent) then
+						local m = SPeditor.UI.Menu()
+						C.BoneLockMenu(m, ent, b.id)
+						m:Open()
+					end
+				end
+				-- the bone under the cursor is marked in the viewports
+				local label = n.Label
+				if IsValid(label) then
+					local think = label.Think
+					label.Think = function(s2)
+						if think then think(s2) end
+						if s2:IsHovered() then UI.TreeHover = { ent = ent, bone = b.id, t = RealTime() } end
+					end
+				end
+				nodes[b.id] = n
+				-- hands stay folded: five fingers of three bones each would push the tree far to the right
+				if not string.find(string.lower(b.name), "hand", 1, true) then shown[#shown + 1] = n end
+			end
+		end
+		-- expanded down to the hands and feet
+		for _, n in ipairs(shown) do n:SetExpanded(true) end
+		if cvMerged:GetBool() then
+			for _, ch in ipairs(ent:GetChildren()) do
+				if IsValid(ch) and not SPeditor.IsEditable(ch) and (ch:GetModel() or "") ~= ""
+					and not string.StartWith(ch:GetClass(), "manipulate_") then
+					local name = string.StripExtension(string.GetFileFromFilename(ch:GetModel()))
+					local mn = node:AddNode(name .. "  (" .. L("ase_merged") .. ")", "icon16/brick_link.png")
+					UI.NodeColor(mn, COL.DIM)
+					mn:SetTooltip(ch:GetClass() .. "\n" .. ch:GetModel())
+				end
+			end
+		end
+	end
+
 	function rebuildTree()
 		treeSig = signature()
 		tree:Clear()
+		local skeleton = UI.AseTreeMode() == "skeleton"
+		tree:SetIndentSize(skeleton and 9 or 12)
+		if skeleton and split:GetWide() > 50 and split:GetLeftWidth() < split:GetWide() * 0.58 then
+			split:SetLeftWidth(math.floor(split:GetWide() * 0.6))
+		end
 		nodesByEnt = {}
 		local q = string.lower(string.Trim(search:GetValue() or ""))
 
@@ -1000,7 +1142,10 @@ function UI.BuildASE(body)
 					objectMenu(obj)
 				end
 
-				if UI.aseShowGroups and isModel(ent) then
+				local mode = UI.AseTreeMode()
+				if mode == "skeleton" and isModel(ent) then
+					addSkeleton(node, ent)
+				elseif mode == "groups" and isModel(ent) then
 					local fg = flexGroupsOf(ent)
 					if next(fg) then
 						local face = addGroup(node, L("face"), COL.BLUE, ICONS.face, ent, "face")

@@ -44,6 +44,37 @@
     <li>Подходит любая модель: пропы, рэгдоллы, модели игроков и NPC из игры и из Workshop. Модели с физическим скелетом становятся позируемыми <strong>рэгдоллами</strong>, остальные — <strong>пропами</strong>, у которых тоже могут быть кости.</li>
     <li>В строке состояния — сколько моделей проиндексировано; список <em>All models</em> растёт, пока индексация идёт в фоне.</li>
   </ul>
+  <h3><span class="l-en">Addons and Games</span><span class="l-ru">Аддоны и игры</span> <span class="badge new">new</span></h3>
+  <div class="row">
+    <figure class="fit"><img src="img/a05_browser_addons.jpg" alt="Model Browser, Addons" style="--w:560px"></figure>
+    <div style="flex:1 1 260px;min-width:0">
+      <p class="l-en"><strong>Addons</strong> lists every Workshop subscription that has models, with their number. <em>Find an addon…</em> filters by name; the list can be sorted by name (A–Z, Z–A), newest or oldest subscriptions, recently updated, or most models. <strong>Games</strong> shows the models of mounted games.</p>
+      <p class="l-ru"><strong>Addons</strong> — все подписки Workshop, в которых есть модели, с их количеством. <em>Find an addon…</em> фильтрует по имени; порядок — по имени (A–Z, Z–A), новые или старые подписки, недавно обновлённые или больше всего моделей. <strong>Games</strong> — модели подключённых игр.</p>
+      <p class="l-en">The icons are the same as in the spawn menu. If one is broken, right-click it → <em>Render the icon again</em>.</p>
+      <p class="l-ru">Иконки те же, что в меню спавна. Если иконка битая — правый щелчок → <em>Render the icon again</em>.</p>
+    </div>
+  </div>
+
+  <h2><span class="l-en">Taking objects from the map</span><span class="l-ru">Объекты с карты</span> <span class="badge new">new</span></h2>
+  <div class="row">
+    <figure class="fit"><img src="img/a05_adopt.jpg" alt="Take objects from the map" style="--w:560px"></figure>
+    <div style="flex:1 1 260px;min-width:0">
+      <p class="l-en"><span class="ui">File → Take objects from the map</span> lists what stands on the map but is not in the scene yet:</p>
+      <p class="l-ru"><span class="ui">File → Take objects from the map</span> показывает то, что стоит на карте, но ещё не в сцене:</p>
+      <ul class="l-en">
+        <li>ragdolls posed with <strong>Ragdoll Mover</strong> or the physgun, and props;</li>
+        <li>models put on with <strong>Advanced Bonemerge</strong> or <strong>Easy Bonemerge</strong> — they come along with their model (the <em>With</em> column counts them);</li>
+        <li>lamps of <strong>Advanced Light Entities</strong>, <strong>Soft Lamps</strong> and the stock lamp tool.</li>
+      </ul>
+      <ul class="l-ru">
+        <li>рэгдоллы, поставленные <strong>Ragdoll Mover</strong> или физганом, и пропы;</li>
+        <li>модели, надетые через <strong>Advanced Bonemerge</strong> или <strong>Easy Bonemerge</strong>, — они переходят вместе со своей моделью (их считает колонка <em>With</em>);</li>
+        <li>лампы <strong>Advanced Light Entities</strong>, <strong>Soft Lamps</strong> и стандартного инструмента ламп.</li>
+      </ul>
+      <p class="l-en"><em>Take selected</em>, <em>Take all</em>; <em>Show</em> points the camera at the line. Ragdolls and props become ordinary editor objects. Lights and other addons' objects are moved, saved in the scene and duplicated with their own settings — the addons that made them must stay installed.</p>
+      <p class="l-ru"><em>Take selected</em>, <em>Take all</em>; <em>Show</em> наводит камеру на строку. Рэгдоллы и пропы становятся обычными объектами редактора. Свет и объекты других аддонов двигаются, сохраняются в сцене и дублируются со своими настройками — аддоны, которые их создали, должны оставаться установленными.</p>
+    </div>
+  </div>
 
   <h2><span class="l-en">The object tree</span><span class="l-ru">Дерево объектов</span></h2>
   <div class="row">
@@ -57,6 +88,16 @@
       <p class="l-ru">Правая колонка — элементы управления выделенным объектом: пресеты и слайдеры лица, направление взгляда, строки костей (<em>Bone - pos</em>, <em>- rot</em>, <em>- scale</em>) или настройки света и камеры.</p>
       <p class="l-en">The search field filters the tree. The gear button holds tree options (expand / collapse all).</p>
       <p class="l-ru">Поле поиска фильтрует дерево. Кнопка-шестерёнка — настройки дерева (развернуть / свернуть всё).</p>
+    </div>
+  </div>
+  <h3><span class="l-en">The skeleton view</span><span class="l-ru">Вид «скелет»</span> <span class="badge new">new</span></h3>
+  <div class="row">
+    <figure class="fit"><img src="img/a05_ase_skeleton.jpg" alt="Skeleton tree" style="--w:300px"></figure>
+    <div style="flex:1 1 300px;min-width:0">
+      <p class="l-en">Cog → <em>Tree: skeleton (as in Ragdoll Mover)</em> shows each character's bones in their real hierarchy instead of control groups. Physical bones and bones without physics have different icons; the right side is red, the left side green. <em>Skeleton shows</em> adds bones without a physics object and bonemerged models (under their model). <em>Tree: objects only</em> hides both.</p>
+      <p class="l-ru">Шестерёнка → <em>Tree: skeleton (as in Ragdoll Mover)</em> показывает кости каждого персонажа в их настоящей иерархии вместо групп управления. У физических костей и костей без физики разные значки; правая сторона красная, левая зелёная. <em>Skeleton shows</em> добавляет кости без физического объекта и модели на бонмёрдже (под своей моделью). <em>Tree: objects only</em> прячет и то, и другое.</p>
+      <p class="l-en">Click a bone to select it; the bone under the mouse is marked in the viewports. Right-click a bone to lock it to another bone (<a href="#posing">Posing</a>).</p>
+      <p class="l-ru">Щелчок по кости выделяет её; кость под мышью подсвечивается во вьюпортах. Правый щелчок по кости — прикрепить её к другой кости (<a href="#posing">Позы</a>).</p>
     </div>
   </div>
 
@@ -155,6 +196,14 @@
     <tr><td><kbd>3</kbd></td><td class="wrap"><span class="l-en"><strong>World / local axes.</strong> Local axes follow the object's own rotation.</span><span class="l-ru"><strong>Мировые / локальные оси.</strong> Локальные оси следуют повороту самого объекта.</span></td></tr>
     <tr><td><kbd>I</kbd></td><td class="wrap"><span class="l-en"><strong>Inverse kinematics.</strong> Move a hand or a foot and the whole arm or leg follows.</span><span class="l-ru"><strong>Инверсная кинематика.</strong> Двигайте кисть или стопу — рука или нога следует за ней.</span></td></tr>
   </table></div>
+  <h3><span class="l-en">Plane handles</span><span class="l-ru">Ручки плоскостей</span> <span class="badge new">new</span></h3>
+  <div class="row">
+    <figure class="fit"><img src="img/a05_gizmo_planes.jpg" alt="Move gizmo with plane handles" style="--w:520px"></figure>
+    <div style="flex:1 1 260px;min-width:0">
+      <p class="l-en">The Move gizmo has three small coloured squares between its axes. Drag one to move in two axes at once: the square lying flat moves along the floor, the upright ones along a wall — the third axis does not change.</p>
+      <p class="l-ru">У гизмо перемещения между осями есть три цветных квадратика. Тяните квадратик, чтобы двигать сразу по двум осям: лежащий — по полу, стоячие — вдоль стены; третья ось не меняется.</p>
+    </div>
+  </div>
 
   <h2><span class="l-en">Bones</span><span class="l-ru">Кости</span></h2>
   <div class="row">
@@ -168,9 +217,31 @@
       <p class="l-ru"><span class="ui">View → Toggle Skeleton (B)</span> прячет маркеры; <span class="ui">View → Bone size</span> делает их больше или меньше.</p>
     </div>
   </div>
-  <h3><span class="l-en">Scaling bones</span><span class="l-ru">Масштаб костей</span> <span class="badge new">new</span></h3>
+  <p class="l-en"><span class="badge new">new</span> A click on the body of the <em>selected</em> character picks the body part under the cursor — no need to hit the small markers.</p>
+  <p class="l-ru"><span class="badge new">new</span> Щелчок по телу <em>выделенного</em> персонажа выбирает часть тела под курсором — не нужно попадать в маленькие маркеры.</p>
+  <h3><span class="l-en">Scaling bones</span><span class="l-ru">Масштаб костей</span></h3>
   <p class="l-en">Select any bone and press <kbd>4</kbd> (or click its <em>- scale</em> row): a big head, long arms, a giant hand. In a0.3 the Scale tool worked only on bones without physics (fingers) and silently acted as Move on a hand or the head; a0.4 scales every bone.</p>
   <p class="l-ru">Выделите любую кость и нажмите <kbd>4</kbd> (или строку <em>- scale</em>): большая голова, длинные руки, огромная кисть. В a0.3 масштаб работал только на костях без физики (пальцах), а на кисти или голове молча превращался в перемещение; в a0.4 масштабируется любая кость.</p>
+
+  <h3><span class="l-en">IK keeps the feet planted</span><span class="l-ru">IK держит стопы на месте</span> <span class="badge new">new</span></h3>
+  <p class="l-en">With IK on, moving or turning the pelvis keeps both feet where they stand and bends the knees: a character crouches, leans or shifts its weight in one drag. Switch it off with <span class="ui">View → IK: keep the feet planted when the body moves</span>.</p>
+  <p class="l-ru">С включённым IK движение или поворот таза оставляет обе стопы на месте и сгибает колени: персонаж приседает, наклоняется или переносит вес одним движением. Выключается через <span class="ui">View → IK: keep the feet planted when the body moves</span>.</p>
+
+  <h3><span class="l-en">Locking a bone to another bone</span><span class="l-ru">Прикрепление кости к кости</span> <span class="badge new">new</span></h3>
+  <div class="row">
+    <figure class="fit"><img src="img/a05_lock_menu.jpg" alt="Lock R_Hand to bone menu" style="--w:380px"></figure>
+    <figure class="fit"><img src="img/a05_bone_lock.jpg" alt="Right hand locked to the left hand" style="--w:520px"><figcaption class="l-en"><b>The right hand locked to the left one:</b> move the left hand and both go together.</figcaption><figcaption class="l-ru"><b>Правая кисть прикреплена к левой:</b> двигаете левую — идут обе.</figcaption></figure>
+  </div>
+  <p class="l-en">Select a physical bone, for example the right hand, right-click → <em>Lock R_Hand to bone</em> and pick the bone it should hold on to — the left hand. From then on it follows that bone; with IK on it pulls its whole arm. Two hands on a rifle, a sword or a steering wheel stay together while you pose. <em>Unlock</em> and <em>Remove all bone locks of this model</em> are in the same menu (in the skeleton tree: right-click a bone). Locks are saved with the scene.</p>
+  <p class="l-ru">Выделите физическую кость, например правую кисть, правый щелчок → <em>Lock R_Hand to bone</em> и выберите кость, за которую ей держаться, — левую кисть. Теперь она следует за ней; с IK тянет за собой всю руку. Две руки на винтовке, мече или руле остаются вместе, пока вы ставите позу. <em>Unlock</em> и <em>Remove all bone locks of this model</em> — в том же меню (в дереве-скелете — правый щелчок по кости). Крепления сохраняются со сценой.</p>
+
+  <h2><span class="l-en">Models without physics</span><span class="l-ru">Модели без физики</span> <span class="badge new">new</span></h2>
+  <div class="row">
+    <figure class="fit"><img src="img/a05_base_pose.jpg" alt="Base pose window" style="--w:420px"><figcaption class="l-en"><b>Base pose:</b> the animation and the moment of it under your bone turns.</figcaption><figcaption class="l-ru"><b>Base pose:</b> анимация и её момент под вашими поворотами костей.</figcaption></figure>
+    <figure class="fit"><img src="img/a05_static_ik.jpg" alt="IK on a model without physics" style="--w:520px"><figcaption class="l-en"><b>IK on a model without physics:</b> the hand pulls the arm.</figcaption><figcaption class="l-ru"><b>IK на модели без физики:</b> кисть тянет руку.</figcaption></figure>
+  </div>
+  <p class="l-en">Some models have bones but no physics skeleton — for example characters ported from SFM as props. They now stand still and are posed by turning their bones: select a bone and rotate it, or turn on IK and drag a hand or a foot. Object menu → <em>Base pose</em> chooses an animation of the model and its moment; your bone turns are added on top. Model animations can be <a href="#sa-import">imported</a> onto such models too.</p>
+  <p class="l-ru">У некоторых моделей есть кости, но нет физического скелета — например, персонажи, перенесённые из SFM как пропы. Теперь они стоят неподвижно и позируются поворотом костей: выделите кость и поверните её или включите IK и тяните кисть или стопу. Меню объекта → <em>Base pose</em> выбирает анимацию модели и её момент; ваши повороты костей добавляются поверх. На такие модели тоже можно <a href="#sa-import">импортировать</a> анимации.</p>
 
   <h2><span class="l-en">Face and eyes</span><span class="l-ru">Лицо и глаза</span></h2>
   <ul class="l-en">
@@ -217,7 +288,7 @@
     <tr><th><span class="l-en">Choice</span><span class="l-ru">Пункт</span></th><th><span class="l-en">Result</span><span class="l-ru">Результат</span></th><th><span class="l-en">Use for</span><span class="l-ru">Для чего</span></th></tr>
     <tr><td><strong>R_Hand</strong>, <strong>Head1</strong>… </td><td class="wrap"><span class="l-en">Follows that bone rigidly, keeping its offset.</span><span class="l-ru">Жёстко следует за костью, сохраняя смещение.</span></td><td class="wrap"><span class="l-en">Weapons, props in hands, hats, helmets as separate props.</span><span class="l-ru">Оружие, предметы в руках, шляпы, шлемы-пропы.</span></td></tr>
     <tr><td><strong>(whole object)</strong></td><td class="wrap"><span class="l-en">Follows the object's root (pelvis of a character).</span><span class="l-ru">Следует за корнем объекта (тазом персонажа).</span></td><td class="wrap"><span class="l-en">A rider on a vehicle, a light on a car.</span><span class="l-ru">Наездник на транспорте, фара на машине.</span></td></tr>
-    <tr><td><strong>Wear</strong> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Every bone of the worn model follows the bone with the same name on the wearer (bone merge).</span><span class="l-ru">Каждая кость надетой модели следует за одноимённой костью носителя (bone merge).</span></td><td class="wrap"><span class="l-en">Clothing, armour, hair, accessories made for the same skeleton (e.g. ValveBiped).</span><span class="l-ru">Одежда, броня, волосы, аксессуары под тот же скелет (например, ValveBiped).</span></td></tr>
+    <tr><td><strong>Wear</strong></td><td class="wrap"><span class="l-en">Every bone of the worn model follows the bone with the same name on the wearer (bone merge).</span><span class="l-ru">Каждая кость надетой модели следует за одноимённой костью носителя (bone merge).</span></td><td class="wrap"><span class="l-en">Clothing, armour, hair, accessories made for the same skeleton (e.g. ValveBiped).</span><span class="l-ru">Одежда, броня, волосы, аксессуары под тот же скелет (например, ValveBiped).</span></td></tr>
   </table></div>
 
   <h2><span class="l-en">Putting clothes on a character</span><span class="l-ru">Как надеть одежду на персонажа</span></h2>

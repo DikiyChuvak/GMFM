@@ -50,8 +50,37 @@
       <p class="l-ru">Редактор запоминает раскладку в момент закрытия и восстанавливает её при следующем открытии.</p>
     </div>
   </div>
-  <div class="note l-en"><p><span class="badge new">new</span> On screens narrower than about 1430 px (1366×768, 1280×720, 1024×768) the default layout used to break: the left panel covered the viewport and windows became floating. Since a0.4 the layout fits to any screen, and a saved layout that does not fit the current screen is replaced by the default one.</p></div>
-  <div class="note l-ru"><p><span class="badge new">new</span> На экранах уже примерно 1430 px (1366×768, 1280×720, 1024×768) стандартная раскладка раньше ломалась: левая панель закрывала вьюпорт, окна становились плавающими. С a0.4 раскладка подстраивается под любой экран, а сохранённая раскладка, которая не помещается на текущий экран, заменяется стандартной.</p></div>
+  <div class="note l-en"><p>On screens narrower than about 1430 px (1366×768, 1280×720, 1024×768) the default layout used to break: the left panel covered the viewport and windows became floating. Since a0.4 the layout fits to any screen, and a saved layout that does not fit the current screen is replaced by the default one.</p></div>
+  <div class="note l-ru"><p>На экранах уже примерно 1430 px (1366×768, 1280×720, 1024×768) стандартная раскладка раньше ломалась: левая панель закрывала вьюпорт, окна становились плавающими. С a0.4 раскладка подстраивается под любой экран, а сохранённая раскладка, которая не помещается на текущий экран, заменяется стандартной.</p></div>
+
+  <h2><span class="l-en">Interface settings</span><span class="l-ru">Настройки интерфейса</span> <span class="badge new">new</span></h2>
+  <div class="row">
+    <figure class="fit"><img src="img/a05_ui_settings.jpg" alt="Interface settings, Appearance tab" style="--w:440px"></figure>
+    <div style="flex:1 1 280px;min-width:0">
+      <p class="l-en"><span class="ui">View → Interface settings…</span> gathers everything about the look of the editor. The <strong>Appearance</strong> tab:</p>
+      <p class="l-ru"><span class="ui">View → Interface settings…</span> собирает всё, что касается вида редактора. Вкладка <strong>Appearance</strong>:</p>
+      <dl class="defs l-en">
+        <dt>Theme</dt><dd>The same list as <span class="ui">View → Interface Theme</span> (<a href="#themes">Themes</a>).</dd>
+        <dt>Accent colour</dt><dd>The colour of selections, active tabs and highlights. <em>T</em> takes the theme's own colour, <em>…</em> picks any colour.</dd>
+        <dt>Font · Font size</dt><dd>Any font installed on your computer; a new font rebuilds the interface at once.</dd>
+        <dt>Window corners · Active tab mark</dt><dd>Square or rounded windows; how the tab you are on is marked.</dd>
+        <dt>Animations · Interface sounds</dt><dd>Windows and menus fade in and highlights glide; sounds play in themes that have them.</dd>
+      </dl>
+      <dl class="defs l-ru">
+        <dt>Theme</dt><dd>Тот же список, что в <span class="ui">View → Interface Theme</span> (<a href="#themes">Темы</a>).</dd>
+        <dt>Accent colour</dt><dd>Цвет выделения, активных вкладок и подсветки. <em>T</em> — собственный цвет темы, <em>…</em> — любой цвет.</dd>
+        <dt>Font · Font size</dt><dd>Любой шрифт, установленный на компьютере; новый шрифт сразу перестраивает интерфейс.</dd>
+        <dt>Window corners · Active tab mark</dt><dd>Прямые или скруглённые углы окон; как отмечается текущая вкладка.</dd>
+        <dt>Animations · Interface sounds</dt><dd>Окна и меню плавно появляются, подсветка скользит; звуки играют в темах, где они есть.</dd>
+      </dl>
+      <p class="l-en">The <strong>Notifications</strong> tab is described on the <a href="#themes">Themes and notifications</a> page. <em>Reset to defaults</em> brings back the stock look.</p>
+      <p class="l-ru">Вкладка <strong>Notifications</strong> описана на странице <a href="#themes">Темы и уведомления</a>. <em>Reset to defaults</em> возвращает стандартный вид.</p>
+    </div>
+  </div>
+  <h3><span class="l-en">When every window is closed</span><span class="l-ru">Если закрыты все окна</span> <span class="badge new">new</span></h3>
+  <figure class="mid"><img src="img/a05_empty.jpg" alt="Empty workspace card"></figure>
+  <p class="l-en">An editor with every window closed no longer looks broken: it shows a card with <em>Restore the default layout</em>.</p>
+  <p class="l-ru">Редактор, в котором закрыты все окна, больше не выглядит сломанным: он показывает карточку с кнопкой <em>Restore the default layout</em>.</p>
 </section>
 
 <!-- ============================================================ MENUS -->
@@ -69,6 +98,8 @@
       <dt>Render…</dt><dd>Opens the <a href="#render">Render window</a>.</dd>
       <dt>Autosave scene</dt><dd>A backup every 2.5 minutes; several older copies are kept.</dd>
       <dt>Clear Scene</dt><dd>Deletes every object (asks first).</dd>
+      <dt>Take objects from the map <span class="badge new">new</span></dt><dd>Ragdolls, props and lamps made with other tools come into the scene (<a href="#objects">more</a>).</dd>
+      <dt>Stop Motion Helper <span class="badge new">new</span></dt><dd>Added by SAeditor: import and export of SMH saves (<a href="#sa-import">more</a>).</dd>
       <dt>Render animation…</dt><dd>Added by SAeditor: the animation render.</dd>
       <dt>Exit Editor</dt><dd>Closes the editor.</dd>
     </dl>
@@ -78,6 +109,8 @@
       <dt>Render…</dt><dd>Открывает <a href="#render">окно рендера</a>.</dd>
       <dt>Autosave scene</dt><dd>Резервная копия каждые 2,5 минуты; хранятся несколько предыдущих копий.</dd>
       <dt>Clear Scene</dt><dd>Удаляет все объекты (с подтверждением).</dd>
+      <dt>Take objects from the map <span class="badge new">new</span></dt><dd>Рэгдоллы, пропы и лампы, сделанные другими инструментами, переходят в сцену (<a href="#objects">подробнее</a>).</dd>
+      <dt>Stop Motion Helper <span class="badge new">new</span></dt><dd>Добавлено SAeditor: импорт и экспорт сохранений SMH (<a href="#sa-import">подробнее</a>).</dd>
       <dt>Render animation…</dt><dd>Добавлено SAeditor: рендер анимации.</dd>
       <dt>Exit Editor</dt><dd>Закрыть редактор.</dd>
     </dl>
@@ -130,6 +163,8 @@
       <dt>Frame guides</dt><dd>Rule of thirds, center cross, safe areas, golden ratio.</dd>
       <dt>Frame aspect</dt><dd>The shape of the picture (Free, 2:3 poster, A-series and others).</dd>
       <dt>Interface Theme</dt><dd>See <a href="#themes">Themes</a>.</dd>
+      <dt>Interface settings… <span class="badge new">new</span></dt><dd>Accent, font, corners, animations, sounds, notifications (<a href="#workspace">more</a>).</dd>
+      <dt>IK: keep the feet planted <span class="badge new">new</span></dt><dd>Moving the pelvis with IK on keeps the feet in place (<a href="#posing">more</a>).</dd>
     </dl>
     <dl class="defs l-ru" style="flex:1 1 300px">
       <dt>Fullbright</dt><dd>Сцена без освещения — удобно строить в темноте.</dd>
@@ -141,6 +176,8 @@
       <dt>Frame guides</dt><dd>Правило третей, центр, безопасные зоны, золотое сечение.</dd>
       <dt>Frame aspect</dt><dd>Пропорции картинки (Free, 2:3 poster, A-series и другие).</dd>
       <dt>Interface Theme</dt><dd>См. <a href="#themes">Темы</a>.</dd>
+      <dt>Interface settings… <span class="badge new">new</span></dt><dd>Акцент, шрифт, углы, анимации, звуки, уведомления (<a href="#workspace">подробнее</a>).</dd>
+      <dt>IK: keep the feet planted <span class="badge new">new</span></dt><dd>При движении таза с IK стопы остаются на месте (<a href="#posing">подробнее</a>).</dd>
     </dl>
   </div>
 
@@ -150,8 +187,12 @@
     <p class="l-en" style="flex:1 1 300px"><strong>Hotkeys</strong> lists every key (also those of mods), <strong>Camera Settings…</strong> sets the work camera speed and FOV, <strong>About SPeditor</strong> shows the version, the news and the credits.</p>
     <p class="l-ru" style="flex:1 1 300px"><strong>Hotkeys</strong> — список всех клавиш (и клавиш модов), <strong>Camera Settings…</strong> — скорость и FOV рабочей камеры, <strong>About SPeditor</strong> — версия, новости и благодарности.</p>
   </div>
-  <div class="note l-en"><p><span class="badge new">new</span> In a0.3 the keys in the Edit menu were drawn with a square box instead of a gap (“Undo□Ctrl+Z”). Since a0.4 they are aligned on the right, as in the screenshot above.</p></div>
-  <div class="note l-ru"><p><span class="badge new">new</span> В a0.3 клавиши в меню Edit рисовались с квадратиком вместо отступа («Undo□Ctrl+Z»). С a0.4 они выровнены справа, как на скриншоте.</p></div>
+  <div class="row">
+    <figure class="fit"><img src="img/a05_help_lang.jpg" alt="Help → Interface language" style="--w:300px"></figure>
+    <figure class="fit"><img src="img/a05_files.jpg" alt="Where are my files" style="--w:440px"></figure>
+  </div>
+  <p class="l-en"><span class="badge new">new</span> <strong>Where are my files…</strong> shows the folders of scenes, renders and videos, poses, layouts and notification sounds, each with a <em>Copy path</em> button; the message after saving a scene also says where the file went. <strong>Interface language</strong> switches between English and Russian at once, without reopening the editor.</p>
+  <p class="l-ru"><span class="badge new">new</span> <strong>Where are my files…</strong> показывает папки сцен, рендеров и видео, поз, раскладок и звуков уведомлений, у каждой — кнопка <em>Copy path</em>; сообщение после сохранения сцены тоже говорит, куда лёг файл. <strong>Interface language</strong> переключает английский и русский сразу, без переоткрытия редактора.</p>
 </section>
 
 <!-- ============================================================ VIEWPORTS -->
@@ -187,7 +228,7 @@
     <p class="l-ru" style="flex:1 1 280px"><strong>Меню-шестерёнка</strong> вьюпорта: Focus selected, Camera Settings, Render, Exposure, Frame aspect, Hide viewport. Список камер выбирает, что показывает вьюпорт; во втором вьюпорте <strong>Auto</strong> показывает выделенную камеру сцены, а пока Primary смотрит через камеру — рабочий вид.</p>
   </div>
   <div class="row">
-    <figure class="fit"><img src="img/34_menu_guides.jpg" alt="Frame guides" style="--w:340px"></figure>
+    <figure class="fit"><img src="img/34_menu_guides.jpg" alt="View → Frame guides" style="--w:474px"></figure>
     <p class="l-en" style="flex:1 1 280px"><strong>Frame guides</strong> help with composition: rule of thirds, a center cross, safe areas and the golden ratio. They are drawn only in the viewport, never in the render.</p>
     <p class="l-ru" style="flex:1 1 280px"><strong>Сетки кадра</strong> помогают с композицией: правило третей, центральный крест, безопасные зоны и золотое сечение. Они рисуются только во вьюпорте, в рендер не попадают.</p>
   </div>

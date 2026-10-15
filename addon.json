@@ -10,6 +10,8 @@
 		"*.vcproj",
 		"*.svn*",
 		"themes/*",
+		"sounds/*",
+		"addons_ref/*",
 		"shaders/*",
 		"mods/*",
 		"text_*.txt",

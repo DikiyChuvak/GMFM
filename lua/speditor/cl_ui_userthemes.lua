@@ -33,6 +33,7 @@ local ROOT = "themes/"
 -- folders whose themes are already bundled with the addon (lua/speditor/skins)
 local BUILTIN = {
 	darkui = true, ecoui = true, gmod98 = true, lamdaui = true, oneshotui = true, steamderma2004 = true,
+	vanillaui = true, gmodxp = true,
 }
 
 UI.ThemeIssues = {}

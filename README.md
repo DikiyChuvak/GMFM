@@ -21,13 +21,14 @@ A poster, scene and animation studio inside Garry's Mod, in the style of Source 
 
 SPeditor turns Garry's Mod into a small film studio. It brings the working habits of Source Filmmaker — dockable windows, an Animation Set Editor, two viewports, a free work camera — to any map.
 
-- **Posing:** a gizmo for objects and every bone (fingers too), inverse kinematics, face flexes, eye target, skins and bodygroups, a pose library.
+- **Posing:** a gizmo for objects and every bone (fingers too), inverse kinematics that keeps the feet planted, bones locked to other bones, face flexes, eye target, skins and bodygroups, a pose library.
 - **Objects:** colour, opacity, texture replacement, stretching; attach a weapon to a hand; **wear** clothing that bends with the body.
 - **Lights:** point and spot lights with soft edges, penumbra, glow, a visible beam, light masks and 19 ready-made light kinds.
 - **Effects:** particle effects of the game and of Workshop addons, frozen at any moment.
 - **Render** to PNG or JPEG up to 3840 px: smoothing, depth of field, soft shadows, camera effects, Workshop shaders.
-- **SAeditor:** keyframe animation of everything in the scene, imported model animations, sounds and voices, video export.
-- Scenes, poses and layouts are saved; undo for every edit; eight interface themes; a mod system.
+- **SAeditor:** keyframe animation of everything in the scene (up to an hour), a curve editor, procedural breathing and blinking, imported model animations and Stop Motion Helper saves, sounds and voices, video at any frame rate up to 120 fps.
+- **Take objects from the map:** Ragdoll Mover poses, Advanced / Easy Bonemerge, Advanced Light Entities, Soft Lamps.
+- Scenes, poses and layouts are saved; undo for every edit; ten interface themes with your own accent and font; styled notifications; a mod system.
 
 **Install:** subscribe on the [Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435), or clone this repository into `garrysmod/addons/speditor`. **Open:** C menu → SPeditor, Q menu → SPeditor → Toggle editor, or `speditor_toggle` in the console. Read the [wiki](https://DikiyChuvak.github.io/SPeditor/) for everything else.
 
@@ -35,13 +36,14 @@ SPeditor turns Garry's Mod into a small film studio. It brings the working habit
 
 SPeditor превращает Garry's Mod в маленькую киностудию с приёмами работы из Source Filmmaker: стыкуемые окна, Animation Set Editor, два вьюпорта, свободная рабочая камера — на любой карте.
 
-- **Позы:** гизмо для объектов и каждой кости (включая пальцы), инверсная кинематика, мимика, взгляд, скины и бодигруппы, библиотека поз.
+- **Позы:** гизмо для объектов и каждой кости (включая пальцы), инверсная кинематика с неподвижными стопами, крепление кости к кости, мимика, взгляд, скины и бодигруппы, библиотека поз.
 - **Объекты:** цвет, прозрачность, замена текстур, растяжение; оружие в руке; **одежда**, которая гнётся вместе с телом.
 - **Свет:** точечный свет и прожекторы с мягким краем, полутенью, свечением, видимым лучом, масками и 19 готовыми видами.
 - **Эффекты:** частицы игры и аддонов Workshop, остановленные в любой момент.
 - **Рендер** в PNG или JPEG до 3840 px: сглаживание, глубина резкости, мягкие тени, эффекты камеры, шейдеры Workshop.
-- **SAeditor:** анимация ключевыми кадрами всего в сцене, импорт анимаций моделей, звуки и голоса, экспорт видео.
-- Сохранение сцен, поз и раскладок; отмена любого действия; восемь тем интерфейса; система модов.
+- **SAeditor:** анимация ключевыми кадрами всего в сцене (до часа), редактор кривых, процедурное дыхание и моргание, импорт анимаций моделей и сохранений Stop Motion Helper, звуки и голоса, видео с любой частотой кадров до 120 к/с.
+- **Объекты с карты:** позы Ragdoll Mover, Advanced / Easy Bonemerge, Advanced Light Entities, Soft Lamps.
+- Сохранение сцен, поз и раскладок; отмена любого действия; десять тем интерфейса со своим акцентом и шрифтом; настраиваемые уведомления; система модов.
 
 **Установка:** подпишитесь в [Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435) или склонируйте репозиторий в `garrysmod/addons/speditor`. **Запуск:** меню C → SPeditor, меню Q → SPeditor → Toggle editor или `speditor_toggle` в консоли. Всё остальное — в [вики](https://DikiyChuvak.github.io/SPeditor/).
 
@@ -62,7 +64,7 @@ The wiki lives in the `gh-pages` branch.
 
 ## Credits
 
-The bundled interface skins belong to their authors: [EcoUI](https://steamcommunity.com/sharedfiles/filedetails/?id=3255386124) — ELuminumG24, [Dark UI Spawnmenu](https://steamcommunity.com/sharedfiles/filedetails/?id=888392108) — AquaRex, [Steam 2004 Derma Skin](https://steamcommunity.com/sharedfiles/filedetails/?id=3321557660) — Maks1mDiamond, [GMod98 UI Skin](https://steamcommunity.com/sharedfiles/filedetails/?id=2972603323) — AwesomeGraczGie21, [OneShot - UI Skin](https://steamcommunity.com/sharedfiles/filedetails/?id=3659339920) — Flarky, [Lambda UI](https://steamcommunity.com/sharedfiles/filedetails/?id=2927713362) — 晦涩弗里曼. Workshop shader support was built with [GShader Library](https://steamcommunity.com/sharedfiles/filedetails/?id=3542644649) by Akabenko. The GMod theme is a copy of the standard Derma skin by Garry Newman. Source Filmmaker is a product of Valve; SPeditor is not affiliated with Valve.
+The bundled interface skins belong to their authors: [EcoUI](https://steamcommunity.com/sharedfiles/filedetails/?id=3255386124) — ELuminumG24, [Dark UI Spawnmenu](https://steamcommunity.com/sharedfiles/filedetails/?id=888392108) — AquaRex, [Steam 2004 Derma Skin](https://steamcommunity.com/sharedfiles/filedetails/?id=3321557660) — Maks1mDiamond, [GMod98 UI Skin](https://steamcommunity.com/sharedfiles/filedetails/?id=2972603323) — AwesomeGraczGie21, [OneShot - UI Skin](https://steamcommunity.com/sharedfiles/filedetails/?id=3659339920) — Flarky, [Lambda UI](https://steamcommunity.com/sharedfiles/filedetails/?id=2927713362) — 晦涩弗里曼, [Vanilla UI+ Derma Skin](https://steamcommunity.com/sharedfiles/filedetails/?id=3818111525) — Qude, [Windows XP Classic UI & HUD](https://steamcommunity.com/sharedfiles/filedetails/?id=3816955790) — w4da. Notification sounds: [Half Life UI Sounds](https://steamcommunity.com/sharedfiles/filedetails/?id=2790356494) — ВРАТАРb_DINAMO, [Windows XPerience UI Sounds](https://steamcommunity.com/sharedfiles/filedetails/?id=2979067313) — Jade. Workshop shader support was built with [GShader Library](https://steamcommunity.com/sharedfiles/filedetails/?id=3542644649) by Akabenko. The GMod theme is a copy of the standard Derma skin by Garry Newman. Source Filmmaker is a product of Valve; SPeditor is not affiliated with Valve.
 
 ## License
 

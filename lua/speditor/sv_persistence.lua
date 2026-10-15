@@ -36,7 +36,7 @@ local function withMeta(ent, d)
 	return d
 end
 
-function S.Serialize(ent)
+local function serializeBase(ent)
 	if S.IsLight(ent) then
 		local d = S.LightData(ent)
 		d.kind = "light"
@@ -74,6 +74,23 @@ function S.Serialize(ent)
 	})
 end
 
+-- An object as a scene item. Objects of other addons taken from the map (sv_adopt.lua)
+-- keep their own data through the duplicator; models put on with bonemerge tools
+-- come as "extras" of the object they are parented to.
+function S.Serialize(ent)
+	local it
+	if S.IsForeign and S.IsForeign(ent) then
+		local pos, ang = S.GetTransform(ent)
+		it = withMeta(ent, S.SerializeForeign(ent))
+		it.pos = SPeditor.VecToTable(pos)
+		it.ang = SPeditor.AngToTable(ang)
+	else
+		it = serializeBase(ent)
+	end
+	if it and S.CaptureExtras and not S.IsAux(ent) then it.extras = S.CaptureExtras(ent) end
+	return it
+end
+
 -- A ragdoll is spawned without rotation, then the appearance and the local
 -- pose are applied, and only then the whole ragdoll is moved to the saved root transform
 -- (see S.SpawnWithState in sv_speditor.lua).
@@ -105,6 +122,8 @@ function S.RestoreItem(ply, it)
 		local d = { pos = pos, ang = ang, src = it.src, name = it.fxname, file = it.file }
 		for _, f in ipairs(SPeditor.EffectFields) do d[f.key] = it[f.key] end
 		ent = S.SpawnEffect(ply, d)
+	elseif it.kind == "foreign" then
+		ent = S.RestoreForeign and S.RestoreForeign(ply, it, pos, ang)
 	elseif type(it.model) == "string" then
 		ent = S.SpawnWithState(ply, it.model, pos, ang, it.skin, it.bodygroups, it.pose, tonumber(it.scale), it.look)
 	end
@@ -115,6 +134,8 @@ function S.RestoreItem(ply, it)
 			ent:SetNW2String("SPeditor_Name", it.name)
 		end
 		S.SetFlags(ent, it.hidden, it.locked)
+		-- bonemerged models of other tools come back onto their object
+		if type(it.extras) == "table" and S.RestoreExtras then S.RestoreExtras(ply, ent, it.extras, it.extrasOff) end
 	end
 
 	-- a restored object keeps its former UID (the undo/redo history needs it)
@@ -225,7 +246,8 @@ S.Receive("SceneSave", function(ply)
 	if auto then
 		S.Notice(ply, "#scene_autosaved|" .. #items, 3)
 	else
-		S.Notice(ply, "#scene_saved|" .. name .. "|" .. #items, 2)
+		-- the folder is in the message: people kept asking where the scenes are on the disk
+		S.Notice(ply, "#scene_saved|" .. name .. "|" .. #items .. "|garrysmod/data/" .. scenePath(ply, name), 2)
 	end
 	S.SendSceneList(ply)
 end)

@@ -45,20 +45,79 @@ local MOD = SPeditor.Mod("saeditor")
 local SA  = MOD.SA
 local C   = SPeditor.Client
 
-local cvMode    = CreateClientConVar("saeditor_render_mode", "anim", true, false)     -- anim | frame
+local cvMode    = CreateClientConVar("saeditor_render_mode", "anim", true, false)     -- anim | frame | frames
+local cvFrames  = CreateClientConVar("saeditor_render_frames", "keys", true, false)   -- which frames in the "frames" mode
 local cvFormat  = CreateClientConVar("saeditor_render_format", "avi", true, false)    -- avi | jpeg | png
 local cvSettle  = CreateClientConVar("saeditor_render_settle", "0.3", true, false)    -- the longest wait for the scene, s
 local cvQuality = CreateClientConVar("saeditor_render_quality", "90", true, false)    -- JPEG quality of a video
 local cvSamples = CreateClientConVar("saeditor_render_samples", "50", true, false)    -- soft shadow / DoF passes, percent
+local cvFps     = CreateClientConVar("saeditor_render_fps", "0", true, false)         -- frames a second of the video, 0 — as the animation
 
 SA.RENDER_FORMATS = { "avi", "jpeg", "png" }
 -- The game's JPEG encoder has only five levels (measured in game on a 1280 x 876 frame):
 -- 100 — 1148 KB, 71..99 — 158 KB, 51..70 — 96 KB, 31..50 — 56 KB, up to 30 — 28 KB.
 SA.RENDER_QUALITIES = { 100, 90, 70, 50, 30 }
 SA.RENDER_SAMPLES = { 100, 50, 25 }
+-- Frames a second of the video. Above the animation's own rate the frames in between are
+-- taken between the keys (the server poses the scene at fractional frames), as in SFM.
+SA.RENDER_FPS = { 0, 24, 25, 30, 48, 50, 60, 120 }
+function SA.RenderFps()
+	local v = math.floor(cvFps:GetFloat())
+	return v > 0 and math.Clamp(v, 1, 240) or SA.fps
+end
 
 function SA.IsAnimated() return next(SA.tracks) ~= nil or #(SA.sounds or {}) > 0 end
-function SA.RenderMode() return cvMode:GetString() == "frame" and "frame" or "anim" end
+function SA.RenderMode()
+	local m = cvMode:GetString()
+	return (m == "frame" or m == "frames") and m or "anim"
+end
+
+-- Chosen frames (the "frames" mode of the Render window, "Only frames" of the animation render):
+--   keys / ключи           the frames that have a key on any track
+--   every N / каждый N / /N   every N-th frame from 0
+--   0, 12, 24-30           a list; a-b is a range, a-b/N every N-th inside it
+-- Returns a sorted list of frames inside the timeline (empty — nothing understood).
+function SA.ParseFrames(spec)
+	spec = string.lower(string.Trim(spec or ""))
+	local set = {}
+	local function add(f)
+		f = math.floor(tonumber(f) or -1)
+		if f >= 0 and f <= SA.frames then set[f] = true end
+	end
+	if spec == "keys" or spec == "ключи" or spec == "key" or spec == "ключ" then
+		for _, keys in pairs(SA.tracks) do
+			for _, k in ipairs(keys) do add(k.f) end
+		end
+	else
+		local n = string.match(spec, "^every%s*(%d+)$") or string.match(spec, "^каждый%s*(%d+)$") or string.match(spec, "^/%s*(%d+)$")
+		if n then
+			for f = 0, SA.frames, math.max(tonumber(n), 1) do add(f) end
+		else
+			for part in string.gmatch(spec, "[^,;%s]+") do
+				local a, b, st = string.match(part, "^(%d+)%-(%d+)/(%d+)$")
+				if not a then a, b = string.match(part, "^(%d+)%-(%d+)$") end
+				if a then
+					a, b = tonumber(a), tonumber(b)
+					if a > b then a, b = b, a end
+					for f = a, math.min(b, SA.frames), math.max(tonumber(st) or 1, 1) do add(f) end
+				else
+					add(part)
+				end
+			end
+		end
+	end
+	local out = {}
+	for f in pairs(set) do out[#out + 1] = f end
+	table.sort(out)
+	return out
+end
+function SA.RenderFramesSpec() return cvFrames:GetString() end
+
+-- the progress of a render job: frames done so far (counting the one in work) and their total
+function SA.RenderProgress(job)
+	if job.list then return math.min(job.idx, #job.list), #job.list end
+	return job.n + 1, job.total
+end
 function SA.RenderFormat()
 	local f = cvFormat:GetString()
 	return table.HasValue(SA.RENDER_FORMATS, f) and f or "avi"
@@ -220,7 +279,7 @@ local function openVideo(job)
 	local W, H = C.GetRenderSize()
 	local part = job.part or 1
 	job.path = RENDER_DIR .. "/" .. job.name .. (part > 1 and ("_part" .. part) or "") .. ".avi.dat"
-	local ok, avi = pcall(aviOpen, job.path, W, H, SA.fps, job.mix and SA.Audio.RATE or nil)
+	local ok, avi = pcall(aviOpen, job.path, W, H, job.fps, job.mix and SA.Audio.RATE or nil)
 	job.avi = ok and avi or nil
 	return job.avi ~= nil
 end
@@ -239,8 +298,11 @@ local function seek(job)
 end
 
 -- opts = { camera = Entity | "work" | nil, from, to, name, format = "avi" | "jpeg" | "png",
+--          frames = { chosen frames } instead of from–to (the files are named by the frame numbers;
+--          no sound track — the frames do not follow each other),
 --          settle = the longest wait for the scene in seconds, quality = JPEG quality,
 --          samples = percent of soft shadow / depth of field passes,
+--          fps = frames a second of the video (nil — saeditor_render_fps),
 --          onDone = function(ok, path, count) }
 function SA.RenderSequence(opts)
 	if SA.rendering then
@@ -248,14 +310,19 @@ function SA.RenderSequence(opts)
 		return false
 	end
 	opts = opts or {}
-	local from = math.Clamp(math.floor(opts.from or 0), 0, SA.frames)
-	local to   = math.Clamp(math.floor(opts.to or SA.frames), from, SA.frames)
+	local list = istable(opts.frames) and #opts.frames > 0 and opts.frames or nil
+	local from = math.Clamp(math.floor(list and list[1] or opts.from or 0), 0, SA.frames)
+	local to   = math.Clamp(math.floor(list and list[#list] or opts.to or SA.frames), from, SA.frames)
 	local name = SPeditor.SafeName(opts.name or "")
 	if name == "" then name = SPeditor.SafeName(C.sceneName or "") end
 	if name == "" then name = "anim_" .. os.date("%Y%m%d_%H%M%S") end
 	name = string.gsub(name, " ", "_")
 	local format = table.HasValue(SA.RENDER_FORMATS, opts.format) and opts.format or SA.RenderFormat()
+	-- video frame n shows animation frame from + n * step (a fraction when the video runs faster)
+	local fps = list and SA.fps or math.Clamp(math.floor(opts.fps or SA.RenderFps()), 1, 240)
+	local step = SA.fps / fps
 	local job = {
+		fps = fps, step = step, n = 0, total = math.floor((to - from) / step + 1e-6) + 1,
 		camera = opts.camera, from = from, to = to, cur = from, name = name, format = format,
 		frameFormat = (format == "png") and "png" or "jpeg", dir = name,
 		settle = math.Clamp(opts.settle or cvSettle:GetFloat(), 0.05, 3),
@@ -265,8 +332,9 @@ function SA.RenderSequence(opts)
 		quality = math.Clamp(math.floor(opts.quality or SA.RenderQuality()), 10, 100),
 		sampleScale = math.Clamp(opts.samples or SA.RenderSamples(), 10, 100) / 100,
 		onDone = opts.onDone, count = 0, state = "seek", wasFrame = SA.frame,
+		list = list, idx = 1,
 	}
-	if #(SA.sounds or {}) > 0 then job.mix = SA.Audio.NewMix(SA.sounds, SA.fps, from) end
+	if not list and #(SA.sounds or {}) > 0 then job.mix = SA.Audio.NewMix(SA.sounds, SA.fps, from, fps) end
 	ensureDir(RENDER_DIR)
 	if format == "avi" then
 		if not openVideo(job) then
@@ -312,13 +380,13 @@ function SA.StopRender(ok)
 		if job.avi then
 			SPeditor.Notify("#sa_rnd_done_avi|" .. job.count .. "|" .. path, 2)
 			local mb = job.bytes / 1048576
-			SPeditor.Notify("#sa_rnd_size|" .. string.format("%.1f", mb) .. "|" .. string.format("%.2f", mb / math.max(job.count / SA.fps, 0.04))
+			SPeditor.Notify("#sa_rnd_size|" .. string.format("%.1f", mb) .. "|" .. string.format("%.2f", mb / math.max(job.count / job.fps, 0.04))
 				.. "|" .. job.repeats, 0)
 			print("[SAeditor] " .. MOD:L("sa_rnd_mp4", job.name .. ".avi.dat", job.name))
 		else
 			SPeditor.Notify("#sa_rnd_done|" .. job.count .. "|" .. path, 2)
 			local ext = job.format == "jpeg" and "jpg" or "png"
-			print("[SAeditor] " .. MOD:L("sa_rnd_video", SA.fps, job.name, ext, job.wav and (" -i " .. job.name .. ".wav") or "", job.name))
+			print("[SAeditor] " .. MOD:L("sa_rnd_video", job.fps, job.name, ext, job.wav and (" -i " .. job.name .. ".wav") or "", job.name))
 			if job.wav then SPeditor.Notify("#sa_snd_wav|" .. job.name .. ".wav", 0) end
 		end
 		if job.mix and #job.mix.skipped > 0 then
@@ -336,7 +404,7 @@ local function frameSound(job)
 	local mix = job.mix
 	if not mix or #mix.clips == 0 then return end
 	local src = SPeditor.Export.Source(job.camera)
-	local pcm = SA.Audio.Mix(mix, job.cur - job.from, src.origin, src.angles)
+	local pcm = SA.Audio.Mix(mix, job.n, src.origin, src.angles)
 	if job.avi then
 		aviSound(job.avi, pcm)
 	elseif job.wav then
@@ -353,7 +421,7 @@ local function frameDone(job, ok)
 		return
 	end
 	job.count = job.count + 1
-	if job.cur >= job.to then
+	if (job.list and job.idx >= #job.list) or (not job.list and job.n + 1 >= job.total) then
 		SA.StopRender(true)
 		return
 	end
@@ -369,7 +437,13 @@ local function frameDone(job, ok)
 		end
 		SPeditor.Notify("#sa_rnd_part|" .. string.GetFileFromFilename(job.path), 0)
 	end
-	job.cur = job.cur + 1
+	if job.list then
+		job.idx = job.idx + 1
+		job.cur = job.list[job.idx]
+	else
+		job.n = job.n + 1
+		job.cur = math.min(job.from + job.n * job.step, job.to)
+	end
 	job.seek(job)         -- at once: waiting for the next Think would cost a game frame
 end
 
@@ -404,7 +478,9 @@ MOD:Hook("Think", function()
 		if Fx and waited < FX_WAIT and Fx.Busy() then return end
 		if (stable and waited >= job.minWait) or waited >= job.settle then
 			local accepted = SPeditor.Export.Render({
-				single = true, camera = job.camera, dir = job.dir, name = string.format("%s_%04d", job.name, job.cur - job.from + 1),
+				single = true, camera = job.camera, dir = job.dir,
+				-- chosen frames keep the number of their frame in the name
+				name = job.list and string.format("%s_f%04d", job.name, job.cur) or string.format("%s_%04d", job.name, job.n + 1),
 				format = job.frameFormat, quality = job.quality, sampleScale = job.sampleScale, silent = true,
 				-- "engine frame": the effects are settled by the previous frame of the animation
 				warmup = (job.count > 0) and 1 or nil,
@@ -424,9 +500,18 @@ end, "render")
 -- The editor's Render button: a scene with animation is rendered as a whole
 ---------------------------------------------------------------------
 MOD:Hook("SPeditor_RenderRequest", function(opts)
-	if not SA.IsAnimated() or SA.RenderMode() ~= "anim" then return end
+	local mode = SA.RenderMode()
+	if not SA.IsAnimated() or mode == "frame" then return end
 	local camera = opts.camera
 	if camera == "primary" then camera = nil end
-	SA.RenderSequence({ camera = camera, name = opts.name, onDone = opts.onDone })
+	local frames
+	if mode == "frames" then
+		frames = SA.ParseFrames(SA.RenderFramesSpec())
+		if #frames == 0 then
+			SPeditor.Notify("#sa_rnd_frames_none", 1)
+			return true
+		end
+	end
+	SA.RenderSequence({ camera = camera, name = opts.name, onDone = opts.onDone, frames = frames })
 	return true
 end, "render")

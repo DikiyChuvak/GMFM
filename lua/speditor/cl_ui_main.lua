@@ -315,12 +315,7 @@ function UI.Open()
 	top:SetSize(scrW, MENU_H)
 	top:MakePopup()
 	top:SetKeyboardInputEnabled(false)
-	top.Paint = function(_, w, h)
-		surface.SetDrawColor(COL.MENU)
-		surface.DrawRect(0, 0, w, h)
-		surface.SetDrawColor(COL.BORDER)
-		surface.DrawRect(0, h - 1, w, 1)
-	end
+	top.Paint = function(s, w, h) UI.PaintChrome("MenuBar", s, w, h) end
 	UI.TopBar = top
 
 	local function mbtn(label, build)
@@ -330,18 +325,20 @@ function UI.Open()
 		b:SetWide(select(1, surface.GetTextSize(label)) + 18)
 		b:SetText(label)
 		b:SetFont("SPeditor.Small")
-		b:SetTextColor(COL.TEXT)
-		b.Paint = function(s, w, h)
-			if s:IsHovered() then
-				surface.SetDrawColor(COL.SEL)
-				surface.DrawRect(0, 2, w, h - 4)
-			end
-		end
+		b:SetTextColor(UI.ChromeText("MenuBar") or COL.TEXT)
+		b.Paint = function(s, w, h) UI.PaintChrome("MenuButton", s, w, h) end
 		b.DoClick = function()
 			local m = SPeditor.UI.Menu()
 			build(m)
 			local x, y = b:LocalToScreen(0, b:GetTall())
 			m:Open(x, y)
+			-- the button stays highlighted while its menu is open
+			b._menuOpen = true
+			local rm = m.OnRemove
+			m.OnRemove = function(...)
+				if IsValid(b) then b._menuOpen = false end
+				if rm then return rm(...) end
+			end
 		end
 		return b
 	end
@@ -354,6 +351,8 @@ function UI.Open()
 		end):SetIcon("icon16/disk.png")
 		m:AddOption(L("load_scene") .. "…", function() Dock.ShowPage("scene") end):SetIcon("icon16/folder_go.png")
 		m:AddOption(L("act_render") .. "…", function() UI.OpenRenderDialog() end):SetIcon("icon16/picture_save.png")
+		m:AddOption(L("adopt_title") .. "…", function() UI.OpenAdopt() end):SetIcon("icon16/world_add.png")
+		m:AddOption(L("files_title") .. "…", function() UI.OpenFileLocations() end):SetIcon("icon16/folder_explore.png")
 		m:AddOption(L("autosave"), function()
 			RunConsoleCommand("speditor_autosave", GetConVar("speditor_autosave"):GetBool() and "0" or "1")
 		end):SetChecked(GetConVar("speditor_autosave"):GetBool())
@@ -445,6 +444,7 @@ function UI.Open()
 			elseif C.IsCamera(C.selected) then C.StartViewCamera(C.selected) end
 		end)
 		m:AddOption(L("view_space"), function() C.gizmo.space = (C.gizmo.space == "world") and "local" or "world" end)
+		m:AddOption(L("ik_feet"), function() C.gizmo.ikFeet = not C.gizmo.ikFeet end):SetChecked(C.gizmo.ikFeet and true or false)
 		m:AddSpacer()
 		local gsub = m:AddSubMenu(L("view_guides"))
 		for _, g in ipairs(C.GUIDE_LIST) do
@@ -460,11 +460,24 @@ function UI.Open()
 		SPeditor.Mods.RunMenu("view", m)
 		m:AddSpacer()
 		UI.BuildThemeMenu(m:AddSubMenu(L("menu_theme")))
+		m:AddOption(L("ui_settings") .. "…", function() UI.OpenSettings() end):SetIcon("icon16/cog.png")
 	end)
 
 	mbtn(L("menu_help"), function(m)
 		m:AddOption(L("help_hotkeys"), function() UI.OpenHotkeys() end):SetIcon("icon16/keyboard.png")
 		m:AddOption(L("cam_settings") .. "…", function() UI.OpenCameraSettings() end):SetIcon("icon16/camera_edit.png")
+		m:AddOption(L("files_title") .. "…", function() UI.OpenFileLocations() end):SetIcon("icon16/folder_explore.png")
+		-- the interface language: the editor is rebuilt in it at once
+		local lang, lo = m:AddSubMenu(L("qmenu_language"))
+		if lo and lo.SetIcon then lo:SetIcon("icon16/world.png") end
+		local cur = GetConVarString("speditor_language")
+		for _, l in ipairs({ { "en", "English" }, { "ru", "Русский" } }) do
+			lang:AddOption(l[2], function()
+				if cur == l[1] then return end
+				RunConsoleCommand("speditor_language", l[1])
+				timer.Simple(0.1, function() if C.active then UI.Rebuild() end end)
+			end):SetChecked(cur == l[1])
+		end
 		SPeditor.Mods.RunMenu("help", m)
 		m:AddSpacer()
 		m:AddOption(L("about_title"), function() UI.OpenAbout() end):SetIcon("icon16/information.png")
@@ -549,17 +562,15 @@ function UI.Open()
 	status:MakePopup()
 	status:SetKeyboardInputEnabled(false)
 	local fps, fpsT = 0, 0
-	status.Paint = function(_, w, h)
-		surface.SetDrawColor(COL.BG)
-		surface.DrawRect(0, 0, w, h)
-		surface.SetDrawColor(COL.BORDER)
-		surface.DrawRect(0, 0, w, 1)
+	status.Paint = function(s, w, h)
+		UI.PaintChrome("StatusBar", s, w, h)
+		local txt, dim = UI.ChromeText("StatusBar") or COL.TEXT, UI.ChromeText("StatusDim") or COL.DIM
 		if RealTime() > fpsT then
 			fpsT = RealTime() + 0.5
 			fps = math.Round(1 / math.max(RealFrameTime(), 0.0001))
 		end
 		local modText = SPeditor.Mods.StatusText()
-		draw.SimpleText(modText ~= "" and modText or L("hint_short"), "SPeditor.Small", 8, h / 2, modText ~= "" and COL.TEXT or COL.DIM,
+		draw.SimpleText(modText ~= "" and modText or L("hint_short"), "SPeditor.Small", 8, h / 2, modText ~= "" and txt or dim,
 			TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 		local rw, rh = C.GetRenderSize()
 		local sel = IsValid(C.selected) and C.DisplayName(C.selected) or "—"
@@ -567,9 +578,56 @@ function UI.Open()
 		draw.SimpleText(string.format("[ %s: %d  |  %s: %s  |  %s  |  fps: %d  |  %d×%d %s ]",
 				L("grp_models"), #C.Objects(), L("st_selected"), sel,
 				string.upper(L("st_" .. C.gizmo.mode)) .. (C.gizmo.ik and " + IK" or ""),
-				fps, rw, rh, SPeditor.LN("aspect_", C.GetAspectDef().name)), "SPeditor.Small", w - 8, h / 2, COL.DIM, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+				fps, rw, rh, SPeditor.LN("aspect_", C.GetAspectDef().name)), "SPeditor.Small", w - 8, h / 2, dim, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
 	end
 	UI.HintBar = status
+
+	-----------------------------------------------------------------
+	-- Every window closed: the screen is empty but for the menu bar, and people did not know
+	-- how to get the windows back — a card in the middle says it and restores the layout.
+	-----------------------------------------------------------------
+	local empty = UI.Skin(vgui.Create("DPanel"))
+	empty:SetSize(math.min(480, scrW - 40), 132)
+	empty:SetPos(math.floor(scrW / 2 - empty:GetWide() / 2), math.floor(scrH / 2 - 66))
+	empty:MakePopup()
+	empty:SetKeyboardInputEnabled(false)
+	empty:SetVisible(false)
+	empty.Paint = function(_, w, h)
+		draw.RoundedBox(4, 0, 0, w, h, COL.BORDER)
+		draw.RoundedBox(4, 1, 1, w - 2, h - 2, COL.BG)
+	end
+	local msg = vgui.Create("DLabel", empty)
+	msg:Dock(TOP)
+	msg:DockMargin(14, 12, 14, 0)
+	msg:SetFont("SPeditor.Small")
+	msg:SetTextColor(COL.TEXT)
+	msg:SetWrap(true)
+	msg:SetTall(64)
+	msg:SetContentAlignment(7)
+	msg:SetText(L("empty_hint"))
+	local restore = vgui.Create("DButton", empty)
+	restore:Dock(BOTTOM)
+	restore:DockMargin(14, 0, 14, 12)
+	restore:SetTall(26)
+	restore:SetText(L("empty_restore"))
+	restore:SetIcon("icon16/application_side_tree.png")
+	UI.StyleButton(restore, true, 3)
+	restore.DoClick = function() Dock.Reset("default") end
+	UI.EmptyHint = empty
+	hook.Add("Think", "SPeditor.EmptyHint", function()
+		if not IsValid(empty) then
+			hook.Remove("Think", "SPeditor.EmptyHint")
+			return
+		end
+		local any = false
+		for _, w in ipairs(Dock.windows) do
+			if IsValid(w) and w:IsVisible() and w.dockable then any = true break end
+		end
+		if any == empty:IsVisible() then
+			empty:SetVisible(not any)
+			if not any then empty:MoveToFront() end
+		end
+	end)
 
 	-- layout: the SFM preset, then the last saved one
 	Dock.Reset("default")
@@ -618,7 +676,7 @@ function UI.Close()
 	setKeyboardInput(false)
 	Dock.Clear()
 	if IsValid(UI.ColorPopup) then UI.ColorPopup:Remove() end
-	for _, name in ipairs({ "TopBar", "HintBar" }) do
+	for _, name in ipairs({ "TopBar", "HintBar", "EmptyHint" }) do
 		if IsValid(UI[name]) then UI[name]:Remove() end
 		UI[name] = nil
 	end
@@ -642,6 +700,8 @@ local REOPEN = {
 	shaders_win = function(arg) UI.OpenShaders(arg) end,
 	mods    = function() UI.OpenMods() end,
 	notifylog = function() UI.OpenNotifyLog() end,
+	uisettings = function(arg) UI.OpenSettings(arg) end,
+	adopt = function() UI.OpenAdopt() end,
 }
 
 function UI.Rebuild()

@@ -41,20 +41,42 @@
     <figure><img src="img/theme_oneshot.jpg" alt="OneShot UI"><figcaption>OneShot UI</figcaption></figure>
     <figure><img src="img/theme_lambdaui.jpg" alt="Lambda UI"><figcaption>Lambda UI</figcaption></figure>
     <figure><img src="img/theme_ecoui_ecoui_remaster.jpg" alt="EcoUI"><figcaption class="l-en">EcoUI (16 colour variants)</figcaption><figcaption class="l-ru">EcoUI (16 цветовых вариантов)</figcaption></figure>
+    <figure><img src="img/theme_vanillaui.jpg" alt="Vanilla UI"><figcaption class="l-en">Vanilla UI (navy and black) <span class="badge new">new</span></figcaption><figcaption class="l-ru">Vanilla UI (синяя и чёрная) <span class="badge new">new</span></figcaption></figure>
+    <figure><img src="img/theme_gmodxp.jpg" alt="GMod XP"><figcaption>GMod XP <span class="badge new">new</span></figcaption></figure>
   </div>
+  <p class="l-en"><span class="badge new">new</span> Vanilla UI and GMod XP also draw the editor's own windows, tabs, menu bar and status bar their own way. The accent colour, font and window corners are set in <a href="#workspace">Interface settings</a>.</p>
+  <p class="l-ru"><span class="badge new">new</span> Vanilla UI и GMod XP рисуют по-своему и собственные окна редактора, вкладки, строку меню и строку состояния. Цвет акцента, шрифт и углы окон задаются в <a href="#workspace">настройках интерфейса</a>.</p>
   <p class="l-en">There is also <em>Dark UI (Transparent)</em>. Your own Derma skin: put it as a folder into <code>garrysmod/addons/speditor/themes/</code> (create the folder if it is missing; a Lua file with <code>derma.DefineSkin</code>) and use <em>Rescan themes folder</em>.</p>
   <p class="l-ru">Есть ещё <em>Dark UI (Transparent)</em>. Свой скин Derma: положите его папкой в <code>garrysmod/addons/speditor/themes/</code> (создайте папку, если её нет; Lua-файл с <code>derma.DefineSkin</code>) и нажмите <em>Rescan themes folder</em>.</p>
   <h2><span class="l-en">Notifications</span><span class="l-ru">Уведомления</span></h2>
+  <p class="l-en">Saves, autosaves, renders, errors and hints appear as cards on the screen. <span class="ui">Windows → Notifications</span> has the quick switches and the <em>Message log</em> with every message of the session; <span class="badge new">new</span> the full settings are on the <strong>Notifications</strong> tab of <span class="ui">View → Interface settings…</span></p>
+  <p class="l-ru">Сохранения, автосохранения, рендеры, ошибки и подсказки появляются карточками на экране. В <span class="ui">Windows → Notifications</span> — быстрые переключатели и <em>Message log</em> со всеми сообщениями сессии; <span class="badge new">new</span> полные настройки — на вкладке <strong>Notifications</strong> в <span class="ui">View → Interface settings…</span></p>
   <div class="row">
-    <figure class="fit"><img src="img/31_toasts.jpg" alt="Notification cards" style="--w:400px"></figure>
-    <p class="l-en" style="flex:1 1 280px">Saves, autosaves, renders, errors and hints appear as cards in the bottom right corner. <span class="ui">Windows → Notifications</span>: show pop-ups, sound, display time, the <em>Message log</em> with every message of the session, and a test message.</p>
-    <p class="l-ru" style="flex:1 1 280px">Сохранения, автосохранения, рендеры, ошибки и подсказки появляются карточками в правом нижнем углу. <span class="ui">Windows → Notifications</span>: показывать всплывающие сообщения, звук, время показа, <em>Message log</em> со всеми сообщениями сессии и тестовое сообщение.</p>
+    <figure class="fit"><img src="img/a05_notify_settings.jpg" alt="Notification settings" style="--w:460px"></figure>
+    <div style="flex:1 1 280px;min-width:0">
+      <dl class="defs l-en">
+        <dt>Preview</dt><dd>A live card on top; <em>Info</em>, <em>Done</em>, <em>Error</em>, <em>Saved</em> show each kind, <em>Show on screen</em> plays it for real.</dd>
+        <dt>Style</dt><dd>By theme, SPeditor, Garry's Mod, Aero glass, Flat, Solid colour, Vanilla UI, Windows XP balloon, Console.</dd>
+        <dt>Animation</dt><dd>By style, Fade, Slide in, Garry's Mod spring, Drop, Pop.</dd>
+        <dt>Position · Width · Opacity</dt><dd>Six places on the screen; the size and transparency of the cards; how many cards at once; a line showing the time left.</dd>
+        <dt>Style editor</dt><dd>Your own style: colours, corners, icons. It is saved as JSON in <code>data/speditor/notify_styles/</code>; to share one in a Workshop addon put it into <code>data_static/speditor/notify_styles/</code>. Lua styles that draw everything themselves go into <code>lua/speditor_notify/</code>.</dd>
+        <dt>Sounds</dt><dd>Sets Half-Life, Windows XP and Aero7UI (Windows 7), your own folders in <code>data/speditor/sounds/&lt;set&gt;/</code>, <em>Custom</em> (a file per kind) and <em>Sounds from installed addons</em> — any addon's sounds, Workshop UI sound packs included. Any folder <code>sound/speditor/notify/&lt;set&gt;/</code> in an addon becomes a set.</dd>
+      </dl>
+      <dl class="defs l-ru">
+        <dt>Preview</dt><dd>Живая карточка сверху; <em>Info</em>, <em>Done</em>, <em>Error</em>, <em>Saved</em> показывают каждый вид, <em>Show on screen</em> — по-настоящему на экране.</dd>
+        <dt>Style</dt><dd>By theme, SPeditor, Garry's Mod, Aero glass, Flat, Solid colour, Vanilla UI, Windows XP balloon, Console.</dd>
+        <dt>Animation</dt><dd>By style, Fade, Slide in, Garry's Mod spring, Drop, Pop.</dd>
+        <dt>Position · Width · Opacity</dt><dd>Шесть мест на экране; размер и прозрачность карточек; сколько карточек сразу; полоска оставшегося времени.</dd>
+        <dt>Style editor</dt><dd>Свой стиль: цвета, углы, значки. Сохраняется как JSON в <code>data/speditor/notify_styles/</code>; чтобы поделиться через аддон Workshop, положите файл в <code>data_static/speditor/notify_styles/</code>. Lua-стили, которые рисуют всё сами, кладутся в <code>lua/speditor_notify/</code>.</dd>
+        <dt>Sounds</dt><dd>Наборы Half-Life, Windows XP и Aero7UI (Windows 7), свои папки в <code>data/speditor/sounds/&lt;набор&gt;/</code>, <em>Custom</em> (файл на каждый вид) и <em>Sounds from installed addons</em> — звуки любого аддона, включая паки звуков интерфейса из Workshop. Любая папка <code>sound/speditor/notify/&lt;набор&gt;/</code> в аддоне становится набором.</dd>
+      </dl>
+    </div>
   </div>
   <h2><span class="l-en">About</span><span class="l-ru">О программе</span></h2>
   <div class="row">
-    <figure class="fit"><img src="img/27_about.jpg" alt="About SPeditor" style="--w:420px"></figure>
-    <p class="l-en" style="flex:1 1 260px"><span class="ui">Help → About SPeditor</span>: the version, what is new in it, the list of features and the authors of the bundled skins (click a name to open its Workshop page, right-click to copy the link).</p>
-    <p class="l-ru" style="flex:1 1 260px"><span class="ui">Help → About SPeditor</span>: версия, что в ней нового, список возможностей и авторы встроенных скинов (щелчок по имени открывает страницу в Workshop, правый щелчок копирует ссылку).</p>
+    <figure class="fit"><img src="img/a05_about.jpg" alt="About SPeditor" style="--w:460px"></figure>
+    <p class="l-en" style="flex:1 1 260px"><span class="ui">Help → About SPeditor</span>: the version, what is new in it, the list of features and the authors of the bundled skins and sound sets (click a name to open its Workshop page, right-click to copy the link).</p>
+    <p class="l-ru" style="flex:1 1 260px"><span class="ui">Help → About SPeditor</span>: версия, что в ней нового, список возможностей и авторы встроенных скинов и наборов звуков (щелчок по имени открывает страницу в Workshop, правый щелчок копирует ссылку).</p>
   </div>
 </section>
 
@@ -93,6 +115,7 @@
     <tr><th colspan="2"><span class="l-en">Selection and camera</span><span class="l-ru">Выделение и камера</span></th></tr>
     <tr><td><kbd>LMB</kbd></td><td class="wrap"><span class="l-en">Select object / bone</span><span class="l-ru">Выделить объект / кость</span></td></tr>
     <tr><td><kbd>Ctrl</kbd> + <kbd>LMB</kbd></td><td class="wrap"><span class="l-en">Add to / remove from selection</span><span class="l-ru">Добавить к выделению / убрать</span></td></tr>
+    <tr><td><kbd>LMB</kbd> <span class="l-en">on the selected character</span><span class="l-ru">по выделенному персонажу</span></td><td class="wrap"><span class="l-en">Select the body part under the cursor</span><span class="l-ru">Выделить часть тела под курсором</span> <span class="badge new">new</span></td></tr>
     <tr><td><kbd>RMB</kbd> <span class="l-en">(short click)</span><span class="l-ru">(короткий щелчок)</span></td><td class="wrap"><span class="l-en">Object menu</span><span class="l-ru">Меню объекта</span></td></tr>
     <tr><td><kbd>RMB</kbd> + <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>Q</kbd><kbd>E</kbd></td><td class="wrap"><span class="l-en">Fly the work camera (Q down, E up, Shift faster, Ctrl slower)</span><span class="l-ru">Полёт рабочей камеры (Q вниз, E вверх, Shift быстрее, Ctrl медленнее)</span></td></tr>
     <tr><td><kbd>Alt</kbd> + <kbd>LMB</kbd></td><td class="wrap"><span class="l-en">Orbit around the selection</span><span class="l-ru">Облёт вокруг выделения</span></td></tr>
@@ -118,6 +141,8 @@
     <tr><th colspan="2">SAeditor</th></tr>
     <tr><td><kbd>Space</kbd></td><td class="wrap"><span class="l-en">Play / pause the animation</span><span class="l-ru">Воспроизвести / пауза</span></td></tr>
     <tr><td><kbd>K</kbd></td><td class="wrap"><span class="l-en">Set a key for the selection</span><span class="l-ru">Ключ для выделения</span></td></tr>
+    <tr><td><kbd>Shift</kbd> + <kbd>K</kbd></td><td class="wrap"><span class="l-en">Set a face key for the selection</span><span class="l-ru">Ключ лица для выделения</span> <span class="badge new">new</span></td></tr>
+    <tr><td><kbd>Ctrl</kbd> / <kbd>Shift</kbd> + <span class="l-en">wheel on the timeline</span><span class="l-ru">колесо на таймлайне</span></td><td class="wrap"><span class="l-en">Zoom the timeline / scroll it in time</span><span class="l-ru">Масштаб таймлайна / прокрутка по времени</span> <span class="badge new">new</span></td></tr>
     <tr><td><kbd>,</kbd> / <kbd>.</kbd></td><td class="wrap"><span class="l-en">Previous / next frame</span><span class="l-ru">Предыдущий / следующий кадр</span></td></tr>
     <tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td class="wrap"><span class="l-en">First / last frame</span><span class="l-ru">Первый / последний кадр</span></td></tr>
   </table></div>
@@ -142,7 +167,7 @@
     <tr><th><span class="l-en">Variable</span><span class="l-ru">Переменная</span></th><th><span class="l-en">Meaning</span><span class="l-ru">Значение</span></th></tr>
     <tr><td><code>speditor_access</code></td><td class="wrap"><span class="l-en">Server: <code>admin</code> | <code>superadmin</code> | <code>all</code></span><span class="l-ru">Сервер: <code>admin</code> | <code>superadmin</code> | <code>all</code></span></td></tr>
     <tr><td><code>speditor_language</code></td><td class="wrap"><code>en</code> | <code>ru</code></td></tr>
-    <tr><td><code>speditor_theme</code></td><td class="wrap"><span class="l-en">Interface theme id (speditor, gmod, darkui, steam2004, gmod98, oneshot, lambdaui, ecoui_…)</span><span class="l-ru">Id темы (speditor, gmod, darkui, steam2004, gmod98, oneshot, lambdaui, ecoui_…)</span></td></tr>
+    <tr><td><code>speditor_theme</code></td><td class="wrap"><span class="l-en">Interface theme id (speditor, gmod, darkui, steam2004, gmod98, oneshot, lambdaui, ecoui_…, vanillaui, vanillaui_black, gmodxp)</span><span class="l-ru">Id темы (speditor, gmod, darkui, steam2004, gmod98, oneshot, lambdaui, ecoui_…, vanillaui, vanillaui_black, gmodxp)</span></td></tr>
     <tr><td><code>speditor_autosave</code></td><td class="wrap"><span class="l-en">Autosave every 2.5 minutes (0/1)</span><span class="l-ru">Автосохранение каждые 2,5 минуты (0/1)</span></td></tr>
     <tr><td><code>speditor_aspect</code></td><td class="wrap"><span class="l-en">Frame aspect</span><span class="l-ru">Пропорции кадра</span></td></tr>
     <tr><td><code>speditor_render_side</code> · <code>_custom</code> · <code>_w</code> · <code>_h</code></td><td class="wrap"><span class="l-en">Render size: the long side, or custom width and height</span><span class="l-ru">Размер рендера: длинная сторона или своя ширина и высота</span></td></tr>
@@ -157,8 +182,14 @@
     <tr><td><code>speditor_shadows</code> · <code>speditor_shadow_quality</code> · <code>_max</code> · <code>_dist</code> · <code>_softscale</code> · <code>_slope</code></td><td class="wrap"><span class="l-en">The Shadows tab</span><span class="l-ru">Вкладка Shadows</span></td></tr>
     <tr><td><code>speditor_mapshadow*</code></td><td class="wrap"><span class="l-en">Map prop shadows: override, length, colour, pitch, yaw, off</span><span class="l-ru">Тени пропов карты: замена, длина, цвет, наклон, направление, выкл.</span></td></tr>
     <tr><td><code>speditor_notify</code> · <code>_sound</code> · <code>_time</code></td><td class="wrap"><span class="l-en">Notifications</span><span class="l-ru">Уведомления</span></td></tr>
+    <tr><td><code>speditor_notify_style</code> · <code>_anim</code> · <code>_pos</code> · <code>_width</code> · <code>_opacity</code> · <code>_max</code> · <code>_bar</code> · <code>_soundset</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Look of the notifications: style, animation, place, width, opacity, cards at once, time-left line, sound set</span><span class="l-ru">Вид уведомлений: стиль, анимация, место, ширина, прозрачность, карточек сразу, полоска времени, набор звуков</span></td></tr>
+    <tr><td><code>speditor_ui_accent</code> · <code>_font</code> · <code>_fontsize</code> · <code>_corners</code> · <code>_tabstyle</code> · <code>_anim</code> · <code>_sounds</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Interface settings</span><span class="l-ru">Настройки интерфейса</span></td></tr>
+    <tr><td><code>speditor_ase_tree</code> · <code>speditor_ase_nonphys</code> · <code>speditor_ase_merged</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Object tree: groups / skeleton / objects only; the skeleton shows bones without physics, bonemerged models</span><span class="l-ru">Дерево объектов: группы / скелет / только объекты; скелет показывает кости без физики, модели на бонмёрдже</span></td></tr>
+    <tr><td><code>speditor_browser_sort</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Order of the addons in the Model Browser</span><span class="l-ru">Порядок аддонов в браузере моделей</span></td></tr>
+    <tr><td><code>speditor_ragdoll_guard</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Server: hold the pose of the editor's ragdolls against addons that unfreeze them (1 / 0)</span><span class="l-ru">Сервер: держать позу рэгдоллов редактора против аддонов, которые их размораживают (1 / 0)</span></td></tr>
     <tr><td><code>speditor_mods_off</code></td><td class="wrap"><span class="l-en">Mods switched off</span><span class="l-ru">Выключенные моды</span></td></tr>
-    <tr><td><code>saeditor_render_mode</code> · <code>_format</code> · <code>_quality</code> · <code>_samples</code> · <code>_settle</code></td><td class="wrap"><span class="l-en">Animation render: whole / frame, avi / jpeg / png, video size, passes, longest wait for the scene</span><span class="l-ru">Рендер анимации: вся / кадр, avi / jpeg / png, размер видео, проходы, максимальное ожидание сцены</span></td></tr>
+    <tr><td><code>saeditor_render_mode</code> · <code>_format</code> · <code>_quality</code> · <code>_samples</code> · <code>_settle</code></td><td class="wrap"><span class="l-en">Animation render: anim / frame / frames (chosen), avi / jpeg / png, video size, passes, longest wait for the scene</span><span class="l-ru">Рендер анимации: anim / frame / frames (выбранные), avi / jpeg / png, размер видео, проходы, максимальное ожидание сцены</span></td></tr>
+    <tr><td><code>saeditor_render_fps</code> · <code>saeditor_render_frames</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Video frame rate (0 — as the animation); which frames to render in the chosen-frames mode</span><span class="l-ru">Частота кадров видео (0 — как у анимации); какие кадры снимать в режиме выбранных кадров</span></td></tr>
   </table></div>
 </section>
 
@@ -189,16 +220,32 @@
   <p class="l-ru">Исправлено в a0.4: пальцы импортируются как смещения костей. После обновления импортируйте анимацию заново.</p>
 
   <h3><span class="l-en">Limbs cannot be moved / snap back</span><span class="l-ru">Конечности не двигаются / возвращаются назад</span></h3>
-  <p class="l-en">Usually an addon that controls ragdolls (active ragdolls, Fedhoria and similar). Disable it while you use the editor.</p>
-  <p class="l-ru">Обычно это аддон, управляющий рэгдоллами (активные рэгдоллы, Fedhoria и подобные). Отключите его на время работы в редакторе.</p>
+  <p class="l-en">Usually an addon that controls ragdolls (active ragdolls, Fedhoria and similar). <span class="badge new">new</span> Since a0.5 SPeditor holds the pose of its ragdolls while the editor is open (<code>speditor_ragdoll_guard 0</code> turns this off). If a limb still moves by itself, disable that addon while you use the editor.</p>
+  <p class="l-ru">Обычно это аддон, управляющий рэгдоллами (активные рэгдоллы, Fedhoria и подобные). <span class="badge new">new</span> С a0.5 SPeditor держит позу своих рэгдоллов, пока редактор открыт (<code>speditor_ragdoll_guard 0</code> отключает это). Если конечность всё равно двигается сама, отключите этот аддон на время работы в редакторе.</p>
+
+  <h3><span class="l-en">After importing an animation the neck looks stretched</span><span class="l-ru">После импорта анимации шея растянута</span></h3>
+  <p class="l-en">Fixed in a0.5: the neck, the top of the spine and the clavicles keep the ragdoll's shape. Import the animation again.</p>
+  <p class="l-ru">Исправлено в a0.5: шея, верх позвоночника и ключицы сохраняют форму рэгдолла. Импортируйте анимацию заново.</p>
+
+  <h3><span class="l-en">I posed a ragdoll with Ragdoll Mover / put on a model with Bonemerge — can the editor use it?</span><span class="l-ru">Я поставил рэгдолл через Ragdoll Mover / надел модель через Bonemerge — редактор может это взять?</span></h3>
+  <p class="l-en">Yes, since a0.5: <span class="ui">File → Take objects from the map</span>. See <a href="#objects">Objects</a>.</p>
+  <p class="l-ru">Да, с a0.5: <span class="ui">File → Take objects from the map</span>. См. <a href="#objects">Объекты</a>.</p>
+
+  <h3><span class="l-en">A model has bones but is not a ragdoll — can I pose it?</span><span class="l-ru">У модели есть кости, но это не рэгдолл — можно её позировать?</span></h3>
+  <p class="l-en">Yes, since a0.5: it stands still and its bones turn; IK works on hands and feet; <em>Base pose</em> picks its animation. See <a href="#posing">Models without physics</a>.</p>
+  <p class="l-ru">Да, с a0.5: она стоит неподвижно, её кости поворачиваются; IK работает на кистях и стопах; <em>Base pose</em> выбирает её анимацию. См. <a href="#posing">Модели без физики</a>.</p>
+
+  <h3><span class="l-en">How long can an animation be? Can the video be 60 fps?</span><span class="l-ru">Какой длины может быть анимация? Можно видео в 60 к/с?</span></h3>
+  <p class="l-en">Since a0.5 an animation can be up to an hour long, and the video has its own frame rate up to 120 fps: a 24 fps animation renders as smooth 60 fps. See <a href="#sa-render">Video</a>.</p>
+  <p class="l-ru">С a0.5 анимация может длиться до часа, а у видео своя частота кадров до 120 к/с: анимация на 24 к/с рендерится плавными 60 к/с. См. <a href="#sa-render">Видео</a>.</p>
 
   <h3><span class="l-en">Do custom models and Workshop ragdolls work?</span><span class="l-ru">Работают ли свои модели и рэгдоллы из Workshop?</span></h3>
   <p class="l-en">Yes, since the first alpha. Find them in the Model Browser or type the path into <em>Spawn by path</em>. Models made as SFM “ragdolls” but ported as props can still be posed bone by bone with the gizmo.</p>
   <p class="l-ru">Да, с первой альфы. Найдите их в браузере моделей или введите путь в <em>Spawn by path</em>. Модели, сделанные как «рэгдоллы» SFM, но перенесённые как пропы, всё равно можно позировать по костям гизмо.</p>
 
   <h3><span class="l-en">Where are my scenes and renders?</span><span class="l-ru">Где мои сцены и рендеры?</span></h3>
-  <p class="l-en">In <code>garrysmod/data/speditor/</code>. See <a href="#install">Where your files are</a>.</p>
-  <p class="l-ru">В <code>garrysmod/data/speditor/</code>. См. <a href="#install">Где лежат ваши файлы</a>.</p>
+  <p class="l-en">In <code>garrysmod/data/speditor/</code>. <span class="ui">Help → Where are my files…</span> shows every folder and copies its path. See <a href="#install">Where your files are</a>.</p>
+  <p class="l-ru">В <code>garrysmod/data/speditor/</code>. <span class="ui">Help → Where are my files…</span> показывает все папки и копирует путь. См. <a href="#install">Где лежат ваши файлы</a>.</p>
 
   <h3><span class="l-en">Can I save the animation as a video?</span><span class="l-ru">Можно сохранить анимацию как видео?</span></h3>
   <p class="l-en">Yes: Render window → <em>The whole animation</em> → <em>AVI video</em>. Remove <code>.dat</code> from the file name. For MP4 use the ffmpeg command printed in the console. See <a href="#sa-render">Video</a>.</p>
@@ -225,16 +272,41 @@
   <p class="l-ru">Отметьте <em>Engine frame</em> в окне рендера и включите эффект в <span class="ui">Windows → Addon shaders</span>.</p>
 
   <h3><span class="l-en">Is it compatible with Stop Motion Helper, Portal Gun, StormFox?</span><span class="l-ru">Совместим ли со Stop Motion Helper, Portal Gun, StormFox?</span></h3>
-  <p class="l-en">Not tested yet. Please report what you find in the Workshop discussions.</p>
-  <p class="l-ru">Пока не проверялось. Пожалуйста, сообщайте о результатах в обсуждениях Workshop.</p>
+  <p class="l-en">Stop Motion Helper: since a0.5 its saves can be taken into SAeditor and written back (<a href="#sa-import">Stop Motion Helper</a>). Portal Gun and StormFox are not tested yet — please report what you find in the Workshop discussions.</p>
+  <p class="l-ru">Stop Motion Helper: с a0.5 его сохранения можно забрать в SAeditor и записать обратно (<a href="#sa-import">Stop Motion Helper</a>). Portal Gun и StormFox пока не проверялись — пожалуйста, сообщайте о результатах в обсуждениях Workshop.</p>
 </section>
 
 <!-- ============================================================ CHANGELOG -->
 <section class="page" id="pg-changelog" data-group="ref" data-en="What's new" data-ru="Что нового">
   <h1><span class="l-en">What's new</span><span class="l-ru">Что нового</span></h1>
-  <h2>a0.4 <span class="badge new">new</span></h2>
+  <h2>a0.5 <span class="badge new">new</span></h2>
   <p class="l-en">Made from players' feedback in the Workshop comments.</p>
   <p class="l-ru">Сделано по отзывам игроков в комментариях Workshop.</p>
+  <ul class="l-en">
+    <li><strong>Interface settings:</strong> accent colour, font and size, window corners, tab mark, animations, sounds; two new themes, Vanilla UI and GMod XP (<a href="#workspace">more</a>).</li>
+    <li><strong>Notifications:</strong> eight styles, animations, six places, a style editor, sound sets and sounds from any addon (<a href="#themes">more</a>).</li>
+    <li><strong>Take objects from the map:</strong> Ragdoll Mover poses, Advanced / Easy Bonemerge, Advanced Light Entities, Soft Lamps, stock lamps (<a href="#objects">more</a>).</li>
+    <li><strong>Posing:</strong> plane handles on the Move gizmo, IK that keeps the feet planted, bones locked to other bones, a click on the body picks the bone, models without physics can be posed (<a href="#posing">more</a>).</li>
+    <li><strong>Skeleton view</strong> of the object tree, as in Ragdoll Mover (<a href="#objects">more</a>).</li>
+    <li><strong>Model Browser:</strong> Addons with sorting and search, Games, spawn-menu icons (<a href="#objects">more</a>).</li>
+    <li><strong>SAeditor:</strong> animations up to an hour long with a zoomable timeline; face keys; Speed up / Slow down motion; a curve editor; procedural breathing and blinking; Stop Motion Helper import and export; sound fades; adding several sounds at once (<a href="#sa-basics">more</a>, <a href="#sa-curves">curves</a>).</li>
+    <li><strong>Video:</strong> its own frame rate up to 120 fps (a 24 fps animation as smooth 60 fps) and rendering only chosen frames (<a href="#sa-render">more</a>).</li>
+    <li><strong>Help:</strong> Where are my files, Interface language switched at once, a card when every window is closed (<a href="#menus">more</a>).</li>
+    <li>Fixed: an imported animation stretched the neck and shoulders; ragdolls taken over by other addons; windows shrinking by a pixel at every layout save.</li>
+  </ul>
+  <ul class="l-ru">
+    <li><strong>Настройки интерфейса:</strong> цвет акцента, шрифт и размер, углы окон, метка вкладки, анимации, звуки; две новые темы — Vanilla UI и GMod XP (<a href="#workspace">подробнее</a>).</li>
+    <li><strong>Уведомления:</strong> восемь стилей, анимации, шесть мест, конструктор стилей, наборы звуков и звуки любого аддона (<a href="#themes">подробнее</a>).</li>
+    <li><strong>Объекты с карты:</strong> позы Ragdoll Mover, Advanced / Easy Bonemerge, Advanced Light Entities, Soft Lamps, стандартные лампы (<a href="#objects">подробнее</a>).</li>
+    <li><strong>Позы:</strong> ручки плоскостей у гизмо перемещения, IK с неподвижными стопами, крепление кости к кости, щелчок по телу выбирает кость, позирование моделей без физики (<a href="#posing">подробнее</a>).</li>
+    <li><strong>Вид «скелет»</strong> в дереве объектов, как в Ragdoll Mover (<a href="#objects">подробнее</a>).</li>
+    <li><strong>Браузер моделей:</strong> Addons с сортировкой и поиском, Games, иконки из меню спавна (<a href="#objects">подробнее</a>).</li>
+    <li><strong>SAeditor:</strong> анимации длиной до часа и масштабируемый таймлайн; ключи лица; движение Speed up / Slow down; редактор кривых; процедурное дыхание и моргание; импорт и экспорт Stop Motion Helper; затухание звуков; добавление нескольких звуков сразу (<a href="#sa-basics">подробнее</a>, <a href="#sa-curves">кривые</a>).</li>
+    <li><strong>Видео:</strong> своя частота кадров до 120 к/с (анимация на 24 к/с — плавными 60 к/с) и рендер только выбранных кадров (<a href="#sa-render">подробнее</a>).</li>
+    <li><strong>Справка:</strong> Where are my files, мгновенная смена языка интерфейса, карточка, когда закрыты все окна (<a href="#menus">подробнее</a>).</li>
+    <li>Исправлено: импорт анимации растягивал шею и плечи; рэгдоллы перехватывались другими аддонами; окна уменьшались на пиксель при каждом сохранении раскладки.</li>
+  </ul>
+  <h2>a0.4</h2>
   <ul class="l-en">
     <li><strong>Wear:</strong> clothing, armour and hair made for the same skeleton follow every bone of the character (<a href="#attach">more</a>).</li>
     <li><strong>Scale any bone:</strong> hands, head, arms — not only fingers (<a href="#posing">more</a>).</li>
@@ -288,7 +360,18 @@
     <tr><td><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=2972603323">GMod98 UI Skin</a></td><td>AwesomeGraczGie21</td></tr>
     <tr><td><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3659339920">OneShot - UI Skin</a></td><td>Flarky</td></tr>
     <tr><td><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=2927713362">Lambda UI</a></td><td>晦涩弗里曼</td></tr>
+    <tr><td><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3818111525">Vanilla UI+ Derma Skin</a> (Vanilla UI)</td><td>Qude</td></tr>
+    <tr><td><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3816955790">Windows XP Classic UI &amp; HUD</a> (GMod XP)</td><td>w4da</td></tr>
   </table></div>
+  <p class="l-en">Notification sound sets:</p>
+  <p class="l-ru">Наборы звуков уведомлений:</p>
+  <div class="tbl"><table>
+    <tr><th><span class="l-en">Sounds</span><span class="l-ru">Звуки</span></th><th><span class="l-en">Author</span><span class="l-ru">Автор</span></th></tr>
+    <tr><td><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=2790356494">Half Life UI Sounds</a></td><td>ВРАТАРb_DINAMO</td></tr>
+    <tr><td><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=2979067313">Windows XPerience UI Sounds</a></td><td>Jade</td></tr>
+  </table></div>
+  <p class="l-en"><em>Take objects from the map</em> and the Stop Motion Helper import were built against the sources of Ragdoll Mover, Advanced Bonemerge, Easy Bonemerge, Advanced Light Entities, Soft Lamps and Stop Motion Helper — thanks to their authors.</p>
+  <p class="l-ru"><em>Take objects from the map</em> и импорт Stop Motion Helper сделаны по исходникам Ragdoll Mover, Advanced Bonemerge, Easy Bonemerge, Advanced Light Entities, Soft Lamps и Stop Motion Helper — спасибо их авторам.</p>
   <p class="l-en">Workshop shader support (Engine frame) was built and tested with <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3542644649">GShader Library</a> by Akabenko. Thanks to everyone who reports bugs and ideas in the <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435">Workshop comments</a>.</p>
   <p class="l-ru">Поддержка шейдеров Workshop (Engine frame) создана и проверена с <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3542644649">GShader Library</a> от Akabenko. Спасибо всем, кто пишет об ошибках и идеях в <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435">комментариях Workshop</a>.</p>
 </section>

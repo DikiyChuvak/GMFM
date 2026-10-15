@@ -7,7 +7,7 @@ in the tree the right side of the body is red, the left one green.
 
 Widgets:
   UI.Label / UI.Button / UI.Slider / UI.Section / UI.Check / UI.StyleCombo
-  UI.StyleButton(button, hot, rounded) — button look: in a theme with its own Derma skin
+  UI.StyleButton(button, hot, rounded, base) — button look (hot = true: emphasised): in a theme with its own Derma skin
       (UI.IsNative, see cl_ui_themes.lua) the skin draws the button, otherwise the editor does
   UI.IconButton(parent, icon, tip, fn, isOn)  — a toolbar button
   "SPeditorControl" — a slider control as in the Animation Set Editor:
@@ -47,9 +47,203 @@ local COL = {
 }
 UI.PAL = COL
 
-surface.CreateFont("SPeditor.Small", { font = "Tahoma", size = 13, weight = 500, antialias = true })
-surface.CreateFont("SPeditor.Bold",  { font = "Tahoma", size = 13, weight = 800, antialias = true })
-surface.CreateFont("SPeditor.Time",  { font = "Tahoma", size = 21, weight = 400, antialias = true })
+---------------------------------------------------------------------
+-- Interface settings (the "Interface settings" window, cl_ui_settings.lua)
+---------------------------------------------------------------------
+local cvFont     = CreateClientConVar("speditor_ui_font", "Tahoma", true, false)
+local cvFontSize = CreateClientConVar("speditor_ui_fontsize", "13", true, false)
+CreateClientConVar("speditor_ui_accent", "", true, false)        -- "r g b"; empty — the theme's own accent
+local cvCorners  = CreateClientConVar("speditor_ui_corners", "0", true, false)   -- window corner radius, px
+local cvTabStyle = CreateClientConVar("speditor_ui_tabstyle", "top", true, false) -- top / bottom / fill / none
+local cvAnim     = CreateClientConVar("speditor_ui_anim", "1", true, false)       -- fades and smooth hover
+CreateClientConVar("speditor_ui_sounds", "1", true, false)                        -- interface sounds of themes that have them
+
+UI.FONT_FACES = { "Tahoma", "Verdana", "Arial", "Roboto", "Segoe UI", "Trebuchet MS", "Courier New" }
+
+function UI.CreateFonts()
+	local face = cvFont:GetString()
+	if face == "" then face = "Tahoma" end
+	local size = math.Clamp(cvFontSize:GetInt(), 11, 16)
+	surface.CreateFont("SPeditor.Small", { font = face, size = size, weight = 500, antialias = true, extended = true })
+	surface.CreateFont("SPeditor.Bold",  { font = face, size = size, weight = 800, antialias = true, extended = true })
+	surface.CreateFont("SPeditor.Time",  { font = face, size = size + 8, weight = 400, antialias = true, extended = true })
+end
+UI.CreateFonts()
+
+function UI.Animated() return cvAnim:GetBool() end
+
+-- An eased value for hover transitions: panel[key] runs towards target (0..1)
+function UI.Ease(panel, key, target, speed)
+	if not cvAnim:GetBool() then
+		panel[key] = target
+		return target
+	end
+	local v = panel[key] or target
+	v = v + (target - v) * math.min(FrameTime() * (speed or 16), 1)
+	if math.abs(v - target) < 0.01 then v = target end
+	panel[key] = v
+	return v
+end
+
+local function lerpColor(a, b, t)
+	if t <= 0 then return a end
+	if t >= 1 then return b end
+	return Color(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, (a.a or 255) + ((b.a or 255) - (a.a or 255)) * t)
+end
+UI.LerpColor = lerpColor
+
+-- Fade a panel in when it appears (windows, menus)
+function UI.FadeIn(panel, time)
+	if not cvAnim:GetBool() or not IsValid(panel) then return end
+	panel:SetAlpha(0)
+	panel:AlphaTo(255, time or 0.12, 0)
+end
+
+---------------------------------------------------------------------
+-- Chrome: the editor's own windows, tabs, menu bar and status bar.
+-- A theme may draw them its own way: its Derma skin gets a table
+-- SKIN.SPeditor = { Window, CloseButton, MenuBar, MenuButton, StatusBar }
+-- (each a function(skin, panel, w, h, info)); what it lacks is drawn here.
+---------------------------------------------------------------------
+local CHROME = {}
+UI.ChromeDefault = CHROME
+
+local iconCache = {}
+local function iconMat(path)
+	if iconCache[path] == nil then
+		local m = Material(path)
+		iconCache[path] = (m and not m:IsError()) and m or false
+	end
+	return iconCache[path] or nil
+end
+
+-- Icon and title of a window tab t = { page, x, w, on } inside the strip from y, height h
+function UI.DrawTabLabel(t, y, h, col, iconAlpha)
+	local tx = t.x + 10
+	if t.page.icon then
+		local m = iconMat(t.page.icon)
+		if m then
+			surface.SetMaterial(m)
+			surface.SetDrawColor(255, 255, 255, iconAlpha or (t.on and 255 or 150))
+			surface.DrawTexturedRect(t.x + 6, y + math.floor((h - 16) / 2), 16, 16)
+			tx = t.x + 26
+		end
+	end
+	draw.SimpleText(t.page.title, "SPeditor.Small", tx, y + h / 2, col, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+end
+
+function UI.Corners() return math.Clamp(cvCorners:GetInt(), 0, 10) end
+
+-- info = { tiled, onTop, tabs = { {page, x, w, on, hot} }, edge, tabH }
+function CHROME.Window(_, win, w, h, info)
+	local c = COL
+	local r = UI.Corners()
+	local e, th = info.edge, info.tabH
+	local frame = info.tiled and c.BORDER or c.HOVER
+	if r > 0 then
+		draw.RoundedBox(r, 0, 0, w, h, frame)
+		draw.RoundedBox(math.max(r - 1, 0), 1, 1, w - 2, h - 2, c.CHROME)
+	else
+		surface.SetDrawColor(c.CHROME)
+		surface.DrawRect(0, 0, w, h)
+		-- a floating window is marked with a light frame
+		surface.SetDrawColor(frame)
+		surface.DrawOutlinedRect(0, 0, w, h, 1)
+	end
+	-- an "always on top" window is marked with an accent stripe along the top edge
+	if info.onTop then
+		surface.SetDrawColor(c.ORANGE)
+		surface.DrawRect(1 + r, 1, w - 2 - r * 2, 2)
+	end
+	surface.SetDrawColor(c.BG)
+	surface.DrawRect(1, e, w - 2, th)
+
+	local style = cvTabStyle:GetString()
+	for _, t in ipairs(info.tabs) do
+		local hot = UI.Ease(t.page, "_tabHot", (t.hot and not t.on) and 1 or 0, 18)
+		local fill = t.on and c.TAB_ON or lerpColor(c.TAB_OFF, c.HOVER, hot * 0.6)
+		if style == "fill" and t.on then fill = lerpColor(c.TAB_ON, c.ORANGE, 0.35) end
+		if r > 0 then
+			draw.RoundedBoxEx(math.min(r, 6), t.x, e + 1, t.w, th - 1, fill, true, true, false, false)
+		else
+			surface.SetDrawColor(fill)
+			surface.DrawRect(t.x, e + 1, t.w, th - 1)
+		end
+		if t.on and style == "top" then
+			surface.SetDrawColor(c.ORANGE)
+			surface.DrawRect(t.x + (r > 0 and 2 or 0), e + 1, t.w - (r > 0 and 4 or 0), r > 0 and 2 or 1)
+		elseif t.on and style == "bottom" then
+			surface.SetDrawColor(c.ORANGE)
+			surface.DrawRect(t.x, e + th - 2, t.w, 2)
+		end
+		UI.DrawTabLabel(t, e, th, t.on and c.TEXT or c.DIM)
+	end
+end
+
+function CHROME.CloseButton(_, b, w, h)
+	local hot = UI.Ease(b, "_hot", b:IsHovered() and 1 or 0, 20)
+	if hot > 0 then
+		local fill = Color(150, 60, 45, 255 * hot)
+		if UI.Corners() > 0 then
+			draw.RoundedBox(3, 0, 0, w, h, fill)
+		else
+			surface.SetDrawColor(fill)
+			surface.DrawRect(0, 0, w, h)
+		end
+	end
+	draw.SimpleText("r", "Marlett", w / 2, h / 2, lerpColor(COL.DIM, COL.TEXT, hot), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+end
+
+function CHROME.MenuBar(_, _, w, h)
+	surface.SetDrawColor(COL.MENU)
+	surface.DrawRect(0, 0, w, h)
+	surface.SetDrawColor(COL.BORDER)
+	surface.DrawRect(0, h - 1, w, 1)
+end
+
+-- a button of the menu bar (File, Edit, …): only the highlight, the text is the button's own
+function CHROME.MenuButton(_, b, w, h)
+	local hot = UI.Ease(b, "_hot", (b:IsHovered() or b._menuOpen) and 1 or 0, 20)
+	if hot <= 0 then return end
+	local c = COL.SEL
+	local fill = Color(c.r, c.g, c.b, 255 * hot)
+	if UI.Corners() > 0 then
+		draw.RoundedBox(3, 1, 2, w - 2, h - 4, fill)
+	else
+		surface.SetDrawColor(fill)
+		surface.DrawRect(0, 2, w, h - 4)
+	end
+end
+
+function CHROME.StatusBar(_, _, w, h)
+	surface.SetDrawColor(COL.BG)
+	surface.DrawRect(0, 0, w, h)
+	surface.SetDrawColor(COL.BORDER)
+	surface.DrawRect(0, 0, w, 1)
+end
+
+-- Draw a chrome part: the theme's painter if it has one, otherwise the default one
+function UI.PaintChrome(part, panel, w, h, info)
+	local skin = UI.SkinName and derma.GetNamedSkin(UI.SkinName)
+	local own = skin and rawget(skin, "SPeditor")
+	local fn = own and own[part]
+	if fn then
+		local ok, err = pcall(fn, skin, panel, w, h, info)
+		if ok then return end
+		if not UI._chromeErr then
+			UI._chromeErr = true
+			MsgC(Color(255, 120, 80), "[SPeditor] theme chrome '", part, "': ", tostring(err), "\n")
+		end
+	end
+	CHROME[part](skin, panel, w, h, info)
+end
+
+-- Text colour on the menu bar / status bar (a theme may draw them light on a dark palette)
+function UI.ChromeText(part)
+	local skin = UI.SkinName and derma.GetNamedSkin(UI.SkinName)
+	local own = skin and rawget(skin, "SPeditor")
+	return own and own.TextColors and own.TextColors[part] or nil
+end
 
 ---------------------------------------------------------------------
 -- Simple widgets
@@ -57,13 +251,18 @@ surface.CreateFont("SPeditor.Time",  { font = "Tahoma", size = 21, weight = 400,
 -- Look of a button and a drop-down list. hot — the colour under the cursor, base — the regular one
 -- (both optional), rounded — the corner radius.
 function UI.StyleButton(b, hot, rounded, base)
+	-- hot = true: an emphasised button (lighter fill), not a colour
+	if hot == true then base = base or COL.TAB_ON end
+	if not IsColor(hot) and type(hot) ~= "table" then hot = nil end
 	b:SetFont("SPeditor.Small")
 	if UI.IsNative and UI.IsNative() then return b end
 	b:SetTextColor(COL.TEXT)
 	b.Paint = function(s, w, h)
-		local fill = s:IsHovered() and (hot or COL.HOVER) or (base or COL.CTRL)
-		if rounded then
-			draw.RoundedBox(rounded, 0, 0, w, h, fill)
+		local k = UI.Ease(s, "_hot", s:IsHovered() and 1 or 0, 18)
+		local fill = lerpColor(base or COL.CTRL, hot or COL.HOVER, k)
+		local r = rounded or (UI.Corners() > 0 and math.min(UI.Corners(), 4) or nil)
+		if r then
+			draw.RoundedBox(r, 0, 0, w, h, fill)
 			return
 		end
 		surface.SetDrawColor(fill)

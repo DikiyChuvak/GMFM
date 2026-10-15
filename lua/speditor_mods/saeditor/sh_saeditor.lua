@@ -4,9 +4,9 @@ MOD.SA = MOD.SA or {}
 local SA = MOD.SA
 
 SA.FPS_LIST   = { 12, 15, 24, 30, 60 }
-SA.MAX_FRAMES = 3600            -- animation length in frames, at most
-SA.MAX_KEYS   = 600             -- keys per object
-SA.EASES      = { "ease", "linear", "hold" }
+SA.MAX_FRAMES = 432000          -- animation length in frames, at most (an hour at 120 fps)
+SA.MAX_KEYS   = 100000          -- keys per object (a baked 12-minute animation has ~10 000)
+SA.EASES      = { "ease", "linear", "ease_in", "ease_out", "hold" }
 
 -- Models whose animations the import offers for any character with the same skeleton:
 -- the player models carry every player animation (walking, gestures, dances and whatever
@@ -38,15 +38,71 @@ function SA.CleanSound(c)
 		pitch = math.floor(num(c.pitch, 100, 25, 400) + 0.5), dist = num(c.dist, 300, 16, 8192),
 		-- trimming: seconds of the file cut off at its start and at its end
 		cin = math.Round(num(c.cin, 0, 0, 3600), 3), cout = math.Round(num(c.cout, 0, 0, 3600), 3),
+		-- fades: seconds over which the clip rises from silence and sinks back into it
+		fin = math.Round(num(c.fin, 0, 0, 60), 3), fout = math.Round(num(c.fout, 0, 0, 60), 3),
 	}
 end
+
+-- 0..1: the fade of a clip at the moment `played` seconds after its start, `left` seconds
+-- before its end
+function SA.SoundFade(c, played, left)
+	local g = 1
+	if (c.fin or 0) > 0 then g = math.min(g, math.max(played, 0) / c.fin) end
+	if (c.fout or 0) > 0 then g = math.min(g, math.max(left, 0) / c.fout) end
+	return g
+end
+
+-- Face keys (a0.5): an object may have a second track that keys only its face (flexes),
+-- apart from the keys of its body. Its id is the object's UID + SA.FACE; while it exists,
+-- the body keys do not touch the face. Every track operation works on it as on any other.
+SA.FACE = 2 ^ 30
+function SA.IsFaceTrack(id) return id >= SA.FACE end
+function SA.FaceTrack(uid) return uid + SA.FACE end
 
 -- actions of the Key message
 SA.OP = { SET = 1, DELETE = 2, MOVE = 3, EASE = 4, CLEAR = 5, CLEAR_ALL = 6, COPY = 7 }
 
-function SA.EaseValue(ease, u)
+-- "bezier": a timing curve of its own, drawn in the curve editor. bz = { x1, y1, x2, y2 } —
+-- the two handles of a cubic curve from (0, 0) to (1, 1), as in CSS cubic-bezier; y may
+-- leave 0..1 (the motion overshoots the key and comes back, or swings back before leaving).
+local function bez(t, a, b)
+	local s = 1 - t
+	return 3 * a * t * s * s + 3 * b * t * t * s + t * t * t
+end
+function SA.BezierEase(u, bz)
+	local x1, y1, x2, y2 = bz[1] or 0.25, bz[2] or 0, bz[3] or 0.75, bz[4] or 1
+	local lo, hi = 0, 1
+	for _ = 1, 22 do
+		local mid = (lo + hi) * 0.5
+		if bez(mid, x1, x2) < u then lo = mid else hi = mid end
+	end
+	return bez((lo + hi) * 0.5, y1, y2)
+end
+
+-- a valid easing name (the menu kinds and "bezier")
+function SA.ValidEase(e) return e == "bezier" or table.HasValue(SA.EASES, e) end
+
+-- bz from "x1,y1,x2,y2" (nil if broken); x in 0..1, y in -1..2
+function SA.ParseBezier(str)
+	local v = {}
+	for n in string.gmatch(str or "", "[^,]+") do v[#v + 1] = tonumber(n) end
+	if #v ~= 4 then return nil end
+	for i = 1, 4 do if v[i] ~= v[i] then return nil end end
+	return { math.Clamp(v[1], 0, 1), math.Clamp(v[2], -1, 2), math.Clamp(v[3], 0, 1), math.Clamp(v[4], -1, 2) }
+end
+
+-- The handles a kind of easing corresponds to (the curve editor starts editing from them)
+SA.EASE_BEZIER = {
+	ease = { 0.33, 0, 0.67, 1 }, linear = { 0.33, 0.33, 0.67, 0.67 },
+	ease_in = { 0.5, 0, 0.85, 0.7 }, ease_out = { 0.15, 0.3, 0.5, 1 },
+}
+
+function SA.EaseValue(ease, u, bz)
+	if ease == "bezier" and bz then return SA.BezierEase(u, bz) end
 	if ease == "hold" then return 0 end
 	if ease == "linear" then return u end
+	if ease == "ease_in" then return u * u end                     -- starts slowly, arrives at full speed
+	if ease == "ease_out" then return 1 - (1 - u) * (1 - u) end    -- leaves at full speed, slows down at the key
 	return u * u * (3 - 2 * u)
 end
 
@@ -83,10 +139,163 @@ end
 function SA.LerpNum(a, b, u) return a + (b - a) * u end
 
 ---------------------------------------------------------------------
+-- Tables bigger than one net message (64 KB): a long animation has tens of thousands of
+-- keys. The compressed JSON goes out in parts, a few parts a tick; every part carries
+-- serial · part · count. A newer table of the same message replaces one still on its way.
+---------------------------------------------------------------------
+local PART = 60000
+
+-- util.JSONToTable keeps at most 15 000 entries of one table and drops the rest silently
+-- (verified in game), so long key lists travel and are saved as pages of PAGE entries.
+local PAGE = 10000
+function SA.ToPages(list)
+	local pages = {}
+	for i, v in ipairs(list) do
+		local p = math.floor((i - 1) / PAGE) + 1
+		pages[p] = pages[p] or {}
+		pages[p][#pages[p] + 1] = v
+	end
+	return pages
+end
+function SA.FromPages(pages)
+	local list = {}
+	for _, page in ipairs(istable(pages) and pages or {}) do
+		for _, v in ipairs(istable(page) and page or {}) do list[#list + 1] = v end
+	end
+	return list
+end
+-- the same for a { [key] = value } table: up to PAGE entries it stays as it is
+function SA.MapToPages(map)
+	if table.Count(map) <= PAGE then return map end
+	local pages, page, n = {}, {}, 0
+	for k, v in pairs(map) do
+		page[k], n = v, n + 1
+		if n >= PAGE then pages[#pages + 1], page, n = page, {}, 0 end
+	end
+	if n > 0 then pages[#pages + 1] = page end
+	return { pages = pages }
+end
+function SA.MapFromPages(t)
+	if not istable(t) or not istable(t.pages) then return t end
+	local map = {}
+	for _, page in ipairs(t.pages) do
+		for k, v in pairs(istable(page) and page or {}) do map[k] = v end
+	end
+	return map
+end
+if SERVER then
+	local queue, serial = {}, 0
+	local function sendPart(ply, job)
+		local from = (job.i - 1) * PART
+		local chunk = string.sub(job.data, from + 1, from + PART)
+		MOD:NetStart(job.name)
+		net.WriteUInt(job.serial, 16)
+		net.WriteUInt(job.i, 16)
+		net.WriteUInt(job.n, 16)
+		net.WriteUInt(#chunk, 16)
+		net.WriteData(chunk, #chunk)
+		net.Send(ply)
+		job.i = job.i + 1
+	end
+	function SA.SendParts(ply, name, tbl)
+		local data = util.Compress(util.TableToJSON(tbl) or "{}") or ""
+		serial = serial % 65535 + 1
+		local job = { name = name, serial = serial, data = data, n = math.max(math.ceil(#data / PART), 1), i = 1 }
+		local q = queue[ply] or {}
+		queue[ply] = q
+		for i = #q, 1, -1 do
+			if q[i].name == name then table.remove(q, i) end
+		end
+		-- a table that fits one message goes out at once, as before (the order with other messages is kept)
+		if #q == 0 and job.n == 1 then sendPart(ply, job) return end
+		q[#q + 1] = job
+	end
+	hook.Add("Tick", "SAeditor.SendParts", function()
+		for ply, q in pairs(queue) do
+			if not IsValid(ply) then
+				queue[ply] = nil
+			else
+				for _ = 1, 2 do
+					local job = q[1]
+					if not job then break end
+					sendPart(ply, job)
+					if job.i > job.n then table.remove(q, 1) end
+				end
+				if #q == 0 then queue[ply] = nil end
+			end
+		end
+	end)
+else
+	local parts = {}
+	function SA.ReceiveParts(name, fn)
+		MOD:NetReceive(name, function()
+			local ser, i, n = net.ReadUInt(16), net.ReadUInt(16), net.ReadUInt(16)
+			local chunk = net.ReadData(net.ReadUInt(16))
+			local buf = parts[name]
+			if i == 1 then
+				buf = { serial = ser, list = {} }
+				parts[name] = buf
+			elseif not buf or buf.serial ~= ser then
+				return
+			end
+			buf.list[i] = chunk
+			if i < n then return end
+			parts[name] = nil
+			local raw = util.Decompress(table.concat(buf.list))
+			fn(raw and util.JSONToTable(raw) or nil)
+		end)
+	end
+end
+
+---------------------------------------------------------------------
 -- Strings
 ---------------------------------------------------------------------
 MOD:Lang("en", {
 	sa_timeline = "Timeline",
+	-- a0.5: curve editor, procedural motion, Stop Motion Helper, sound fades
+	sa_ease_bezier = "Curve of its own (curve editor)",
+	sa_crv_title = "Curve editor", sa_crv_none = "Nothing selected", sa_crv_pick = "Select an animated object or one of its bones",
+	sa_crv_nokeys = "This object has no keys yet: set a key (K) and the curves appear here",
+	sa_crv_fit = "Fit", sa_crv_fit_tip = "Show all the keys", sa_crv_norm = "Normalized",
+	sa_crv_norm_tip = "Every channel scaled to its own range (degrees and units together); off — real values",
+	sa_crv_ease_tip = "Motion from the selected key to the next one", sa_crv_need_key = "Select a key on a curve first",
+	sa_crv_goto = "Go to this key",
+	sa_crv_s_x = "X", sa_crv_s_y = "Y", sa_crv_s_z = "Z", sa_crv_s_pitch = "P", sa_crv_s_yaw = "Yw", sa_crv_s_roll = "R",
+	sa_crv_s_fov = "FOV", sa_crv_s_bri = "Bri", sa_crv_s_radius = "Rad", sa_crv_s_lfov = "Cone", sa_crv_s_time = "Time",
+	sa_crv_s_fxscale = "Size", sa_crv_s_scale = "Scale",
+	sa_crv_ch_x = "Place: X", sa_crv_ch_y = "Place: Y", sa_crv_ch_z = "Place: Z (height)", sa_crv_ch_pitch = "Turn: pitch",
+	sa_crv_ch_yaw = "Turn: yaw", sa_crv_ch_roll = "Turn: roll", sa_crv_ch_fov = "Field of view", sa_crv_ch_bri = "Brightness",
+	sa_crv_ch_radius = "Radius", sa_crv_ch_lfov = "Cone angle", sa_crv_ch_time = "Moment of the effect", sa_crv_ch_fxscale = "Size of the effect",
+	sa_crv_ch_scale = "Scale",
+	hist_sa_curve = "Curve value", hist_sa_smh = "Stop Motion Helper import",
+	sa_proc_title = "Procedural motion", sa_proc_need = "Select a model, a light or an effect",
+	sa_proc_hint = "Life on top of the keys, worked out from time: it shows during playback and in the render (while you edit, the scene stays as the keys make it). Saved with the scene.",
+	sa_proc_breath = "Breathing", sa_proc_rate = "Breaths a minute", sa_proc_blink = "Blinking", sa_proc_head = "Head moves by itself",
+	sa_proc_sway = "Drift, units", sa_proc_freq = "Speed of the motion, Hz", sa_proc_preview = "Play to see it", sa_proc_off = "Switch off",
+	sa_smh_title = "Stop Motion Helper", sa_smh_file = "SMH save", sa_smh_map = "Map", sa_smh_object = "Object in the save", sa_smh_keys = "Keys",
+	sa_smh_hint = "Saves of Stop Motion Helper (garrysmod/data/smh) can be taken onto the selected object as keys, and the animation of the selected objects can be written as an SMH save (SMH: Load → the name of the model).",
+	sa_smh_target = "Onto", sa_smh_no_target = "select a model in the scene", sa_smh_start = "First frame",
+	sa_smh_conv = "Convert speed: SMH frames a second", sa_smh_world = "Keep the places of the save",
+	sa_smh_import = "Take onto the object", sa_smh_pick = "Pick a save and an object in it",
+	sa_smh_export_hint = "Write the animation of the selected objects as an SMH save named:", sa_smh_export = "Write the SMH save",
+	sa_smh_need_anim = "Select animated objects first", sa_smh_none = "No SMH saves found",
+	sa_smh_bad = "The SMH save cannot be read", sa_smh_kind = "SMH animates models only", sa_smh_nothing = "None of the selected objects has keys",
+	sa_smh_imported = "Taken from the SMH save: %s keys", sa_smh_exported = "SMH save written (%s objects): %s",
+	sa_snd_m_fin = "Fade in", sa_snd_m_fout = "Fade out", sa_snd_sec = "s",
+	sa_snd_added_n = "%d sounds added one after another", sa_snd_add_n = "Add %d sounds", sa_snd_pick = "Select one or more sounds in the list",
+	sa_snd_in_folder = "%d sounds in this folder · click — listen, Ctrl/Shift — several, double click — add",
+	-- a0.5: face keys, frame sets in the render
+	sa_face_key = "Set a face key for the selection (Shift+K): the face gets its own keys, apart from the body",
+	sa_hk_face_key = "Set a face key for the selection", sa_face_row = "Face",
+	sa_face_start = "Separate face keys: start here", sa_face_clear = "Remove the face keys (the body keys drive the face again)",
+	sa_face_key_set = "Face key set: frame %d", sa_need_face = "Select a model with a face (flexes)",
+	hist_sa_face_key = "Face key",
+	sa_rd_frames = "Chosen frames", sa_rd_which = "Which frames",
+	sa_rd_which_tip = "keys — the frames with keys; every 6 — every 6th frame; 0, 12, 24-30 — a list (24-30/2 — every 2nd inside the range). Each frame is saved as a picture named by its number (name_f0012); a video of chosen frames is made without sound.",
+	sa_rd_which_keys = "Frames with keys", sa_rd_which_every = "Every %d frames", sa_rd_which_cur = "Add the current frame (%d)",
+	sa_rd_note_frames = "%d frames will be rendered, each named by its number. Pictures (JPEG / PNG) suit this best.",
+	sa_rnd_frames_none = "No frames to render: check the list of frames",
+	sa_rnd_only = "Only frames", sa_rnd_only_tip = "empty — every frame from…to",
 	sa_play = "Play / pause (Space)", sa_first = "To the first frame (Home)", sa_last = "To the last frame (End)",
 	sa_prev_key = "Previous key", sa_next_key = "Next key",
 	sa_prev_frame = "Previous frame (,)", sa_next_frame = "Next frame (.)",
@@ -96,7 +305,8 @@ MOD:Lang("en", {
 	sa_import = "Import model animation…", sa_render = "Render animation…",
 	sa_menu = "Animation", sa_clear_track = "Remove animation of this object", sa_clear_all = "Remove all animation",
 	sa_clear_all_q = "Remove all keys of all objects?",
-	sa_ease = "Motion to the next key", sa_ease_ease = "Smooth", sa_ease_linear = "Linear", sa_ease_hold = "Hold (jump)",
+	sa_ease = "Motion to the next key", sa_ease_ease = "Smooth", sa_ease_linear = "Linear", sa_ease_hold = "Hold (stepped)",
+	sa_ease_ease_in = "Speed up (ease in)", sa_ease_ease_out = "Slow down (ease out)",
 	sa_copy_key = "Copy key", sa_paste_key = "Paste key here", sa_key_here = "Set key here",
 	sa_no_tracks = "No animation yet. Select an object, move the playhead and press K — or switch Auto key on.",
 	sa_need_sel = "Select an object first", sa_need_ragdoll = "Select a character (ragdoll)",
@@ -163,6 +373,9 @@ MOD:Lang("en", {
 	sa_snd_skipped = "Sounds left out of the video (only uncompressed WAV can be mixed in): %s",
 	sa_snd_wav = "The sound track is saved next to the frames: %s",
 	sa_rd_quality = "Video size", sa_rd_samples = "Shadow / DoF passes",
+	sa_rd_fps = "Video frame rate", sa_rd_fps_anim = "As the animation (%d)",
+	sa_rd_fps_tip = "Frames a second of the rendered video. Above the animation's rate the frames in between are posed between the keys (smooth 60 fps from a 24 fps animation).",
+	sa_tl_tip = "Ctrl + wheel — zoom the timeline, Shift + wheel — scroll it in time, wheel — scroll the rows",
 	sa_rd_samples_100 = "All, as in a still", sa_rd_samples_50 = "Half (faster)", sa_rd_samples_25 = "Quarter (fastest)",
 	sa_rnd_part = "The video is larger than 1.9 GB: it continues in %s",
 	sa_rd_q_100 = "Largest: JPEG 100 (7 times larger)", sa_rd_q_90 = "Normal: JPEG 90", sa_rd_q_70 = "Smaller by 40%: JPEG 70",
@@ -173,6 +386,50 @@ MOD:Lang("en", {
 
 MOD:Lang("ru", {
 	sa_timeline = "Таймлайн",
+	-- a0.5: редактор кривых, процедурное движение, Stop Motion Helper, затухание звука
+	sa_ease_bezier = "Своя кривая (редактор кривых)",
+	sa_crv_title = "Редактор кривых", sa_crv_none = "Ничего не выделено", sa_crv_pick = "Выделите анимированный объект или его кость",
+	sa_crv_nokeys = "У объекта пока нет ключей: поставьте ключ (K), и кривые появятся здесь",
+	sa_crv_fit = "Вписать", sa_crv_fit_tip = "Показать все ключи", sa_crv_norm = "Нормировать",
+	sa_crv_norm_tip = "Каждый канал в своём диапазоне (градусы и юниты вместе); выкл — настоящие значения",
+	sa_crv_ease_tip = "Движение от выбранного ключа к следующему", sa_crv_need_key = "Сначала выберите ключ на кривой",
+	sa_crv_goto = "Перейти к этому ключу",
+	sa_crv_s_x = "X", sa_crv_s_y = "Y", sa_crv_s_z = "Z", sa_crv_s_pitch = "P", sa_crv_s_yaw = "Yw", sa_crv_s_roll = "R",
+	sa_crv_s_fov = "FOV", sa_crv_s_bri = "Ярк", sa_crv_s_radius = "Рад", sa_crv_s_lfov = "Конус", sa_crv_s_time = "Время",
+	sa_crv_s_fxscale = "Разм", sa_crv_s_scale = "Масшт",
+	sa_crv_ch_x = "Место: X", sa_crv_ch_y = "Место: Y", sa_crv_ch_z = "Место: Z (высота)", sa_crv_ch_pitch = "Поворот: наклон (pitch)",
+	sa_crv_ch_yaw = "Поворот: рыскание (yaw)", sa_crv_ch_roll = "Поворот: крен (roll)", sa_crv_ch_fov = "Угол обзора", sa_crv_ch_bri = "Яркость",
+	sa_crv_ch_radius = "Радиус", sa_crv_ch_lfov = "Угол конуса", sa_crv_ch_time = "Момент эффекта", sa_crv_ch_fxscale = "Размер эффекта",
+	sa_crv_ch_scale = "Масштаб",
+	hist_sa_curve = "Значение кривой", hist_sa_smh = "Импорт из Stop Motion Helper",
+	sa_proc_title = "Процедурное движение", sa_proc_need = "Выделите модель, свет или эффект",
+	sa_proc_hint = "Жизнь поверх ключей, вычисляемая по времени: видна при воспроизведении и в рендере (пока вы редактируете, сцена такая, какой её делают ключи). Сохраняется со сценой.",
+	sa_proc_breath = "Дыхание", sa_proc_rate = "Вдохов в минуту", sa_proc_blink = "Моргание", sa_proc_head = "Голова двигается сама",
+	sa_proc_sway = "Покачивание, юниты", sa_proc_freq = "Скорость движения, Гц", sa_proc_preview = "Запустить, чтобы увидеть", sa_proc_off = "Выключить",
+	sa_smh_title = "Stop Motion Helper", sa_smh_file = "Сохранение SMH", sa_smh_map = "Карта", sa_smh_object = "Объект в сохранении", sa_smh_keys = "Ключей",
+	sa_smh_hint = "Сохранения Stop Motion Helper (garrysmod/data/smh) можно взять на выделенный объект как ключи, а анимацию выделенных объектов — записать как сохранение SMH (в SMH: Load → имя модели).",
+	sa_smh_target = "На объект", sa_smh_no_target = "выделите модель в сцене", sa_smh_start = "Первый кадр",
+	sa_smh_conv = "Пересчитать скорость: кадров SMH в секунду", sa_smh_world = "Оставить места из сохранения",
+	sa_smh_import = "Взять на объект", sa_smh_pick = "Выберите сохранение и объект в нём",
+	sa_smh_export_hint = "Записать анимацию выделенных объектов как сохранение SMH с именем:", sa_smh_export = "Записать сохранение SMH",
+	sa_smh_need_anim = "Сначала выделите анимированные объекты", sa_smh_none = "Сохранений SMH не найдено",
+	sa_smh_bad = "Не удалось прочитать сохранение SMH", sa_smh_kind = "SMH анимирует только модели", sa_smh_nothing = "Ни у одного выделенного объекта нет ключей",
+	sa_smh_imported = "Взято из сохранения SMH: ключей — %s", sa_smh_exported = "Сохранение SMH записано (объектов: %s): %s",
+	sa_snd_m_fin = "Плавное появление", sa_snd_m_fout = "Плавное затухание", sa_snd_sec = "с",
+	sa_snd_added_n = "Добавлено звуков подряд: %d", sa_snd_add_n = "Добавить звуки (%d)", sa_snd_pick = "Выделите один или несколько звуков в списке",
+	sa_snd_in_folder = "Звуков в папке: %d · клик — прослушать, Ctrl/Shift — несколько, двойной клик — добавить",
+	-- a0.5: ключи лица, наборы кадров в рендере
+	sa_face_key = "Поставить ключ лица выделенному (Shift+K): у лица свои ключи, отдельно от тела",
+	sa_hk_face_key = "Поставить ключ лица выделенному", sa_face_row = "Лицо",
+	sa_face_start = "Отдельные ключи лица: начать здесь", sa_face_clear = "Убрать ключи лица (лицом снова управляют ключи тела)",
+	sa_face_key_set = "Ключ лица поставлен: кадр %d", sa_need_face = "Выделите модель с лицом (флексами)",
+	hist_sa_face_key = "Ключ лица",
+	sa_rd_frames = "Выбранные кадры", sa_rd_which = "Какие кадры",
+	sa_rd_which_tip = "ключи — кадры с ключами; каждый 6 — каждый 6-й кадр; 0, 12, 24-30 — список (24-30/2 — каждый 2-й внутри диапазона). Каждый кадр сохраняется картинкой с его номером в имени (name_f0012); видео из выбранных кадров — без звука.",
+	sa_rd_which_keys = "Кадры с ключами", sa_rd_which_every = "Каждый %d-й кадр", sa_rd_which_cur = "Добавить текущий кадр (%d)",
+	sa_rd_note_frames = "Будет снято кадров: %d, у каждого в имени его номер. Лучше всего подходят картинки (JPEG / PNG).",
+	sa_rnd_frames_none = "Нет кадров для рендера: проверьте список кадров",
+	sa_rnd_only = "Только кадры", sa_rnd_only_tip = "пусто — все кадры с…по",
 	sa_play = "Воспроизвести / пауза (Пробел)", sa_first = "К первому кадру (Home)", sa_last = "К последнему кадру (End)",
 	sa_prev_key = "Предыдущий ключ", sa_next_key = "Следующий ключ",
 	sa_prev_frame = "Предыдущий кадр (,)", sa_next_frame = "Следующий кадр (.)",
@@ -182,7 +439,8 @@ MOD:Lang("ru", {
 	sa_import = "Импорт анимации модели…", sa_render = "Рендер анимации…",
 	sa_menu = "Анимация", sa_clear_track = "Убрать анимацию этого объекта", sa_clear_all = "Убрать всю анимацию",
 	sa_clear_all_q = "Удалить все ключи всех объектов?",
-	sa_ease = "Движение к следующему ключу", sa_ease_ease = "Плавно", sa_ease_linear = "Равномерно", sa_ease_hold = "Скачком",
+	sa_ease = "Движение к следующему ключу", sa_ease_ease = "Плавно", sa_ease_linear = "Равномерно", sa_ease_hold = "Скачком (ступенька)",
+	sa_ease_ease_in = "Разгон (ease in)", sa_ease_ease_out = "Торможение (ease out)",
 	sa_copy_key = "Копировать ключ", sa_paste_key = "Вставить ключ сюда", sa_key_here = "Поставить ключ здесь",
 	sa_no_tracks = "Анимации пока нет. Выделите объект, передвиньте указатель кадра и нажмите K — или включите автоключ.",
 	sa_need_sel = "Сначала выделите объект", sa_need_ragdoll = "Выделите персонажа (рэгдолл)",
@@ -249,6 +507,9 @@ MOD:Lang("ru", {
 	sa_snd_skipped = "Звуки, не попавшие в видео (подмешать можно только несжатый WAV): %s",
 	sa_snd_wav = "Звуковая дорожка сохранена рядом с кадрами: %s",
 	sa_rd_quality = "Размер видео", sa_rd_samples = "Проходы теней и ГРИП",
+	sa_rd_fps = "Частота кадров видео", sa_rd_fps_anim = "Как у анимации (%d)",
+	sa_rd_fps_tip = "Кадров в секунду в готовом видео. Если больше, чем у анимации, промежуточные кадры берутся между ключами (плавные 60 к/с из анимации на 24).",
+	sa_tl_tip = "Ctrl + колесо — масштаб таймлайна, Shift + колесо — прокрутка по времени, колесо — прокрутка строк",
 	sa_rd_samples_100 = "Все, как в одном кадре", sa_rd_samples_50 = "Половина (быстрее)", sa_rd_samples_25 = "Четверть (ещё быстрее)",
 	sa_rnd_part = "Видео больше 1,9 ГБ: продолжение в %s",
 	sa_rd_q_100 = "Самое большое: JPEG 100 (в 7 раз больше)", sa_rd_q_90 = "Обычное: JPEG 90", sa_rd_q_70 = "Меньше на 40%: JPEG 70",

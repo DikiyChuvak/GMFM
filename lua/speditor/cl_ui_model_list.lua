@@ -3,6 +3,10 @@ SPeditor — model browser in the style of SFM / the Q menu.
 
 On the left, a tree of sources:
   * All models (search over the whole models/);
+  * Addons — the Workshop subscriptions that have models, each with its own models (as
+    Browse → Addons of the Q menu); above the tree they can be sorted (by name, the newest
+    subscriptions first, the latest updated, by the number of models) and filtered by name;
+  * Games — mounted games (Counter-Strike: Source, TF2…), each with its models;
   * Spawnlists (categories from the Q menu);
   * Player Models / Ragdolls;
   * models/ folders (loaded when expanded).
@@ -61,6 +65,73 @@ function UI.StartModelScan()
 end
 
 ---------------------------------------------------------------------
+-- Models of one addon or one mounted game (path id = the addon title / the game folder),
+-- collected in the background a bit per frame. done(list, finished) is called as it grows.
+---------------------------------------------------------------------
+local sourceCache = {}
+
+local function scanSource(pathId, done)
+	local c = sourceCache[pathId]
+	if c and c.finished then
+		done(c.list, true)
+		return
+	end
+	if c then
+		c.done = done
+		return
+	end
+	c = { list = {}, queue = { "models/" }, finished = false, done = done }
+	sourceCache[pathId] = c
+	local id = "SPeditor.SourceScan." .. pathId
+	timer.Create(id, 0, 0, function()
+		local t0 = SysTime()
+		while #c.queue > 0 and SysTime() - t0 < 0.004 do
+			local dir = table.remove(c.queue)
+			local files, dirs = file.Find(dir .. "*", pathId)
+			for _, f in ipairs(files or {}) do
+				if string.sub(f, -4) == ".mdl" then
+					local path = string.lower(dir .. f)
+					if not isUseless(path) then c.list[#c.list + 1] = path end
+				end
+			end
+			for _, d in ipairs(dirs or {}) do c.queue[#c.queue + 1] = dir .. d .. "/" end
+		end
+		if #c.queue == 0 then
+			c.finished = true
+			table.sort(c.list)
+			timer.Remove(id)
+		end
+		if c.done then c.done(c.list, c.finished) end
+	end)
+end
+
+-- Workshop subscriptions with models, sorted: name / name_desc / newest / oldest / updated / models
+local cvSort = CreateClientConVar("speditor_browser_sort", "name", true, false)
+UI.BrowserSorts = { "name", "name_desc", "newest", "oldest", "updated", "models" }
+
+local function addonsWithModels(filter)
+	local out = {}
+	filter = string.lower(filter or "")
+	for _, a in ipairs(engine.GetAddons() or {}) do
+		if a.mounted and (a.models or 0) > 0 and (filter == "" or string.find(string.lower(a.title or ""), filter, 1, true)) then
+			out[#out + 1] = a
+		end
+	end
+	-- timeadded is the order of subscription (bigger — newer); 0 — subscribed in this session
+	local function added(a) return (a.timeadded or 0) == 0 and math.huge or a.timeadded end
+	local mode = cvSort:GetString()
+	table.sort(out, function(x, y)
+		if mode == "name_desc" then return string.lower(x.title) > string.lower(y.title) end
+		if mode == "newest" then return added(x) > added(y) end
+		if mode == "oldest" then return added(x) < added(y) end
+		if mode == "updated" then return (x.updated or 0) > (y.updated or 0) end
+		if mode == "models" then return (x.models or 0) > (y.models or 0) end
+		return string.lower(x.title) < string.lower(y.title)
+	end)
+	return out
+end
+
+---------------------------------------------------------------------
 -- Q menu categories and players
 ---------------------------------------------------------------------
 local cachedCats
@@ -103,7 +174,12 @@ UI.ModelIcons = {
 	speditor_effect = "icon16/lightning.png",
 }
 function UI.GetIconForClass(className)
-	return UI.ModelIcons[className] or "icon16/box.png"
+	if UI.ModelIcons[className] then return UI.ModelIcons[className] end
+	-- lights and lamps of other addons taken from the map
+	if className and (string.find(className, "light", 1, true) or string.find(className, "lamp", 1, true)) then
+		return "icon16/lightbulb.png"
+	end
+	return "icon16/box.png"
 end
 
 ---------------------------------------------------------------------
@@ -165,11 +241,32 @@ function UI.BuildBrowser()
 	status:SetTall(16)
 	status:SetTextColor(COL.DIM)
 
-	-- left tree
-	local tree = vgui.Create("DTree", body)
-	tree:Dock(LEFT)
-	tree:SetWide(210)
-	tree:DockMargin(4, 4, 0, 4)
+	-- left: the addon sort / filter row, then the tree
+	local left = vgui.Create("DPanel", body)
+	left:Dock(LEFT)
+	left:SetWide(250)
+	left:DockMargin(4, 4, 0, 4)
+	left.Paint = function() end
+
+	local addonBar = vgui.Create("DPanel", left)
+	addonBar:Dock(TOP)
+	addonBar:SetTall(22)
+	addonBar:DockMargin(0, 0, 0, 4)
+	addonBar.Paint = function() end
+	local sortBox = vgui.Create("DComboBox", addonBar)
+	sortBox:Dock(RIGHT)
+	sortBox:SetWide(118)
+	sortBox:SetSortItems(false)
+	UI.StyleCombo(sortBox)
+	sortBox:SetTooltip(L("browser_sort"))
+	for _, id in ipairs(UI.BrowserSorts) do sortBox:AddChoice(L("browser_sort_" .. id), id, cvSort:GetString() == id) end
+	local addonFilter = vgui.Create("DTextEntry", addonBar)
+	addonFilter:Dock(FILL)
+	addonFilter:DockMargin(0, 0, 4, 0)
+	addonFilter:SetPlaceholderText(L("browser_addon_filter"))
+
+	local tree = vgui.Create("DTree", left)
+	tree:Dock(FILL)
 	tree:SetIndentSize(12)
 	tree.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.TREE_BG)
@@ -191,7 +288,10 @@ function UI.BuildBrowser()
 
 	local function addIcon(model)
 		local icon = vgui.Create("SpawnIcon", icons)
-		icon:SetSize(88, 88)
+		-- the size of the spawn menu icons: the game then takes the same cached picture
+		-- (materials/spawnicons/<model>.png, or the one shipped in the model's addon); any
+		-- other size is a picture of its own (<model>_128.png) that has to be rendered again
+		icon:SetSize(64, 64)
 		icon:SetModel(model)
 		icon:SetTooltip(model)
 		icon.DoClick = function() C.SpawnModel(model) end
@@ -202,6 +302,9 @@ function UI.BuildBrowser()
 				SetClipboardText(model)
 				SPeditor.Notify("#path_copied|" .. model, 0)
 			end)
+			menu:AddOption(L("browser_rerender"), function()
+				if IsValid(icon) then icon:RebuildSpawnIcon() end
+			end):SetIcon("icon16/arrow_refresh.png")
 			menu:Open()
 		end
 	end
@@ -210,7 +313,7 @@ function UI.BuildBrowser()
 	function addMore()
 		if #pending <= shownCount then return end
 		local more = vgui.Create("DButton", icons)
-		more:SetSize(176, 88)
+		more:SetSize(132, 64)
 		more:SetText(string.format(L("browser_more"), #pending - shownCount))
 		more:SetTextColor(COL.TEXT)
 		more.Paint = function(s2, w, h) draw.RoundedBox(3, 0, 0, w, h, s2:IsHovered() and COL.HOVER or COL.CTRL) end
@@ -238,7 +341,7 @@ function UI.BuildBrowser()
 		local base
 		if current.kind == "cat" then
 			base = (collectCategories()[current.name]) or {}
-		elseif current.kind == "folder" then
+		elseif current.kind == "folder" or current.kind == "source" then
 			base = current.list or {}
 		else
 			base = index or {}
@@ -265,7 +368,8 @@ function UI.BuildBrowser()
 		local v = s:GetValue() or ""
 		if v ~= lastQ then
 			lastQ = v
-			if current.kind ~= "all" and v ~= "" then current = { kind = "all" } end  -- the search runs over all models
+			-- the search runs over all models; inside an addon or a game — over its models
+			if current.kind ~= "all" and current.kind ~= "source" and v ~= "" then current = { kind = "all" } end
 			refresh()
 		end
 	end
@@ -281,6 +385,68 @@ function UI.BuildBrowser()
 	local allNode = tree:AddNode(L("browser_all"), "icon16/database.png")
 	allNode.DoClick = function() select("all") end
 	UI.NodeColor(allNode, COL.TEXT)
+
+	-- Workshop subscriptions and mounted games, each with its models
+	local function openSource(pathId, title)
+		current = { kind = "source", name = pathId, list = {} }
+		search:SetValue("")
+		lastQ = ""
+		scanSource(pathId, function(list, finished)
+			if current.kind ~= "source" or current.name ~= pathId or not IsValid(icons) then return end
+			current.list = list
+			-- while indexing, show what is found every so often
+			if finished or #list ~= (current.shown or 0) and RealTime() > (current.nextShow or 0) then
+				current.shown = #list
+				current.nextShow = RealTime() + 0.5
+				refresh()
+				status:SetText(string.format(L("browser_source_status"), title, #list, finished and "" or (" — " .. L("browser_indexing"))))
+			end
+		end)
+	end
+
+	local addonsNode = tree:AddNode(L("browser_addons"), "icon16/plugin.png")
+	UI.NodeColor(addonsNode, COL.ORANGE)
+	local function fillAddons()
+		for _, n in ipairs(addonsNode:GetChildNodes() or {}) do n:Remove() end
+		local list = addonsWithModels(addonFilter:GetValue())
+		for _, a in ipairs(list) do
+			local n = addonsNode:AddNode(string.format("%s (%d)", a.title, a.models or 0), "icon16/package.png")
+			UI.NodeColor(n, COL.TEXT)
+			n:SetTooltip(a.title .. (a.wsid and a.wsid ~= "0" and ("\nWorkshop: " .. a.wsid) or ""))
+			n.DoClick = function() openSource(a.title, a.title) end
+		end
+		addonsNode:SetText(string.format("%s (%d)", L("browser_addons"), #list))
+		addonsNode:InvalidateLayout(true)
+		tree:InvalidateLayout(true)
+	end
+	fillAddons()
+	addonFilter.OnChange = function()
+		addonsNode:SetExpanded(true)
+		fillAddons()
+	end
+	sortBox.OnSelect = function(_, _, _, id)
+		RunConsoleCommand("speditor_browser_sort", id)
+		timer.Simple(0, function()
+			if not IsValid(addonsNode) then return end
+			addonsNode:SetExpanded(true)
+			fillAddons()
+		end)
+	end
+
+	local games = {}
+	for _, g in ipairs(engine.GetGames() or {}) do
+		if g.mounted and g.folder then games[#games + 1] = g end
+	end
+	if #games > 0 then
+		table.sort(games, function(x, y) return string.lower(x.title) < string.lower(y.title) end)
+		local gamesNode = tree:AddNode(L("browser_games"), "icon16/joystick.png")
+		UI.NodeColor(gamesNode, COL.ORANGE)
+		for _, g in ipairs(games) do
+			local n = gamesNode:AddNode(g.title, "icon16/controller.png")
+			UI.NodeColor(n, COL.TEXT)
+			n.DoClick = function() openSource(g.folder, g.title) end
+		end
+	end
 
 	local cats = collectCategories()
 	local names = {}

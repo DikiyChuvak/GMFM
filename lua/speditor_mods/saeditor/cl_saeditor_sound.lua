@@ -89,7 +89,7 @@ function SA.AddSound(path, opts)
 	local clip = SA.CleanSound({
 		id = id + 1, path = path, f = opts.f or math.floor(SA.frame + 0.5), uid = opts.uid or 0, voice = opts.voice,
 		vol = opts.vol or 1, pitch = opts.pitch or 100, dist = opts.dist or (opts.voice and 150 or 300),
-		cin = opts.cin, cout = opts.cout,
+		cin = opts.cin, cout = opts.cout, fin = opts.fin, fout = opts.fout,
 	})
 	if not clip then return nil end
 	local list = copyList(SA.sounds)
@@ -317,6 +317,8 @@ MOD:Hook("Think", function()
 			if playing and t >= c.cin and t < ch:GetLength() - c.cout - 0.03 then
 				if not pos then pos, ang = C.GetView() end
 				local vol, pan = SA.Spatial(c, pos, ang)
+				-- fades: seconds of the clip played and left, at its speed
+				vol = vol * SA.SoundFade(c, (t - c.cin) / rate, (ch:GetLength() - c.cout - t) / rate)
 				ch:SetVolume(vol)
 				ch:SetPan(pan)
 				ch:SetPlaybackRate(rate)
@@ -393,9 +395,11 @@ end
 
 A.RATE = 44100
 
--- A new sound track: mix = A.NewMix(clips, fps, firstFrame)
-function A.NewMix(clips, fps, first)
-	local mix = { fps = fps, first = first, clips = {}, skipped = {}, gains = {}, done = 0 }
+-- A new sound track: mix = A.NewMix(clips, fps, firstFrame, videoFps)
+-- fps — frames a second of the animation (clip start frames), videoFps — of the video
+-- (the length of one piece; nil — the same)
+function A.NewMix(clips, fps, first, vfps)
+	local mix = { fps = fps, vfps = vfps or fps, first = first, clips = {}, skipped = {}, gains = {}, done = 0 }
 	for _, c in ipairs(clips) do
 		local wav = A.LoadWav(c.path)
 		if wav then
@@ -413,8 +417,8 @@ end
 -- piece: a jump would be heard as a click.
 function A.Mix(mix, index, pos, ang)
 	local rate = A.RATE
-	local n0 = math.floor(index * rate / mix.fps + 0.5)
-	local n1 = math.floor((index + 1) * rate / mix.fps + 0.5)
+	local n0 = math.floor(index * rate / mix.vfps + 0.5)
+	local n1 = math.floor((index + 1) * rate / mix.vfps + 0.5)
 	local n = n1 - n0
 	local left, right = {}, {}
 	for i = 1, n do left[i], right[i] = 0, 0 end
@@ -450,6 +454,10 @@ function A.Mix(mix, index, pos, ang)
 					if mono then l = (l + r) * 0.5 r = l end
 					if fade > 0 then
 						local env = math.min((s - first) / fade, (last - s) / fade, 1)
+						l, r = l * env, r * env
+					end
+					if c.fin > 0 or c.fout > 0 then
+						local env = SA.SoundFade(c, (s - first) / speed, (last - s) / speed)
 						l, r = l * env, r * env
 					end
 					local u = i / n
@@ -505,9 +513,10 @@ function SA.OpenSounds()
 	local COL = UI.PAL
 	if not file.IsDir("speditor/sounds", "DATA") then file.CreateDir("speditor/sounds") end
 
-	local win, body = Dock.Create({ key = "sa_sounds", id = "sa_sounds", title = L("sa_snd_title"), w = 420, h = math.min(600, ScrH() - 140),
-			x = math.floor(ScrW() / 2 - 210), y = 110, dockable = false, icon = "icon16/sound.png" })
-	win.minW, win.minH = 340, 360
+	local W = 620
+	local win, body = Dock.Create({ key = "sa_sounds", id = "sa_sounds", title = L("sa_snd_title"), w = W, h = math.min(600, ScrH() - 140),
+			x = math.floor(ScrW() / 2 - W / 2), y = 110, dockable = false, icon = "icon16/sound.png" })
+	win.minW, win.minH = 440, 380
 	local baseRemove = win.OnRemove
 	win.OnRemove = function(s)
 		if baseRemove then baseRemove(s) end
@@ -516,7 +525,6 @@ function SA.OpenSounds()
 	end
 
 	local root = SA.soundRoot or "sound"
-	local dir = SA.soundDir or ""           -- inside the root, without slashes at the ends
 
 	local top = vgui.Create("DPanel", body)
 	top:Dock(TOP)
@@ -525,21 +533,14 @@ function SA.OpenSounds()
 	top.Paint = function() end
 	local roots = UI.StyleCombo(vgui.Create("DComboBox", top))
 	roots:Dock(LEFT)
-	roots:SetWide(130)
+	roots:SetWide(170)
 	roots:AddChoice(L("sa_snd_root_game"), "sound", root == "sound")
 	roots:AddChoice(L("sa_snd_root_user"), SA.SOUND_DIR, root ~= "sound")
-	local up = vgui.Create("DButton", top)
-	up:Dock(LEFT)
-	up:DockMargin(4, 0, 0, 0)
-	up:SetWide(70)
-	up:SetText("  " .. L("sa_snd_up"))
-	up:SetIcon("icon16/arrow_up.png")
-	UI.StyleButton(up, nil, 3)
-	local where = vgui.Create("DLabel", top)
-	where:Dock(FILL)
-	where:DockMargin(8, 0, 0, 0)
-	where:SetFont("SPeditor.Small")
-	where:SetTextColor(COL.DIM)
+	local count = vgui.Create("DLabel", top)
+	count:Dock(FILL)
+	count:DockMargin(8, 0, 0, 0)
+	count:SetFont("SPeditor.Small")
+	count:SetTextColor(COL.DIM)
 
 	local opts = { attach = IsValid(C.selected), voice = false }
 	local foot = vgui.Create("DPanel", body)
@@ -558,78 +559,97 @@ function SA.OpenSounds()
 	hint:SetAutoStretchVertical(true)
 	hint:DockMargin(8, 6, 8, 4)
 
-	local filter = vgui.Create("DTextEntry", body)
-	filter:Dock(TOP)
-	filter:DockMargin(6, 2, 6, 2)
-	filter:SetTall(20)
-	filter:SetFont("SPeditor.Small")
-	filter:SetPlaceholderText(L("sa_snd_filter"))
-
-	local list = vgui.Create("DListView", body)
-	list:Dock(FILL)
-	list:DockMargin(6, 0, 6, 2)
-	list:SetMultiSelect(false)
-	list:AddColumn(L("sa_snd_col_name"))
-	if list.SetBackgroundColor then list:SetBackgroundColor(COL.LIST_BG) end
-
-	local function fill()
-		SA.soundRoot, SA.soundDir = root, dir
-		list:Clear()
-		local base = root .. (dir ~= "" and ("/" .. dir) or "")
-		where:SetText(base .. "/")
-		up:SetEnabled(dir ~= "")
-		local q = string.lower(string.Trim(filter:GetValue() or ""))
-		local files, dirs = file.Find(base .. "/*", "GAME")
-		table.sort(dirs or {})
-		table.sort(files or {})
-		for _, d in ipairs(dirs or {}) do
-			if q == "" or string.find(string.lower(d), q, 1, true) then
-				local line = list:AddLine("[ " .. d .. " ]")
-				line.SPDir = d
-			end
+	-- The game's own file browser: folders on the left, the sounds of the folder on the right.
+	-- A click plays a sound; several can be selected (Ctrl / Shift) and added at once.
+	local browser
+	local function selectedPaths()
+		local out = {}
+		if not IsValid(browser) or not IsValid(browser.Files) or not browser.Files.GetSelected then return out end
+		local folder = browser:GetCurrentFolder() or ""
+		for _, line in ipairs(browser.Files:GetSelected()) do
+			out[#out + 1] = string.Trim(folder .. "/" .. line:GetColumnText(1), "/")
 		end
-		for _, f in ipairs(files or {}) do
-			if SA.SOUND_EXT[string.lower(string.GetExtensionFromFilename(f) or "")] and (q == "" or string.find(string.lower(f), q, 1, true)) then
-				list:AddLine(f).SPFile = base .. "/" .. f
-			end
-		end
+		return out
 	end
-	local function enter(d)
-		dir = (dir ~= "" and (dir .. "/") or "") .. d
-		filter:SetText("")
-		fill()
-	end
-	roots.OnSelect = function(_, _, _, data)
-		root, dir = data, ""
-		filter:SetText("")
-		fill()
-	end
-	up.DoClick = function()
-		dir = string.match(dir, "^(.*)/[^/]*$") or ""
-		filter:SetText("")
-		fill()
-	end
-	filter.OnChange = fill
-
-	local function selected()
-		local _, line = list:GetSelectedLine()
-		return line
-	end
-	local function add()
-		local line = selected()
-		if not line or not line.SPFile then return end
+	-- Several sounds go one after another from the current frame: the length of each is
+	-- learnt from the file before the next one is placed.
+	local function addPaths(paths)
 		local ent = opts.attach and C.selected or nil
 		local uid = IsValid(ent) and SA.UID(ent) or 0
-		local clip = SA.AddSound(line.SPFile, { uid = uid, voice = opts.voice and uid ~= 0 })
-		if clip then SPeditor.Notify("#sa_snd_added|" .. string.GetFileFromFilename(clip.path) .. "|" .. clip.f, 2) end
+		local isVoice = opts.voice and uid ~= 0
+		local f = math.floor(SA.frame + 0.5)
+		local added, last = 0, nil
+		local function finish()
+			if added == 1 then
+				SPeditor.Notify("#sa_snd_added|" .. string.GetFileFromFilename(last.path) .. "|" .. last.f, 2)
+			elseif added > 1 then
+				SPeditor.Notify(string.format(L("sa_snd_added_n"), added), 2)
+			end
+		end
+		local function step(i)
+			local path = paths[i]
+			if not path then return finish() end
+			local clip = SA.AddSound(path, { uid = uid, voice = isVoice, f = f })
+			if not clip then return finish() end
+			added, last = added + 1, clip
+			if not paths[i + 1] then return finish() end
+			sound.PlayFile(path, "noplay noblock", function(ch)
+				local len = IsValid(ch) and ch:GetLength() or 0
+				if IsValid(ch) then ch:Stop() end
+				f = math.min(f + math.max(math.ceil(len * SA.fps), 1), SA.MAX_FRAMES)
+				step(i + 1)
+			end)
+		end
+		step(1)
 	end
-	list.DoDoubleClick = function(_, _, line)
-		if line.SPDir then enter(line.SPDir) else add() end
+	local function build()
+		if IsValid(browser) then browser:Remove() end
+		SA.soundRoot = root
+		browser = vgui.Create("DFileBrowser", body)
+		browser:Dock(FILL)
+		browser:DockMargin(6, 2, 6, 2)
+		browser:SetPath("GAME")
+		browser:SetBaseFolder(root)
+		browser:SetName(root == "sound" and "sound" or L("sa_snd_root_user"))
+		browser:SetFileTypes("*.wav *.mp3 *.ogg")
+		browser:SetOpen(true)
+		if SA.soundFolder and string.StartWith(SA.soundFolder, root) then browser:SetCurrentFolder(SA.soundFolder) end
+		-- the file list allows several sounds at once
+		local baseFiles = browser.SetupFiles
+		browser.SetupFiles = function(b)
+			local ok = baseFiles(b)
+			if IsValid(b.Files) and b.Files.SetMultiSelect then b.Files:SetMultiSelect(true) end
+			return ok
+		end
+		local baseShow = browser.ShowFolder
+		browser.ShowFolder = function(b, path)
+			baseShow(b, path)
+			SA.soundFolder = path
+			local n = IsValid(b.Files) and b.Files.GetLines and #b.Files:GetLines() or 0
+			count:SetText(path and string.format(L("sa_snd_in_folder"), n) or "")
+		end
+		browser.OnSelect = function(_, path)
+			listen(path)
+			-- voice lines of the game live in sound/vo: the voice mark is offered by itself
+			if string.find(path, "/vo/", 1, true) and not opts.voice then voice:SetValue(1) end
+		end
+		browser.OnDoubleClick = function(_, path) addPaths({ path }) end
+		browser.OnRightClick = function(_, path)
+			local m = UI.Menu()
+			local sel = selectedPaths()
+			if #sel < 2 then sel = { path } end
+			m:AddOption(#sel > 1 and string.format(L("sa_snd_add_n"), #sel) or L("sa_snd_go"), function() addPaths(sel) end):SetIcon("icon16/sound_add.png")
+			m:AddOption(L("sa_snd_preview"), function() listen(path) end):SetIcon("icon16/control_play_blue.png")
+			m:AddOption(L("copy_path"), function() SetClipboardText(path) end)
+			m:Open()
+		end
 	end
-	-- voice lines of the game live in sound/vo: the voice mark is offered by itself
-	list.OnRowSelected = function(_, _, line)
-		if line.SPFile and string.find(line.SPFile, "/vo/", 1, true) and not opts.voice then voice:SetValue(1) end
+	roots.OnSelect = function(_, _, _, data)
+		root = data
+		SA.soundFolder = nil
+		build()
 	end
+	build()
 
 	local play = vgui.Create("DButton", buttons)
 	play:Dock(LEFT)
@@ -639,8 +659,8 @@ function SA.OpenSounds()
 	play:SetIcon("icon16/control_play_blue.png")
 	UI.StyleButton(play, nil, 3)
 	play.DoClick = function()
-		local line = selected()
-		if line and line.SPFile then listen(line.SPFile) end
+		local sel = selectedPaths()
+		if sel[1] then listen(sel[1]) end
 	end
 	local stop = vgui.Create("DButton", buttons)
 	stop:Dock(LEFT)
@@ -656,7 +676,18 @@ function SA.OpenSounds()
 	go:SetText("  " .. L("sa_snd_go"))
 	go:SetIcon("icon16/sound_add.png")
 	UI.StyleButton(go, nil, 3)
-	go.DoClick = add
+	go.DoClick = function()
+		local sel = selectedPaths()
+		if #sel == 0 then SPeditor.Notify(L("sa_snd_pick"), 0) return end
+		addPaths(sel)
+	end
+	go.Think = function(s)
+		local n = IsValid(browser) and IsValid(browser.Files) and browser.Files.GetSelected and #browser.Files:GetSelected() or 0
+		if n ~= s.SPN then
+			s.SPN = n
+			s:SetText("  " .. (n > 1 and string.format(L("sa_snd_add_n"), n) or L("sa_snd_go")))
+		end
+	end
 
 	-- the mark follows the selection: no object — nothing to come from
 	attach.Think = function(s)
@@ -667,7 +698,5 @@ function SA.OpenSounds()
 			if not has then s:SetValue(0) end
 		end
 	end
-
-	fill()
 	return win
 end

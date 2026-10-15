@@ -49,7 +49,8 @@ function UI.RestoreTextures(ent)
 end
 
 function UI.ResetLook(ent)
-	C.SendLook(ent, {}, true)
+	-- bone locks are kept in the look too, but they are not a part of the appearance
+	C.SendLook(ent, { locks = C.GetLook(ent).locks }, true)
 end
 
 function UI.OpenObjectProps(ent)
@@ -277,6 +278,97 @@ function UI.OpenObjectProps(ent)
 	reset.DoClick = function()
 		if not IsValid(ent) then return end
 		UI.ResetLook(ent)
+	end
+	return win
+end
+
+---------------------------------------------------------------------
+-- Base pose of a model without physics (a prop_dynamic: a model with no ragdoll, e.g. one
+-- ported from SFM). Such a model is posed by bone offsets on top of an animation of its own,
+-- held at one moment; this window picks the animation and the moment (look.seq / look.cycle).
+---------------------------------------------------------------------
+function UI.IsPoseProp(ent)
+	return IsValid(ent) and ent:GetClass() == "prop_dynamic" and (ent:GetBoneCount() or 0) > 1
+end
+
+function UI.OpenBasePose(ent)
+	if not UI.IsPoseProp(ent) then return end
+	local key = "basepose"
+	local old = Dock.ByKey(key)
+	if IsValid(old) then old:Remove() end
+	local W = 420
+	local win, body = Dock.Create({ key = key, id = key, title = L("bpose_title") .. ": " .. C.DisplayName(ent), w = W, h = 460,
+			x = math.floor(ScrW() / 2 - W / 2), y = 130, dockable = false, icon = "icon16/user_edit.png" })
+	win.minW, win.minH = 320, 300
+
+	local hint = UI.Label(body, L("bpose_hint"))
+	hint:SetWrap(true)
+	hint:SetAutoStretchVertical(true)
+	hint:DockMargin(8, 6, 8, 4)
+	local search = vgui.Create("DTextEntry", body)
+	search:Dock(TOP)
+	search:DockMargin(8, 0, 8, 4)
+	search:SetTall(22)
+	search:SetPlaceholderText(L("bpose_search"))
+
+	local cycle = UI.Slider(body, L("bpose_cycle"), 0, 1, 3, ent:GetCycle(), nil)
+	cycle:Dock(BOTTOM)
+	cycle:DockMargin(8, 4, 8, 8)
+
+	local list = vgui.Create("DListView", body)
+	list:Dock(FILL)
+	list:DockMargin(8, 0, 8, 0)
+	list:SetMultiSelect(false)
+	list:AddColumn(L("bpose_anim"))
+	list:AddColumn(L("sa_imp_col_len")):SetFixedWidth(70)
+
+	local busy = false
+	local seqs = {}
+	for id, name in pairs(ent:GetSequenceList() or {}) do
+		seqs[#seqs + 1] = { id = id, name = name, dur = ent:SequenceDuration(id) or 0 }
+	end
+	table.sort(seqs, function(a, b) return string.lower(a.name) < string.lower(b.name) end)
+	local function fill()
+		list:Clear()
+		local q = string.lower(string.Trim(search:GetValue() or ""))
+		local curName = ent:GetSequenceName(ent:GetSequence())
+		local n, at = 0, nil
+		for _, sq in ipairs(seqs) do
+			if q == "" or string.find(string.lower(sq.name), q, 1, true) then
+				local line = list:AddLine(sq.name, string.format("%.2f", sq.dur))
+				line.seqName = sq.name
+				n = n + 1
+				if sq.name == curName then
+					busy = true
+					list:SelectItem(line)
+					busy = false
+					at = n
+				end
+			end
+		end
+		-- the animation in use is scrolled into view
+		if at then
+			-- after the list has its size (its scroll bar knows how far it can go)
+			timer.Simple(0.15, function()
+				if not IsValid(list) or not IsValid(list.VBar) then return end
+				list:InvalidateLayout(true)
+				list.VBar:SetScroll(math.max(at - 4, 0) * list:GetDataHeight())
+			end)
+		end
+	end
+	search.OnChange = fill
+	fill()
+
+	local function apply(name, cyc)
+		if not IsValid(ent) or busy then return end
+		C.EditLook(ent, { seq = name, cycle = cyc })
+	end
+	list.OnRowSelected = function(_, _, line)
+		if line.seqName ~= ent:GetSequenceName(ent:GetSequence()) then apply(line.seqName, cycle:GetValue()) end
+	end
+	cycle.OnValueChanged = function(_, v)
+		local _, line = list:GetSelectedLine()
+		apply(line and line.seqName or ent:GetSequenceName(ent:GetSequence()), v)
 	end
 	return win
 end

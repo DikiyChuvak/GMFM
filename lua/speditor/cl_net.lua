@@ -173,6 +173,7 @@ function C.GetLook(ent)
 		local l = table.Copy(p.look)
 		l.color, l.material, l.submats = l.color or { 255, 255, 255, 255 }, l.material or "", l.submats or {}
 		l.stretch, l.noshadow = l.stretch or { 1, 1, 1 }, l.noshadow or false
+		l.locks = l.locks or {}
 		return l
 	end
 	local c = ent:GetColor()
@@ -180,8 +181,13 @@ function C.GetLook(ent)
 	local look = {
 		color = { c.r, c.g, c.b, c.a }, material = ent:GetMaterial() or "", submats = {},
 		noshadow = ent:GetNW2Bool("SPeditor_NoShadow", false),
-		stretch = { st.x, st.y, st.z },
+		stretch = { st.x, st.y, st.z }, locks = {},
 	}
+	for b, t in string.gmatch(ent:GetNW2String("SPeditor_Locks", ""), "(%d+):(%d+)") do look.locks[b] = tonumber(t) end
+	-- the base pose of a model without physics (prop_dynamic): its animation and moment
+	if ent:GetClass() == "prop_dynamic" then
+		look.seq, look.cycle = ent:GetSequenceName(ent:GetSequence()), math.max(ent:GetNW2Float("SPeditor_Cycle", 0), 0)
+	end
 	for i = 0, #(ent:GetMaterials() or {}) - 1 do
 		local m = ent:GetSubMaterial(i)
 		if m and m ~= "" then look.submats[tostring(i)] = m end

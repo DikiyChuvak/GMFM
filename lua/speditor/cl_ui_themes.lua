@@ -160,6 +160,20 @@ add({ id = "oneshot", name = "OneShot UI", file = "oneshot", native = true,
 		base = { bg = Color(24, 12, 30), text = Color(255, 255, 255), accent = Color(255, 146, 30), sel = Color(97, 27, 52),
 			ctrl = Color(48, 13, 26), hover = Color(97, 27, 52), menu = Color(38, 28, 42) }, propBG = Color(34, 20, 40) })
 
+-- GMod XP: Windows XP Luna Blue; draws the editor windows and bars itself (SKIN.SPeditor)
+add({ id = "gmodxp", name = "GMod XP", file = "gmodxp", native = true,
+		base = { bg = Color(236, 233, 216), text = Color(0, 21, 66), accent = Color(0, 85, 234), sel = Color(49, 106, 197),
+			ctrl = Color(244, 242, 232), hover = Color(193, 210, 238), menu = Color(236, 233, 216) }, propBG = Color(246, 245, 238) })
+
+-- Vanilla UI+: translucent navy (or black) panels, a blue and a green accent, smooth hover
+local vanillaBase = { bg = Color(16, 18, 27), text = Color(255, 255, 255), accent = Color(126, 200, 255), sel = Color(60, 200, 140),
+	ctrl = Color(28, 31, 42), hover = Color(32, 74, 122), menu = Color(10, 12, 20) }
+add({ id = "vanillaui", name = "Vanilla UI", group = "Vanilla UI", file = "vanillaui", native = true,
+		base = vanillaBase, propBG = Color(13, 15, 23) })
+add({ id = "vanillaui_black", name = "Vanilla UI (Black)", group = "Vanilla UI", file = "vanillaui", variant = "black", native = true,
+		base = { bg = Color(8, 8, 8), text = vanillaBase.text, accent = vanillaBase.accent, sel = vanillaBase.sel,
+			ctrl = Color(24, 24, 24), hover = Color(30, 64, 104), menu = Color(4, 4, 4) }, propBG = Color(10, 10, 10) })
+
 add({ id = "lambdaui", name = "Lambda UI", file = "lambdaui", native = true,
 		base = { bg = Color(64, 67, 68), text = Color(255, 255, 255), accent = Color(253, 118, 0), sel = Color(253, 118, 0),
 			ctrl = Color(86, 81, 77), hover = Color(253, 118, 0) }, propBG = Color(52, 54, 59) })
@@ -253,7 +267,7 @@ local function loadSkin(t)
 		return ok
 	end
 	if not t.file then return false end
-	SPeditor.SkinArg = { name = t.skin, tex = t.tex }
+	SPeditor.SkinArg = { name = t.skin, tex = t.tex, variant = t.variant }
 	local ok, err = pcall(include, "speditor/skins/" .. t.file .. ".lua")
 	SPeditor.SkinArg = nil
 	if not ok then
@@ -270,6 +284,13 @@ end
 
 -- Set the palette and the skin. The skin is included only when Derma is ready
 -- (when the editor opens and on a theme change), the palette — at once.
+-- The accent chosen in Interface settings (speditor_ui_accent "r g b"), or nil — the theme's own
+function UI.AccentOverride()
+	local r, g, b = string.match(GetConVarString("speditor_ui_accent") or "", "^%s*(%d+)[%s,]+(%d+)[%s,]+(%d+)")
+	if not r then return nil end
+	return Color(math.Clamp(tonumber(r), 0, 255), math.Clamp(tonumber(g), 0, 255), math.Clamp(tonumber(b), 0, 255))
+end
+
 function UI.ApplyTheme(id, withSkin)
 	local t = resolve(id)
 	if withSkin and not loadSkin(t) and t.id ~= "speditor" then
@@ -278,8 +299,17 @@ function UI.ApplyTheme(id, withSkin)
 	end
 	UI.Theme = t
 	writePalette(t.base and derive(t.base) or UI.BasePAL)
+	local acc = UI.AccentOverride()
+	if acc then
+		local c = legible(acc, PAL.BG, PAL.TEXT, 3)
+		PAL.ORANGE.r, PAL.ORANGE.g, PAL.ORANGE.b = c.r, c.g, c.b
+	end
 	if withSkin then
 		UI.SkinName = derma.GetNamedSkin(t.skin) and t.skin or nil
+		-- a skin with settings of its own (accent, animations) re-reads them
+		local skin = UI.SkinName and derma.GetNamedSkin(UI.SkinName)
+		local refresh = skin and rawget(skin, "SPeditorRefresh")
+		if refresh then pcall(refresh, skin) end
 		derma.RefreshSkins()
 	end
 	return t
@@ -295,7 +325,13 @@ function UI.Skin(panel)
 end
 
 function UI.Menu()
-	return UI.Skin(DermaMenu())
+	local m = UI.Skin(DermaMenu())
+	local open = m.Open
+	m.Open = function(self, ...)
+		open(self, ...)
+		UI.FadeIn(self, 0.1)
+	end
+	return m
 end
 
 function UI.SetTheme(id)

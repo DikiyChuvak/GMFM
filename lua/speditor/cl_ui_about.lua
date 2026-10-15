@@ -32,7 +32,25 @@ local SKIN_LINKS = {
 	{ name = "GMod98 UI Skin",        author = "AwesomeGraczGie21", id = "2972603323" },
 	{ name = "OneShot - UI Skin",     author = "Flarky",            id = "3659339920" },
 	{ name = "Lambda UI",             author = "晦涩弗里曼",          id = "2927713362" },
+	{ name = "Vanilla UI+ Derma Skin", author = "Qude",                id = "3818111525" },
+	{ name = "Windows XP Classic UI & HUD (GMod XP)", author = "w4da", id = "3816955790" },
+	-- sounds of the notification sound sets (sound/speditor/notify)
+	{ name = "Half Life UI Sounds",    author = "ВРАТАРb_DINAMO",      id = "2790356494" },
+	{ name = "Windows XPerience UI Sounds", author = "Jade",           id = "2979067313" },
+	-- a set made by the author of SPeditor from the sounds of Windows 7 — an example of a pack
+	-- that does not come from the Workshop (shown when sound/speditor/notify/aero7ui is there;
+	-- give it an id when the pack has a Workshop page of its own)
+	{ name = "Aero7UI (Windows 7 sounds)", author = "DikiyChuvak",   pack = "aero7ui" },
 }
+
+-- a sound pack of the list is in the addon (the folder name may be written in any case)
+local function packPresent(name)
+	local _, dirs = file.Find("sound/speditor/notify/*", "GAME")
+	for _, d in ipairs(dirs or {}) do
+		if string.lower(d) == string.lower(name) then return true end
+	end
+	return false
+end
 
 local ICON_PATH = "speditor/icon128.png"
 local ICON_SIZE = 128
@@ -163,27 +181,99 @@ function UI.OpenAbout()
 
 	-- at the very bottom: interface skins bundled with the editor, with links to their pages
 	text(scroll, L("about_skins"), COL.ORANGE, "SPeditor.Bold", 12)
+	local links = {}
 	for _, s in ipairs(SKIN_LINKS) do
-		local url = WORKSHOP .. s.id
+		if not s.pack or packPresent(s.pack) then links[#links + 1] = s end
+	end
+	for _, s in ipairs(links) do
+		local url = s.id and (WORKSHOP .. s.id) or nil
 		local b = vgui.Create("DButton", scroll)
 		b:Dock(TOP)
 		b:DockMargin(12, 3, 12, 0)
 		b:SetTall(32)
 		b:SetText("")
-		b:SetTooltip(L("about_link_hint"))
+		if url then b:SetTooltip(L("about_link_hint")) end
 		b.Paint = function(self, w, h)
 			surface.SetDrawColor(self:IsHovered() and COL.ROW_A or COL.ROW_B)
 			surface.DrawRect(0, 0, w, h)
 			draw.SimpleText(s.name .. "  —  " .. s.author, "SPeditor.Small", 8, 9, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-			draw.SimpleText(url, "SPeditor.Small", 8, 23, self:IsHovered() and COL.ORANGE or COL.BLUE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+			if url then
+				draw.SimpleText(url, "SPeditor.Small", 8, 23, self:IsHovered() and COL.ORANGE or COL.BLUE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+			end
 		end
-		b.DoClick = function() gui.OpenURL(url) end
-		b.DoRightClick = function() SetClipboardText(url) end
+		b.DoClick = function() if url then gui.OpenURL(url) end end
+		b.DoRightClick = function() if url then SetClipboardText(url) end end
 	end
 	local pad = vgui.Create("DPanel", scroll)
 	pad:Dock(TOP)
 	pad:SetTall(12)
 	pad.Paint = function() end
+end
+
+---------------------------------------------------------------------
+-- Where the files are (Help → Where are my files): scenes, renders, poses… all live in
+-- garrysmod/data/speditor, and the game cannot open a folder by itself — so the window
+-- shows the paths and copies them.
+---------------------------------------------------------------------
+function UI.OpenFileLocations()
+	if Dock.ShowPage("fileloc") then return end
+	local W = 560
+	local win, body = Dock.Create({ key = "fileloc", id = "fileloc", title = L("files_title"), w = W, h = 400,
+			x = math.floor(ScrW() / 2 - W / 2), y = 140, dockable = false, icon = "icon16/folder_explore.png" })
+	win.minW, win.minH = 420, 300
+
+	local root = "garrysmod/data/" .. (SPeditor.Config.SaveDir or "speditor") .. "/"
+	local sid = (IsValid(LocalPlayer()) and LocalPlayer():SteamID64()) or "local"
+	local rows = {
+		{ "files_scenes",  root .. "scenes/" .. sid .. "/" },
+		{ "files_renders", root .. "renders/" },
+		{ "files_poses",   root .. "poses/" },
+		{ "files_layouts", root .. "layouts/" },
+		{ "files_sounds",  root .. "sounds/" },
+	}
+
+	local foot = vgui.Create("DPanel", body)
+	foot:Dock(BOTTOM)
+	foot:SetTall(34)
+	foot.Paint = function() end
+	local close = vgui.Create("DButton", foot)
+	close:Dock(RIGHT)
+	close:DockMargin(4, 5, 8, 5)
+	close:SetWide(110)
+	close:SetText(L("about_close"))
+	UI.StyleButton(close, nil, 3)
+	close.DoClick = function() win:Close() end
+
+	local scroll = vgui.Create("DScrollPanel", body)
+	scroll:Dock(FILL)
+	scroll.Paint = function(_, w, h)
+		surface.SetDrawColor(COL.BG)
+		surface.DrawRect(0, 0, w, h)
+	end
+	text(scroll, L("files_hint"), COL.TEXT, nil, 10)
+	for _, r in ipairs(rows) do
+		local row = vgui.Create("DPanel", scroll)
+		row:Dock(TOP)
+		row:DockMargin(12, 6, 12, 0)
+		row:SetTall(38)
+		row.Paint = function(_, w, h)
+			surface.SetDrawColor(COL.ROW_B)
+			surface.DrawRect(0, 0, w, h)
+			draw.SimpleText(L(r[1]), "SPeditor.Small", 8, 10, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+			draw.SimpleText(r[2], "SPeditor.Small", 8, 27, COL.BLUE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		end
+		local copy = vgui.Create("DButton", row)
+		copy:Dock(RIGHT)
+		copy:DockMargin(4, 8, 6, 8)
+		copy:SetWide(96)
+		copy:SetText(L("files_copy"))
+		UI.StyleButton(copy, nil, 3)
+		copy.DoClick = function()
+			SetClipboardText(r[2])
+			SPeditor.Notify("#path_copied|" .. r[2], 0)
+		end
+	end
+	text(scroll, L("files_steam"), COL.DIM, nil, 12)
 end
 
 ---------------------------------------------------------------------

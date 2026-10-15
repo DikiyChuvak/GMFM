@@ -76,13 +76,6 @@ local function copyList(t)
 	return o
 end
 
-local iconCache = {}
-local function iconMat(path)
-	if not path then return nil end
-	iconCache[path] = iconCache[path] or Material(path)
-	return iconCache[path]
-end
-
 ---------------------------------------------------------------------
 -- Geometry. A rectangle: { x, y, r, b } (r, b — the right and bottom edges).
 ---------------------------------------------------------------------
@@ -554,41 +547,16 @@ function PANEL:TabAt(mx, my)
 	end
 end
 
+-- The frame and the tab strip are drawn by the theme chrome (UI.PaintChrome, cl_ui_theme.lua)
 function PANEL:Paint(w, h)
-	local c = PAL()
-	surface.SetDrawColor(c.CHROME)
-	surface.DrawRect(0, 0, w, h)
-	-- a floating window is marked with a light frame
-	surface.SetDrawColor(isTiled(self) and c.BORDER or c.HOVER)
-	surface.DrawOutlinedRect(0, 0, w, h, 1)
-	-- an "always on top" window is marked with an accent stripe along the top edge
-	if self.onTop then
-		surface.SetDrawColor(c.ORANGE)
-		surface.DrawRect(1, 1, w - 2, 2)
+	local tabs = self:TabRects()
+	local mx, my = self:CursorPos()
+	local hover = self:IsHovered() and self:TabAt(mx, my)
+	for _, t in ipairs(tabs) do
+		t.on = (t.page.id == self.active)
+		t.hot = (t.page == hover)
 	end
-	surface.SetDrawColor(c.BG)
-	surface.DrawRect(1, EDGE, w - 2, TAB_H)
-
-	for _, t in ipairs(self:TabRects()) do
-		local on = (t.page.id == self.active)
-		surface.SetDrawColor(on and c.TAB_ON or c.TAB_OFF)
-		surface.DrawRect(t.x, EDGE + 1, t.w, TAB_H - 1)
-		if on then
-			surface.SetDrawColor(c.ORANGE)
-			surface.DrawRect(t.x, EDGE + 1, t.w, 1)
-		end
-		local tx = t.x + 10
-		if t.page.icon then
-			local m = iconMat(t.page.icon)
-			if m then
-				surface.SetMaterial(m)
-				surface.SetDrawColor(255, 255, 255, on and 255 or 150)
-				surface.DrawTexturedRect(t.x + 6, EDGE + 3, 16, 16)
-				tx = t.x + 26
-			end
-		end
-		draw.SimpleText(t.page.title, "SPeditor.Small", tx, EDGE + TAB_H / 2, on and c.TEXT or c.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-	end
+	SPeditor.UI.PaintChrome("Window", self, w, h, { tiled = isTiled(self), onTop = self.onTop, tabs = tabs, edge = EDGE, tabH = TAB_H })
 end
 
 ---------------------------------------------------------------------
@@ -648,13 +616,7 @@ function PANEL:AddCloseButton()
 	local b = vgui.Create("DButton", self)
 	b:SetSize(18, 18)
 	b:SetText("")
-	b.Paint = function(s, w, h)
-		if s:IsHovered() then
-			surface.SetDrawColor(150, 60, 45)
-			surface.DrawRect(0, 0, w, h)
-		end
-		draw.SimpleText("r", "Marlett", w / 2, h / 2, s:IsHovered() and PAL().TEXT or PAL().DIM, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-	end
+	b.Paint = function(s, w, h) SPeditor.UI.PaintChrome("CloseButton", s, w, h) end
 	b.DoClick = function() self:Close() end
 	self.HdrBtns[#self.HdrBtns + 1] = b
 	self:InvalidateLayout()
@@ -1045,6 +1007,7 @@ function Dock.NewWindow(o)
 	win:SetKeyboardInputEnabled(false)
 	win.key = o.key or ("float" .. (#Dock.windows + 1) .. "_" .. math.floor(SysTime() * 1000) % 100000)
 	Dock.windows[#Dock.windows + 1] = win
+	if o.floating then SPeditor.UI.FadeIn(win) end
 	-- "always on top": the user's saved choice, otherwise the default value
 	local saved = loadProps()[win.key]
 	if istable(saved) and saved.top ~= nil then
@@ -1180,10 +1143,12 @@ end
 
 local function place(win, d)
 	local sw, sh = ScrW(), ScrH()
-	local w = math.Clamp(math.floor((tonumber(d.w) or 0.2) * sw), win.minW, sw)
-	local h = math.Clamp(math.floor((tonumber(d.h) or 0.2) * sh), win.minH, sh - TOP_Y - BOTTOM_H)
-	local x = math.Clamp(math.floor((tonumber(d.x) or 0) * sw), 0, math.max(sw - w, 0))
-	local y = math.Clamp(math.floor((tonumber(d.y) or 0) * sh), TOP_Y, math.max(sh - BOTTOM_H - h, TOP_Y))
+	-- rounded, not floored: the fractions of a saved layout are not exact, and flooring took a
+	-- pixel off a window at every save and restore (windows crept smaller session by session)
+	local w = math.Clamp(math.Round((tonumber(d.w) or 0.2) * sw), win.minW, sw)
+	local h = math.Clamp(math.Round((tonumber(d.h) or 0.2) * sh), win.minH, sh - TOP_Y - BOTTOM_H)
+	local x = math.Clamp(math.Round((tonumber(d.x) or 0) * sw), 0, math.max(sw - w, 0))
+	local y = math.Clamp(math.Round((tonumber(d.y) or 0) * sh), TOP_Y, math.max(sh - BOTTOM_H - h, TOP_Y))
 	win:SetPos(x, y)
 	win:SetSize(w, h)
 	win.floating, win.undock, win.maximized = d.floating and true or false, nil, nil

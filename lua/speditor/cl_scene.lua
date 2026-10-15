@@ -195,6 +195,13 @@ hook.Add("Think", "SPeditor.ApplyLook", function()
 		if IsValid(e) then
 			applyLook(e)
 			applyWorn(e)
+			-- a model without physics animates on the client: its base pose is held at the
+			-- moment the server chose (S.ApplyLook, look.cycle)
+			local cyc = e:GetNW2Float("SPeditor_Cycle", -1)
+			if cyc >= 0 and e:GetCycle() ~= cyc then
+				e:SetPlaybackRate(0)
+				e:SetCycle(cyc)
+			end
 		end
 	end
 end)
@@ -553,7 +560,9 @@ function C.PickEntity()
 	end
 	for _, e in ipairs(C.Objects()) do
 		if IsValid(e) and e ~= C.camera.viewEnt and not C.IsLocked(e) and not C.IsHidden(e) then
-			if C.IsLight(e) or C.IsEffect(e) then
+			-- lights of other addons taken from the map may have no size of their own: picked as a point too
+			local foreignPoint = C.IsForeign and C.IsForeign(e) and e:BoundingRadius() < 12
+			if C.IsLight(e) or C.IsEffect(e) or foreignPoint then
 				local d, t = rayPointDist(origin, dir, e:GetPos())
 				if d and d < math.max(16, t * 0.03) and t < worldDist and (not bestDist or t < bestDist) then
 					best, bestDist = e, t
@@ -582,6 +591,54 @@ function C.PickEntity()
 				end
 			end
 		end
+	end
+	return best
+end
+
+-- The physical bone of a ragdoll whose part of the body is under the cursor: the point the
+-- ray hits (or, if the trace misses a thin part, the ray itself) to the nearest segment
+-- bone -> physical child bone.
+function C.PickBodyBone(ent)
+	local origin, dir = C.MouseRay()
+	local tr = util.TraceLine({ start = origin, endpos = origin + dir * 32768,
+			filter = function(e) return e == ent end })
+	local hitPos = (tr.Entity == ent) and tr.HitPos or nil
+	local segs = {}
+	for b = 0, ent:GetBoneCount() - 1 do
+		if C.PhysIndexOfBone(ent, b) then
+			local p = C.GetBoneWorld(ent, b)
+			if p then
+				local any = false
+				for c = 0, ent:GetBoneCount() - 1 do
+					if c ~= b and C.PhysIndexOfBone(ent, c) then
+						-- the nearest physical ancestor of c is b
+						local par = ent:GetBoneParent(c)
+						while par and par >= 0 and not C.PhysIndexOfBone(ent, par) do par = ent:GetBoneParent(par) end
+						if par == b then
+							local q = C.GetBoneWorld(ent, c)
+							if q then segs[#segs + 1] = { b, p, q } any = true end
+						end
+					end
+				end
+				if not any then segs[#segs + 1] = { b, p, p } end
+			end
+		end
+	end
+	local best, bestD
+	for _, sg in ipairs(segs) do
+		local a, ab = sg[2], sg[3] - sg[2]
+		local d
+		if hitPos then
+			local t = ab:LengthSqr() > 0 and math.Clamp((hitPos - a):Dot(ab) / ab:LengthSqr(), 0, 1) or 0
+			d = hitPos:Distance(a + ab * t)
+		else
+			-- distance between the ray and the segment, sampled along it
+			for i = 0, 8 do
+				local dd = rayPointDist(origin, dir, a + ab * (i / 8))
+				if dd and (not d or dd < d) then d = dd end
+			end
+		end
+		if d and (not bestD or d < bestD) then best, bestD = sg[1], d end
 	end
 	return best
 end

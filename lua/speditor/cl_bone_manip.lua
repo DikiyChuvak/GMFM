@@ -90,7 +90,7 @@ function C.SavePose(ent, name)
 		file.Write(POSE_DIR .. "/" .. name .. ".json", util.TableToJSON({
 					version = 1, model = IsValid(ent) and ent:GetModel() or "", pose = pose,
 		}))
-		SPeditor.Notify("#pose_saved|" .. name, 2)
+		SPeditor.Notify("#pose_saved|" .. name .. "|" .. name, 2)
 		hook.Run("SPeditor_PoseListChanged")
 	end)
 end

@@ -3,6 +3,12 @@
 -- (point at an axis / ring and it lights up; the hit is exact).
 -- Input only inside the Primary Viewport. A click on a bone selects the bone.
 -- Halo is off in the nested viewport render (otherwise the frame darkens).
+-- Move has plane handles too (the squares between two axes): they move in two
+-- axes at once, e.g. along a diagonal on the floor.
+-- IK (I): a hand / foot pulls its limb; moving or turning the body keeps the feet
+-- planted (C.gizmo.ikFeet). Bone locks (C.SetBoneLock): a physical bone of a ragdoll follows
+-- another bone of the same ragdoll during a drag — e.g. the right hand holds on to the left one;
+-- with IK on, the locked hand pulls its arm.
 SPeditor.Client = SPeditor.Client or {}
 local C = SPeditor.Client
 
@@ -12,9 +18,18 @@ local COL_LINE    = Color(255, 255, 255, 90)
 local COL_PHYS    = Color(80, 220, 255)
 local COL_MANIP   = Color(210, 210, 210)
 local COL_SEL     = Color(255, 220, 60)
+local COL_LOCK    = Color(255, 140, 40)
 
 C.gizmo = C.gizmo or {}
 if C.gizmo.ik == nil then C.gizmo.ik = false end
+if C.gizmo.ikFeet == nil then C.gizmo.ikFeet = true end
+
+-- plane handles: index 4 + i is the plane across axis i (spanned by the other two axes)
+local PLANE_A, PLANE_B = 0.22, 0.42     -- where the square starts and ends, in gizmo sizes
+local function planeAxes(i) return (i % 3) + 1, ((i + 1) % 3) + 1 end
+
+local prepareLocks, postSolve        -- below, next to startDrag
+local function IK_END(ent, bone) return SPeditor.IK.IsEndEffector(ent:GetBoneName(bone)) end
 
 -- Size of bone markers in the frame (View → Bone size). Large markers cover the
 -- fingers and make it hard to hit the right bone, so they are small by default.
@@ -99,6 +114,21 @@ local function segDist(ax, ay, bx, by, px, py)
 	return math.sqrt((px - cx) ^ 2 + (py - cy) ^ 2)
 end
 
+-- a point inside a convex quad (screen corners in order, either winding)
+local function pointInQuad(pts, x, y)
+	local sign = 0
+	for i = 1, 4 do
+		local a, b = pts[i], pts[i % 4 + 1]
+		local cr = (b[1] - a[1]) * (y - a[2]) - (b[2] - a[2]) * (x - a[1])
+		if cr ~= 0 then
+			local sg = cr > 0 and 1 or -1
+			if sign ~= 0 and sg ~= sign then return false end
+			sign = sg
+		end
+	end
+	return true
+end
+
 -- Screen-space hit test through projection into the viewport: stable at any angle
 local HIT_TOL = 8
 local function hitTest(tgt)
@@ -117,6 +147,19 @@ local function hitTest(tgt)
 				if v1 then
 					local d = segDist(x0, y0, x1, y1, mx, my)
 					if d < HIT_TOL and (not bestD or d < bestD) then best, bestD = i, d end
+				end
+			end
+			-- the plane squares (move only): the cursor inside the projected square
+			if not best and mode == "move" then
+				for i = 1, 3 do
+					local j, k = planeAxes(i)
+					local pts, ok = {}, true
+					for _, c in ipairs({ { PLANE_A, PLANE_A }, { PLANE_B, PLANE_A }, { PLANE_B, PLANE_B }, { PLANE_A, PLANE_B } }) do
+						local x, y, v = C.ProjectToViewport(tgt.pos + (axes[j] * c[1] + axes[k] * c[2]) * size)
+						if not v then ok = false break end
+						pts[#pts + 1] = { x, y }
+					end
+					if ok and pointInQuad(pts, mx, my) then best = 4 + i break end
 				end
 			end
 		end
@@ -166,6 +209,55 @@ local function ikChain(tgt)
 	local mid = nextPhysAncestor(tgt.ent, tgt.bone)
 	local root = mid and nextPhysAncestor(tgt.ent, mid)
 	if mid and root then return root, mid end
+end
+
+-- IK without physics: a model with no ragdoll (a prop, a model ported without a physics
+-- model) is posed by bone offsets. A hand / foot pulls its two parent bones; their new turns
+-- become manip angles (the bone's own turn on top of the animation pose: local = rest * manip).
+local function manipIKChain(tgt)
+	if not C.gizmo.ik or tgt.kind ~= "manip" or C.IsRagdoll(tgt.ent) then return nil end
+	if not SPeditor.IK.IsEndEffector(tgt.ent:GetBoneName(tgt.bone)) then return nil end
+	local mid = tgt.ent:GetBoneParent(tgt.bone)
+	local root = mid and mid >= 0 and tgt.ent:GetBoneParent(mid)
+	if root and root >= 0 then return root, mid end
+end
+
+local function buildManipIKItems(tgt, root, mid)
+	local ent, items = tgt.ent, {}
+	for _, b in ipairs({ root, mid, tgt.bone }) do
+		local p, a = C.GetBoneWorld(ent, b)
+		local par = ent:GetBoneParent(b)
+		local _, pa = C.GetBoneWorld(ent, par)
+		if not p or not pa then return nil end
+		items[#items + 1] = { bone = b, p0 = p, a0 = a, parentAng = pa,
+			m0pos = ent:GetManipulateBonePosition(b), m0ang = ent:GetManipulateBoneAngles(b), m0scale = ent:GetManipulateBoneScale(b) }
+	end
+	return items
+end
+
+-- the manip angle that turns a bone to the world angle want, its parent being at parentNew
+local function manipFor(it, want, parentNew)
+	local _, cur = WorldToLocal(vector_origin, it.a0, vector_origin, it.parentAng)     -- rest * m0
+	local _, inv = WorldToLocal(vector_origin, angle_zero, vector_origin, it.m0ang)     -- m0^-1
+	local _, rest = LocalToWorld(vector_origin, inv, vector_origin, cur)                 -- rest
+	local _, loc = WorldToLocal(vector_origin, want, vector_origin, parentNew)           -- wanted local
+	local _, m = WorldToLocal(vector_origin, loc, vector_origin, rest)                   -- rest^-1 * local
+	return m
+end
+
+local function applyManipIK(d, off)
+	local r, m, e = d.items[1], d.items[2], d.items[3]
+	local IK = SPeditor.IK
+	local midNew, endNew = IK.Solve(r.p0, m.p0, e.p0, e.p0 + off)
+	local rAng = IK.RotateAngle(r.a0, m.p0 - r.p0, midNew - r.p0)
+	local mAng = IK.RotateAngle(m.a0, e.p0 - m.p0, endNew - midNew)
+	r.m1ang = manipFor(r, rAng, r.parentAng)
+	m.m1ang = manipFor(m, mAng, rAng)
+	e.m1ang = manipFor(e, e.a0, mAng)              -- the hand keeps its turn in the world
+	for _, it in ipairs(d.items) do
+		it.m1pos, it.m1scale = it.m0pos, it.m0scale
+		C.SendBoneManip(d.ent, it.bone, it.m0pos, it.m1ang, it.m0scale)
+	end
 end
 
 local function buildIKItems(tgt, root, mid)
@@ -220,10 +312,186 @@ local function buildItems(tgt)
 	return items
 end
 
+---------------------------------------------------------------------
+-- Planted feet and bone locks: worked out after the dragged bones got their new places
+---------------------------------------------------------------------
+local FOOT_PATTERNS = { "foot", "ankle", "hoof" }
+local function isFoot(name)
+	local n = string.lower(name or "")
+	for _, p in ipairs(FOOT_PATTERNS) do
+		if string.find(n, p, 1, true) then return true end
+	end
+	return false
+end
+
+-- The locks of a ragdoll: { [bone] = { to = bone it follows } }. They are a part of the
+-- object's look (S.ApplyLook): saved with the scene, undone with Ctrl+Z.
+function C.GetBoneLocks(ent)
+	local out = {}
+	if not IsValid(ent) or not C.IsRagdoll(ent) then return out end
+	for b, t in pairs(C.GetLook(ent).locks or {}) do out[tonumber(b)] = { to = t } end
+	return out
+end
+
+function C.GetBoneLock(ent, bone)
+	return C.GetBoneLocks(ent)[bone]
+end
+
+local function sendLocks(ent, locks)
+	local t = {}
+	for b, l in pairs(locks) do t[tostring(b)] = l.to end
+	C.EditLook(ent, { locks = t }, true)
+end
+
+-- Lock bone to the bone target of the same ragdoll (target nil — unlock). Both must be
+-- physical; the place of bone relative to target is the one it has when a drag starts, so
+-- the lock never pulls a bone back to an old pose.
+function C.SetBoneLock(ent, bone, target)
+	if not IsValid(ent) then return false end
+	local locks = C.GetBoneLocks(ent)
+	if target == nil then
+		locks[bone] = nil
+		sendLocks(ent, locks)
+		return true
+	end
+	if bone == target or not C.PhysIndexOfBone(ent, bone) or not C.PhysIndexOfBone(ent, target) then return false end
+	-- a bone cannot hold on to its own child, and two bones cannot hold on to each other
+	if isDescendant(ent, target, bone) then return false end
+	local back = locks[target]
+	if back and back.to == bone then return false end
+	locks[bone] = { to = target }
+	sendLocks(ent, locks)
+	return true
+end
+
+function C.ClearBoneLocks(ent)
+	if IsValid(ent) and next(C.GetBoneLocks(ent)) then sendLocks(ent, {}) end
+end
+
+local function physDescendants(ent, bone)
+	local out = {}
+	for b = 0, ent:GetBoneCount() - 1 do
+		if b ~= bone and C.PhysIndexOfBone(ent, b) and isDescendant(ent, b, bone) then out[#out + 1] = b end
+	end
+	return out
+end
+
+-- d.post: what postSolve does after every step of a physics drag
+prepareLocks = function(d, tgt)
+	if d.kind ~= "phys" or d.mode == "scale" then return end
+	local ent = d.ent
+	local byPhys = {}
+	for _, it in ipairs(d.items) do byPhys[it.physIdx] = it end
+	local moving = table.Copy(byPhys)          -- bones the drag itself moves
+	-- the item of a bone; a bone the drag does not move is added as an "extra" item that stays put
+	local function item(b)
+		local pi = C.PhysIndexOfBone(ent, b)
+		if not pi then return nil end
+		if not byPhys[pi] then
+			local p, a = C.GetBoneWorld(ent, b)
+			if not p then return nil end
+			byPhys[pi] = { physIdx = pi, p0 = p, a0 = a, extra = true }
+			d.items[#d.items + 1] = byPhys[pi]
+		end
+		return byPhys[pi]
+	end
+	local function items(list)
+		local out = {}
+		for _, b in ipairs(list) do
+			local it = item(b)
+			if it then out[#out + 1] = it end
+		end
+		return out
+	end
+	local post = {}
+
+	-- planted feet: the body moves, a leg whose thigh is carried along bends so that the foot stays
+	if C.gizmo.ik and C.gizmo.ikFeet and not d.ik then
+		for b = 0, ent:GetBoneCount() - 1 do
+			if b ~= tgt.bone and isFoot(ent:GetBoneName(b)) and C.PhysIndexOfBone(ent, b) then
+				local mid = nextPhysAncestor(ent, b)
+				local root = mid and nextPhysAncestor(ent, mid)
+				if root and mid ~= tgt.bone and root ~= tgt.bone and moving[C.PhysIndexOfBone(ent, root)]
+					and isDescendant(ent, root, tgt.bone) then
+					post[#post + 1] = { foot = true, chain = items({ root, mid, b }), tail = items(physDescendants(ent, b)) }
+				end
+			end
+		end
+	end
+
+	-- bone locks
+	for bone, lock in pairs(C.GetBoneLocks(ent)) do
+		local T = (bone ~= tgt.bone) and item(lock.to)
+		local B = T and item(bone)
+		if B then
+			local c = { target = T, tail = items(physDescendants(ent, bone)) }
+			c.lp, c.la = WorldToLocal(B.p0, B.a0, T.p0, T.a0)
+			local mid = C.gizmo.ik and IK_END(ent, bone) and nextPhysAncestor(ent, bone)
+			local root = mid and nextPhysAncestor(ent, mid)
+			if root and root ~= lock.to and mid ~= lock.to then
+				c.chain = items({ root, mid, bone })
+			else
+				c.chain = { B }
+			end
+			post[#post + 1] = c
+		end
+	end
+	if #post > 0 then d.post = post end
+end
+
+local function moved(it)
+	if (it.p1 - it.p0):LengthSqr() > 1e-6 then return true end
+	local a, b = it.a1, it.a0
+	return math.abs(math.AngleDifference(a.p, b.p)) + math.abs(math.AngleDifference(a.y, b.y))
+		+ math.abs(math.AngleDifference(a.r, b.r)) > 1e-3
+end
+
+-- move the tail (bones below the end of a chain) rigidly with it: from (p, a) to (np, na)
+local function carryTail(tail, p, a, np, na)
+	for _, t in ipairs(tail) do
+		local lp, la = WorldToLocal(t.p1, t.a1, p, a)
+		t.p1, t.a1 = LocalToWorld(lp, la, np, na)
+	end
+end
+
+-- the end of a three-bone chain to (endPos, endAng); the two upper bones bend (IK)
+local function solveChain(chain, tail, endPos, endAng)
+	local r, m, e = chain[1], chain[2], chain[3]
+	local IK = SPeditor.IK
+	local midNew, endNew = IK.Solve(r.p1, m.p1, e.p1, endPos)
+	r.a1 = IK.RotateAngle(r.a1, m.p1 - r.p1, midNew - r.p1)
+	m.a1 = IK.RotateAngle(m.a1, e.p1 - m.p1, endNew - midNew)
+	m.p1 = midNew
+	carryTail(tail, e.p1, e.a1, endNew, endAng)
+	e.p1, e.a1 = endNew, endAng
+end
+
+postSolve = function(d)
+	for _, it in ipairs(d.items) do
+		if it.extra or not it.p1 then it.p1, it.a1 = it.p0, it.a0 end
+	end
+	for _, c in ipairs(d.post or {}) do
+		if c.foot then
+			local e = c.chain[3]
+			if #c.chain == 3 and moved(c.chain[1]) then solveChain(c.chain, c.tail, e.p0, e.a0) end
+		elseif moved(c.target) then
+			local wp, wa = LocalToWorld(c.lp, c.la, c.target.p1, c.target.a1)
+			if #c.chain == 3 then
+				solveChain(c.chain, c.tail, wp, wa)
+			else
+				local B = c.chain[1]
+				carryTail(c.tail, B.p1, B.a1, wp, wa)
+				B.p1, B.a1 = wp, wa
+			end
+		end
+	end
+end
+
 local function startDrag(tgt, hit)
 	local ro, rd = C.MouseRay()
 	local free = (hit.index == 4)
-	local axis = (not free) and gizmoAxes(tgt)[hit.index] or nil
+	local plane = hit.index > 4 and hit.index - 4 or nil
+	local axis = (not free and not plane) and gizmoAxes(tgt)[hit.index] or nil
 	local d = {
 		kind = tgt.kind, ent = tgt.ent, bone = tgt.bone, physIdx = tgt.physIdx,
 		mode = hit.mode, axisIndex = hit.index, axis = axis,
@@ -237,6 +505,12 @@ local function startDrag(tgt, hit)
 			d.t0 = axisParam(ro, rd, tgt.pos, axis)
 			if not d.t0 then return end
 		end
+	elseif hit.mode == "move" and plane then
+		local axes = gizmoAxes(tgt)
+		local j, k = planeAxes(plane)
+		d.plane, d.planeN, d.planeU, d.planeV = plane, axes[plane], axes[j], axes[k]
+		d.h0 = util.IntersectRayWithPlane(ro, rd, tgt.pos, d.planeN)
+		if not d.h0 then return end
 	elseif hit.mode == "move" and free then
 		local _, vang = C.GetView()
 		d.free, d.camFwd = true, vang:Forward()
@@ -258,8 +532,15 @@ local function startDrag(tgt, hit)
 	if root then
 		d.items = buildIKItems(tgt, root, mid)
 		d.ik = d.items ~= nil
+	elseif hit.mode == "move" then
+		root, mid = manipIKChain(tgt)
+		if root then
+			d.items = buildManipIKItems(tgt, root, mid)
+			d.mik = d.items ~= nil
+		end
 	end
 	d.items = d.items or buildItems(tgt)
+	prepareLocks(d, tgt)
 	C.gizmo.drag = d
 end
 
@@ -269,6 +550,7 @@ local function sendItems(d)
 			if IsValid(it.ent) then C.SendTransform(it.ent, it.p1, it.a1) end
 		end
 	elseif d.kind == "phys" then
+		postSolve(d)
 		C.SendPhysBones(d.ent, d.items)
 	end
 end
@@ -282,7 +564,7 @@ local function applyIK(d, off)
 	local delta = endNew - e.p0
 	for i = 4, #d.items do
 		local it = d.items[i]
-		it.p1, it.a1 = it.p0 + delta, it.a0
+		if not it.extra then it.p1, it.a1 = it.p0 + delta, it.a0 end
 	end
 	sendItems(d)
 end
@@ -290,6 +572,7 @@ end
 -- off — offset vector in the world (along an axis or in the screen plane)
 local function applyMove(d, off)
 	if d.ik then applyIK(d, off) return end
+	if d.mik then applyManipIK(d, off) return end
 	if d.kind == "manip" then
 		local it = d.items[1]
 		it.m1pos = it.m0pos + WorldToLocal(off, angle_zero, vector_origin, it.parentAng)
@@ -297,7 +580,7 @@ local function applyMove(d, off)
 		return
 	end
 	for _, it in ipairs(d.items) do
-		it.p1, it.a1 = it.p0 + off, it.a0
+		if not it.extra then it.p1, it.a1 = it.p0 + off, it.a0 end
 	end
 	sendItems(d)
 end
@@ -314,10 +597,12 @@ local function applyRotate(d, total)
 		return
 	end
 	for _, it in ipairs(d.items) do
-		it.p1 = d.startPos + rotateVec(it.p0 - d.startPos, d.axis, total)
-		local f = rotateVec(it.a0:Forward(), d.axis, total)
-		local u = rotateVec(it.a0:Up(), d.axis, total)
-		it.a1 = f:AngleEx(u)
+		if not it.extra then
+			it.p1 = d.startPos + rotateVec(it.p0 - d.startPos, d.axis, total)
+			local f = rotateVec(it.a0:Forward(), d.axis, total)
+			local u = rotateVec(it.a0:Up(), d.axis, total)
+			it.a1 = f:AngleEx(u)
+		end
 	end
 	sendItems(d)
 end
@@ -368,6 +653,16 @@ local function updateDrag()
 		factor = math.max(factor, 0.01)
 		d.total = factor - 1
 		applyScale(d, factor)
+	elseif d.mode == "move" and d.plane then
+		local h = util.IntersectRayWithPlane(ro, rd, d.startPos, d.planeN)
+		if not h then return end
+		local off = h - d.h0
+		local a, b = off:Dot(d.planeU), off:Dot(d.planeV)
+		local snap = C.gizmo.snapMove
+		if snap > 0 then a, b = math.Round(a / snap) * snap, math.Round(b / snap) * snap end
+		off = d.planeU * a + d.planeV * b
+		d.total = off:Length()
+		applyMove(d, off)
 	elseif d.mode == "move" and d.free then
 		local h = util.IntersectRayWithPlane(ro, rd, d.startPos, d.camFwd)
 		if not h then return end
@@ -441,7 +736,7 @@ local function endDrag()
 		end
 		for _, it in ipairs(d.items) do
 			if d.kind == "manip" then
-				C.SendBoneManip(ent, d.bone, useAfter and it.m1pos or it.m0pos, useAfter and it.m1ang or it.m0ang,
+				C.SendBoneManip(ent, it.bone or d.bone, useAfter and it.m1pos or it.m0pos, useAfter and it.m1ang or it.m0ang,
 					useAfter and it.m1scale or it.m0scale, true)
 			else
 				C.SendTransform(ent, useAfter and it.p1 or it.p0, useAfter and it.a1 or it.a0, true)
@@ -467,6 +762,9 @@ local function onPress(tgt)
 	local ctrlDown = input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL)
 	if IsValid(ent) and not C.IsAux(ent) and C.showSkeleton and not ctrlDown then
 		local b = C.PickBone(ent, 16)
+		-- a click on the body of the selected ragdoll away from the markers: the body part under
+		-- the cursor (the markers are small and hard to hit while animating)
+		if not b and C.IsRagdoll(ent) and C.PickEntity() == ent then b = C.PickBodyBone(ent) end
 		if b then
 			C.Select(ent, b)
 			return
@@ -525,6 +823,20 @@ local function drawGizmo(tgt)
 				render.DrawSphere(tip, w * 2.2, 8, 8, col)
 			end
 		end
+		if mode == "move" then
+			for i = 1, 3 do
+				local j, k = planeAxes(i)
+				local hot = hv and hv.mode == "move" and hv.index == 4 + i
+				local c = hot and HOVER_COLOR or AXIS_COLORS[i]
+				local fill = Color(c.r, c.g, c.b, hot and 150 or 70)
+				local function at(u, v) return tgt.pos + (axes[j] * u + axes[k] * v) * size end
+				local p1, p2, p3, p4 = at(PLANE_A, PLANE_A), at(PLANE_B, PLANE_A), at(PLANE_B, PLANE_B), at(PLANE_A, PLANE_B)
+				render.DrawQuad(p1, p2, p3, p4, fill)
+				render.DrawQuad(p4, p3, p2, p1, fill)      -- seen from the other side too
+				render.DrawLine(p1, p2, c, false) render.DrawLine(p2, p3, c, false)
+				render.DrawLine(p3, p4, c, false) render.DrawLine(p4, p1, c, false)
+			end
+		end
 	else
 		local R = size * 0.85
 		for i = 1, 3 do
@@ -563,6 +875,37 @@ local function drawSkeleton(ent)
 				render.DrawSphere(p, r, 6, 6, col)
 			end
 		end
+	end
+	-- bone locks: a line from the locked bone to the bone it holds on to
+	for bone, lock in pairs(C.GetBoneLocks(ent)) do
+		local p, q = C.GetBoneWorld(ent, bone), C.GetBoneWorld(ent, lock.to)
+		if p and q then render.DrawBeam(p, q, math.Clamp(p:Distance(vp) * 0.002, 0.05, 0.5), 0, 1, COL_LOCK) end
+	end
+end
+
+-- The lock menu of a bone (the object menu, when a physical bone of a ragdoll is selected)
+function C.BoneLockMenu(m, ent, bone)
+	local L = SPeditor.L
+	if not IsValid(ent) or not C.PhysIndexOfBone(ent, bone) then return end
+	local short = function(b) return (string.gsub(ent:GetBoneName(b) or "", "^ValveBiped%.Bip01_", "")) end
+	local lock = C.GetBoneLock(ent, bone)
+	local sub = m:AddSubMenu(string.format(L("lock_bone_to"), short(bone)))
+	for b = 0, ent:GetBoneCount() - 1 do
+		if b ~= bone and C.PhysIndexOfBone(ent, b) then
+			sub:AddOption(short(b), function()
+				if C.SetBoneLock(ent, bone, b) then
+					SPeditor.Notify(string.format(L("lock_bone_done"), short(bone), short(b)), 0)
+				else
+					SPeditor.Notify(L("lock_bone_bad"), 1)
+				end
+			end):SetChecked(lock ~= nil and lock.to == b)
+		end
+	end
+	if lock then
+		m:AddOption(string.format(L("lock_bone_off"), short(bone)), function() C.SetBoneLock(ent, bone, nil) end):SetIcon("icon16/lock_break.png")
+	end
+	if next(C.GetBoneLocks(ent)) then
+		m:AddOption(L("lock_bone_clear"), function() C.ClearBoneLocks(ent) end)
 	end
 end
 

@@ -5,7 +5,8 @@ sounds and voices are cl_saeditor_sound.lua.
 
   SA.frame            the current frame (fractional during playback)
   SA.tracks[uid]      table of contents of a track: { { f = frame, e = easing, pos = Vector }, … }
-  SA.Seek(frame)  SA.Play(on)  SA.SetKey(ents)  SA.DeleteKey(uid, frame)  SA.MoveKey(…)
+                      (the face track of an object: SA.tracks[SA.FaceTrack(uid)])
+  SA.Seek(frame)  SA.Play(on)  SA.SetKey(ents)  SA.SetFaceKey(ents)  SA.DeleteKey(uid, frame)  SA.MoveKey(…)
   SA.ImportSequence(ent, seq, opts)      SA.RenderSequence(opts)
 ]]
 local MOD = SPeditor.Mod("saeditor")
@@ -45,20 +46,24 @@ end
 ---------------------------------------------------------------------
 -- Server -> client
 ---------------------------------------------------------------------
-MOD:NetReceive("Summary", function()
-	local t = SPeditor.ReadTable() or {}
+SA.ReceiveParts("Summary", function(t)
+	t = t or {}
 	SA.fps    = tonumber(t.fps) or 24
 	SA.frames = tonumber(t.frames) or 96
 	SA.loop   = t.loop and true or false
 	local tracks = {}
 	for uid, list in pairs(istable(t.tracks) and t.tracks or {}) do
 		local keys = {}
-		for i, k in ipairs(list) do
+		for i, k in ipairs(SA.FromPages(list)) do
 			keys[i] = { f = k[1], e = k[2], pos = Vector(k[3] or 0, k[4] or 0, k[5] or 0) }
 		end
 		tracks[tonumber(uid)] = keys
 	end
 	SA.tracks = tracks
+	-- procedural motion of objects: { [uid] = settings } (sv_saeditor.lua, SA.CleanProc)
+	local proc = {}
+	for uid, pr in pairs(istable(t.proc) and t.proc or {}) do proc[tonumber(uid)] = pr end
+	SA.proc = proc
 	if SA.ReceiveSounds then SA.ReceiveSounds(t.sounds) end
 	SA.frame = math.min(SA.frame, SA.frames)
 	hook.Run("SAeditor_Changed")
@@ -151,7 +156,7 @@ function SA.SetConfig(fps, frames, loop)
 	if loop ~= nil then SA.loop = loop and true or false end
 	MOD:NetStart("Config")
 	net.WriteUInt(SA.fps, 8)
-	net.WriteUInt(SA.frames, 16)
+	net.WriteUInt(SA.frames, 32)
 	net.WriteBool(SA.loop)
 	net.SendToServer()
 end
@@ -188,8 +193,8 @@ local function sendKey(id, action, uid, frame, arg, str)
 	net.WriteUInt(id, 32)
 	net.WriteUInt(action, 4)
 	net.WriteUInt(uid or 0, 32)
-	net.WriteInt(frame or 0, 16)
-	net.WriteInt(arg or 0, 16)
+	net.WriteInt(frame or 0, 32)
+	net.WriteInt(arg or 0, 32)
 	net.WriteString(str or "")
 	net.SendToServer()
 end
@@ -211,6 +216,34 @@ function SA.SetKey(ents, frame, quiet)
 	end
 	pushHistory("sa key", id)
 	if not quiet then SPeditor.Notify("#sa_key_set|" .. frame, 3) end
+end
+
+-- A key of the face only (Shift+K). The first one starts the object's face track: from then
+-- on its face is animated by these keys alone, and the body keys leave the face as it is —
+-- the face can get its own rhythm (a blink, a line of speech) over a slow body motion.
+function SA.SetFaceKey(ents, frame, quiet)
+	ents = ents or C.SelectionList()
+	local list = {}
+	for _, e in ipairs(ents) do
+		if IsValid(e) and not C.IsAux(e) and e:GetFlexNum() > 0 then list[#list + 1] = e end
+	end
+	if #list == 0 then
+		if not quiet then SPeditor.Notify("#sa_need_face", 0) end
+		return
+	end
+	frame = math.floor((frame or SA.frame) + 0.5)
+	C.FlushQueue()
+	local id = nextOp()
+	for _, e in ipairs(list) do
+		local uid = SA.UID(e)
+		if uid ~= 0 then sendKey(id, OP.SET, SA.FaceTrack(uid), frame) end
+	end
+	pushHistory("sa face key", id)
+	if not quiet then SPeditor.Notify("#sa_face_key_set|" .. frame, 3) end
+end
+
+function SA.HasFaceTrack(ent)
+	return SA.tracks[SA.FaceTrack(SA.UID(ent))] ~= nil
 end
 
 -- Play an effect object from the frame `frame` (the current one by default). The moment of
@@ -239,6 +272,10 @@ function SA.PlayEffect(ent, seconds, frame)
 	pushHistory("sa effect", id)
 	SA.Seek(SA.frame)
 end
+
+-- for the other client files of the mod (the curve editor): an operation number, its undo
+-- entry and the Key message
+SA.NextOp, SA.PushOpHistory, SA.SendKeyOp = nextOp, pushHistory, sendKey
 
 function SA.DeleteKey(uid, frame)
 	local id = nextOp()
@@ -275,11 +312,20 @@ end
 -- Auto key: any edit of the scene (everything that gets into the editor's history) sets
 -- a key for the selected objects at the current frame.
 ---------------------------------------------------------------------
+-- An edit of the face of an object that has a face track sets a face key, not a body key.
+local FACE_EDITS = { flex = true, ["face preset"] = true }
+
 MOD:Hook("SPeditor_HistoryPushed", function(label)
 	if not SA.autokey or SA.playing or SA.rendering then return end
 	if string.sub(label, 1, 3) == "sa " or label == "spawn" or label == "delete" then return end
 	timer.Create("SAeditor.AutoKey", 0.15, 1, function()
-		if C.active and #C.SelectionList() > 0 then SA.SetKey(nil, nil, true) end
+		if not C.active then return end
+		local body, face = {}, {}
+		for _, e in ipairs(C.SelectionList()) do
+			if FACE_EDITS[label] and SA.HasFaceTrack(e) then face[#face + 1] = e else body[#body + 1] = e end
+		end
+		if #body > 0 then SA.SetKey(body, nil, true) end
+		if #face > 0 then SA.SetFaceKey(face, nil, true) end
 	end)
 end, "autokey")
 
@@ -301,6 +347,7 @@ local function step(d) SA.Seek(math.Clamp(math.floor(SA.frame + 0.5) + d, 0, SA.
 
 MOD:AddHotkey({ key = KEY_SPACE, fn = function() SA.Play() end, label = "Space", desc = "sa_hk_play" })
 MOD:AddHotkey({ key = KEY_K, fn = function() SA.SetKey() end, desc = "sa_hk_key" })
+MOD:AddHotkey({ key = KEY_K, shift = true, fn = function() SA.SetFaceKey() end, desc = "sa_hk_face_key" })
 MOD:AddHotkey({ key = KEY_COMMA, fn = function() step(-1) end, label = ",", desc = "sa_hk_prev" })
 MOD:AddHotkey({ key = KEY_PERIOD, fn = function() step(1) end, label = ".", desc = "sa_hk_next" })
 MOD:AddHotkey({ key = KEY_HOME, fn = function() SA.Seek(0) end, label = "Home", desc = "sa_hk_first" })
@@ -368,7 +415,131 @@ end
 --          model = the model whose animation seq is (by default the character's own): its
 --          bones are matched to the character's by name }
 -- Returns the number of keys, the last frame, the place and the yaw of the character at the end.
+-- A model without physics (prop_dynamic, e.g. a model ported from SFM with no ragdoll): every
+-- bone gets the turn it has in the animation relative to the model's base pose as a bone
+-- offset; the root bone also gets its shift. The model itself stays where it is.
+local function importOnProp(ent, seq, opts)
+	opts = opts or {}
+	local stepN  = math.Clamp(math.floor(opts.step or 2), 1, 12)
+	local loops  = math.Clamp(math.floor(opts.loops or 1), 1, 16)
+	local speed  = math.Clamp(opts.speed or 1, 0.1, 4)
+	local start  = math.Clamp(math.floor((opts.start or SA.frame) + 0.5), 0, SA.MAX_FRAMES - 1)
+	local c0     = math.Clamp(opts.cycle0 or 0, 0, 0.99)
+	local c1     = math.Clamp(opts.cycle1 or 1, c0 + 0.01, 1)
+	local foreign = opts.model and opts.model ~= "" and opts.model ~= ent:GetModel()
+	local function make(model)
+		local m = ClientsideModel(model, RENDERGROUP_OTHER)
+		if not IsValid(m) then return nil end
+		m:SetNoDraw(true)
+		m:SetIK(false)
+		m:SetPos(ent:GetPos())
+		m:SetAngles(ent:GetAngles())
+		return m
+	end
+	local csm, rest = make(foreign and opts.model or ent:GetModel()), make(ent:GetModel())
+	if not csm or not rest then
+		if csm then csm:Remove() end
+		if rest then rest:Remove() end
+		return false
+	end
+	csm:ResetSequence(seq)
+	csm:SetPlaybackRate(0)
+	if csm:GetPoseParameter("move_x") ~= nil then csm:SetPoseParameter("move_x", 1) end
+	for name, value in pairs(opts.params or {}) do csm:SetPoseParameter(name, value) end
+	rest:ResetSequence(ent:GetSequence())
+	rest:SetCycle(ent:GetCycle())
+	rest:SetupBones()
+
+	local dur   = (csm:SequenceDuration(seq) or 1) * (c1 - c0) / speed
+	local total = math.max(math.floor(dur * loops * SA.fps + 0.5), 1)
+	if opts.frames then total = math.max(math.floor(opts.frames), 1) end
+	if start + total > SA.frames then
+		total = math.min(total, SA.MAX_FRAMES - start)
+		SA.SetConfig(nil, start + total)
+		SPeditor.Notify("#sa_imp_extend", 0)
+	end
+	local function copyBone(b)
+		if not foreign then return b end
+		local cb = csm:LookupBone(ent:GetBoneName(b) or "")
+		return cb
+	end
+	local epos, eang = ent:GetPos(), ent:GetAngles()
+	local function localOf(m, b, pb)
+		local mb = m:GetBoneMatrix(b)
+		if not mb then return nil end
+		if pb then
+			local mp = m:GetBoneMatrix(pb)
+			if not mp then return nil end
+			return WorldToLocal(mb:GetTranslation(), mb:GetAngles(), mp:GetTranslation(), mp:GetAngles())
+		end
+		return WorldToLocal(mb:GetTranslation(), mb:GetAngles(), epos, eang)
+	end
+	local bones = {}
+	for b = 0, math.min(ent:GetBoneCount(), 255) - 1 do
+		local par = ent:GetBoneParent(b)
+		local cb = copyBone(b)
+		local cp = par and par >= 0 and copyBone(par) or nil
+		if cb and (par < 0 or cp) then
+			local rp, ra = localOf(rest, b, par >= 0 and par or nil)
+			if rp then bones[#bones + 1] = { bone = b, cb = cb, cp = cp, root = par < 0, rp = rp, ra = ra } end
+		end
+	end
+	if #bones < 2 then
+		csm:Remove() rest:Remove()
+		SPeditor.Notify("#sa_imp_skeleton", 1)
+		return false
+	end
+
+	local id = nextOp()
+	local count = 0
+	local frames = {}
+	for f = 0, total, stepN do frames[#frames + 1] = f end
+	if frames[#frames] ~= total then frames[#frames + 1] = total end
+	for i, f in ipairs(frames) do
+		local t = (f / total) * loops
+		local part = t % 1
+		if i == #frames and part == 0 then part = 0.9999 end
+		csm:SetCycle(math.min(c0 + part * (c1 - c0), 0.9999))
+		csm:InvalidateBoneCache()
+		csm:SetupBones()
+		MOD:NetStart("Bake")
+		net.WriteUInt(id, 32)
+		net.WriteEntity(ent)
+		net.WriteUInt(math.min(start + f, SA.MAX_FRAMES), 32)
+		net.WriteUInt(0, 8)                     -- no physical bones
+		net.WriteUInt(#bones, 16)
+		local shifts = {}
+		for _, bd in ipairs(bones) do
+			local ap, aa = localOf(csm, bd.cb, bd.cp)
+			local d = angle_zero
+			if ap then
+				local _, dd = WorldToLocal(vector_origin, aa, vector_origin, bd.ra)
+				d = dd
+				-- the root bone also moves (a model has no physics to carry it)
+				if bd.root then shifts[#shifts + 1] = { bd.bone, ap - bd.rp } end
+			end
+			net.WriteUInt(bd.bone, 16)
+			SPeditor.WriteAngF(d)
+		end
+		net.WriteBool(i == #frames)
+		net.WriteUInt(#shifts, 8)
+		for _, sh in ipairs(shifts) do
+			net.WriteUInt(sh[1], 16)
+			SPeditor.WriteVecF(sh[2])
+		end
+		net.SendToServer()
+		count = count + 1
+	end
+	csm:Remove()
+	rest:Remove()
+	pushHistory("sa import", id)
+	return count, start + total, ent:GetPos(), ent:GetAngles().y
+end
+
 function SA.ImportSequence(ent, seq, opts)
+	if IsValid(ent) and not C.IsRagdoll(ent) and not C.IsAux(ent) and (ent:GetBoneCount() or 0) > 1 then
+		return importOnProp(ent, seq, opts)
+	end
 	if not C.IsRagdoll(ent) then
 		SPeditor.Notify("#sa_need_ragdoll", 0)
 		return false
@@ -428,6 +599,22 @@ function SA.ImportSequence(ent, seq, opts)
 	-- pose: the ragdoll draws them in their rest place relative to the parent bone. Their turn
 	-- relative to the parent in the animation becomes a bone offset (manip angles) on top of that
 	-- rest place. The rest place is taken from a copy of the character in its own sequence.
+	--
+	-- Only bones with no physical bone below them (fingers, toes). The ragdoll puts a physical
+	-- bone at its physical parent's place plus the rest-pose offset, whatever the bones between
+	-- them do: turning the spine top and the neck (or a clavicle) moved the end of the neck away
+	-- from the head by 1.5 units and the shoulder away from the upper arm by 2 — the neck looked
+	-- broken. The head and the upper arm still turn as in the animation: they are physical.
+	local physBelow = {}
+	for b = 0, ent:GetBoneCount() - 1 do
+		if C.PhysIndexOfBone(ent, b) then
+			local p = ent:GetBoneParent(b)
+			while p and p >= 0 and not physBelow[p] do
+				physBelow[p] = true
+				p = ent:GetBoneParent(p)
+			end
+		end
+	end
 	local soft = {}
 	local rest = ClientsideModel(ent:GetModel(), RENDERGROUP_OTHER)
 	if IsValid(rest) then
@@ -439,7 +626,7 @@ function SA.ImportSequence(ent, seq, opts)
 		for b = 0, math.min(ent:GetBoneCount(), 65535) - 1 do
 			local par = ent:GetBoneParent(b)
 			local cb, cp = copyBone(b), par and par >= 0 and copyBone(par)
-			if not C.PhysIndexOfBone(ent, b) and cb and cp then
+			if not C.PhysIndexOfBone(ent, b) and not physBelow[b] and cb and cp then
 				local mb, mp = rest:GetBoneMatrix(b), rest:GetBoneMatrix(par)
 				if mb and mp then
 					local _, restLocal = WorldToLocal(vector_origin, mb:GetAngles(), vector_origin, mp:GetAngles())
@@ -530,7 +717,7 @@ function SA.ImportSequence(ent, seq, opts)
 		MOD:NetStart("Bake")
 		net.WriteUInt(id, 32)
 		net.WriteEntity(ent)
-		net.WriteUInt(math.min(start + f, 65535), 16)
+		net.WriteUInt(math.min(start + f, SA.MAX_FRAMES), 32)
 		net.WriteUInt(#phys, 8)
 		for _, p in ipairs(phys) do
 			local m = csm:GetBoneMatrix(p.bone)
@@ -544,6 +731,7 @@ function SA.ImportSequence(ent, seq, opts)
 			SPeditor.WriteAngF(softAngle(s))
 		end
 		net.WriteBool(i == #frames)
+		net.WriteUInt(0, 8)                     -- no bone shifts (the bodies carry the bones)
 		net.SendToServer()
 		count = count + 1
 	end

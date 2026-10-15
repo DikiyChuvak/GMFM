@@ -104,12 +104,16 @@ end
 
 function S.RemoveWithRecord(ply, ent)
 	S.Bury(ply, ent)
+	if S.RemoveExtras then S.RemoveExtras(ent) end
 	ent:Remove()
 end
 
 function S.CleanupPlayer(ply)
 	for _, e in ipairs(S.List(ply)) do
-		if IsValid(e) then e:Remove() end
+		if IsValid(e) then
+			if S.RemoveExtras then S.RemoveExtras(e) end
+			e:Remove()
+		end
 	end
 	S.Owned[ply] = {}
 	S.Graveyard[ply] = nil
@@ -445,6 +449,57 @@ end
 hook.Add("Think", "SPeditor.AttachFollow", function() S.AttachFollow() end)
 
 ---------------------------------------------------------------------
+-- Ragdoll guard. Addons that drive ragdolls by themselves (active ragdolls such as Fedhoria,
+-- euphoria-like and death-animation mods, twitching) take every prop_ragdoll they see:
+-- they unfreeze its bodies and push them with motors and forces, so in the editor the limbs
+-- went back to where the other addon wanted them and could not be posed. While the owner's
+-- editor is open, an editor ragdoll keeps its bodies frozen: a body someone unfroze is
+-- frozen again at the place it had (taken while it rested). Off: speditor_ragdoll_guard 0.
+---------------------------------------------------------------------
+local cvGuard = CreateConVar("speditor_ragdoll_guard", "1", FCVAR_ARCHIVE,
+	"SPeditor: keep the bodies of editor ragdolls frozen when other addons unfreeze them")
+
+hook.Add("Think", "SPeditor.RagdollGuard", function()
+	if not cvGuard:GetBool() then return end
+	for ply, list in pairs(S.Owned) do
+		if S.Active[ply] then
+			for _, ent in ipairs(list) do
+				if IsValid(ent) and ent:GetClass() == "prop_ragdoll" then
+					local g = ent.SPeditor_Guard
+					if not g then
+						g = { pos = {}, ang = {} }
+						ent.SPeditor_Guard = g
+					end
+					local fixed = false
+					for i = 0, ent:GetPhysicsObjectCount() - 1 do
+						local p = ent:GetPhysicsObjectNum(i)
+						if IsValid(p) then
+							if p:IsMotionEnabled() then
+								p:EnableMotion(false)
+								if g.pos[i] then
+									p:SetPos(g.pos[i])
+									p:SetAngles(g.ang[i])
+								end
+								p:Wake()
+								fixed = true
+							elseif not p:IsAsleep() or not g.pos[i] then
+								-- frozen by the editor: this is the place to keep
+								g.pos[i], g.ang[i] = p:GetPos(), p:GetAngles()
+							end
+						end
+					end
+					if fixed then
+						g.hits = (g.hits or 0) + 1
+						-- a single unfreeze may be the player's own (physgun); a steady one is an addon
+						if g.hits == 10 and IsValid(ply) then S.Notice(ply, "#rag_guard|" .. (ent.SPeditor_Name or string.GetFileFromFilename(ent:GetModel() or "")), 0) end
+					end
+				end
+			end
+		end
+	end
+end)
+
+---------------------------------------------------------------------
 -- Models
 ---------------------------------------------------------------------
 function S.SpawnModel(ply, model, pos, ang)
@@ -477,6 +532,14 @@ function S.SpawnModel(ply, model, pos, ang)
 
 	S.Freeze(ent)
 	S.StoreInit(ent)
+	-- a model without physics is a prop_dynamic, and it plays its first animation over and
+	-- over: posed by bone offsets, it would sway under them. It stands still in the editor; the
+	-- animation and its moment are a choice of the base pose (look.seq, S.ApplyLook).
+	if class == "prop_dynamic" then
+		ent:SetPlaybackRate(0)
+		ent:SetCycle(0)
+		ent:SetNW2Float("SPeditor_Cycle", 0)   -- it animates on the client (cl_scene.lua)
+	end
 	S.Track(ply, ent)
 	return ent
 end
@@ -573,6 +636,38 @@ function S.ApplyLook(ent, d)
 	end
 	ent:SetNW2Vector("SPeditor_Stretch", st or ONE)
 	if st then look.stretch = SPeditor.VecToTable(st) end
+
+	-- bone locks of a ragdoll (cl_gizmo.lua): { ["bone"] = bone it follows }, both physical.
+	-- The client reads them from one string "bone:target;…".
+	local locks, parts = {}, {}
+	if S.IsRagdoll(ent) and type(d.locks) == "table" then
+		local function phys(b)
+			local pb = ent:TranslateBoneToPhysBone(b)
+			return pb and pb >= 0 and ent:TranslatePhysBoneToBone(pb) == b
+		end
+		for k, v in pairs(d.locks) do
+			local b, t = math.floor(SPeditor.Num(k, -1)), math.floor(SPeditor.Num(v, -1))
+			if b >= 0 and t >= 0 and b ~= t and #parts < 64 and phys(b) and phys(t) then
+				locks[tostring(b)] = t
+				parts[#parts + 1] = b .. ":" .. t
+			end
+		end
+	end
+	ent:SetNW2String("SPeditor_Locks", table.concat(parts, ";"))
+	if #parts > 0 then look.locks = locks end
+
+	-- the base pose of a model without physics: an animation of the model held at one moment
+	if ent:GetClass() == "prop_dynamic" and type(d.seq) == "string" and #d.seq < 128 then
+		local id = ent:LookupSequence(d.seq)
+		if id and id >= 0 then
+			local cyc = SPeditor.Clamp(d.cycle, 0, 1, 0)
+			if ent:GetSequence() ~= id then ent:ResetSequence(id) end
+			ent:SetPlaybackRate(0)
+			ent:SetCycle(cyc)
+			ent:SetNW2Float("SPeditor_Cycle", cyc)
+			look.seq, look.cycle = d.seq, cyc
+		end
+	end
 
 	ent.SPeditor_Look = next(look) ~= nil and look or nil
 end
@@ -1127,6 +1222,13 @@ S.Receive("Duplicate", function(ply)
 		copy, err = S.SpawnCamera(ply, S.CameraData(ent, ent:GetPos() + off))
 	elseif S.IsEffect(ent) then
 		copy, err = S.SpawnEffect(ply, S.EffectData(ent, ent:GetPos() + off))
+	elseif (S.IsForeign and S.IsForeign(ent)) or (S.ExtrasOf and #S.ExtrasOf(ent) > 0) then
+		-- an object of another addon, or one with bonemerged models: through its scene item
+		local it = S.Serialize(ent)
+		it.pos = SPeditor.VecToTable(SPeditor.TableToVec(it.pos) + off)
+		it.extrasOff = off
+		copy = S.RestoreItem(ply, it)
+		if not copy then err = "#err_create" end
 	else
 		local pos, ang = S.GetTransform(ent)
 		local skin, groups = S.CaptureAppearance(ent)

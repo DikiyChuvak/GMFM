@@ -1,5 +1,9 @@
 # original third-party skin addons kept locally as user themes (their copies with credits are in lua/speditor/skins)
 themes/
+# original sound addons (their copies for notifications are in sound/speditor/notify)
+sounds/
+# other addons kept locally to read their code (compatibility work)
+addons_ref/
 # user shader packs
 shaders/*/
 # local test harness
