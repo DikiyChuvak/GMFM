@@ -18,6 +18,7 @@
 		"tools/*",
 		"*.md",
 		".git*",
+		".claude/*",
 		".github/*",
 		"LICENSE",
 		"README*",
