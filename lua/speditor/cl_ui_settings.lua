@@ -6,7 +6,7 @@ Three pages:
                     tab is marked, animations, interface sounds;
   * Notifications — style, animation, place, width, number of cards, opacity,
                     the time line, sounds, display time (cl_ui_notify.lua);
-  * Keys          — the editor hotkeys and the mod hotkeys (cl_keys.lua, data/speditor/keys.json).
+  * Keys          — the editor hotkeys and the SAeditor hotkeys (cl_keys.lua, data/speditor/keys.json).
 
 Everything is kept in console variables (speditor_ui_*, speditor_notify_*), so it
 stays between sessions. Corners, tab mark, accent and all notification settings take
@@ -146,6 +146,40 @@ local function slider(parent, text, cv, min, max, onPick)
 	return s
 end
 
+-- a row with a sound of one's own: the path, listen, the game's file browser (UI.PickSound)
+local function soundRow(parent, text, cv, short)
+	local r = row(parent, text)
+	local e = vgui.Create("DTextEntry", r)
+	e:Dock(FILL)
+	e:SetValue(GetConVarString(cv))
+	e:SetPlaceholderText(L("nsnd_path_hint"))
+	local function set(v) RunConsoleCommand(cv, string.Trim(v)) end
+	e.OnEnter = function(s) set(s:GetValue()) end
+	e.OnLoseFocus = function(s) set(s:GetValue()) end
+	cvars.AddChangeCallback(cv, function(_, _, new)
+		if IsValid(e) and not e:HasFocus() then e:SetValue(new) end
+	end, "SPeditor.SoundRow")
+	local function small(icon, tip, fn)
+		local b = vgui.Create("DButton", r)
+		b:Dock(RIGHT)
+		b:DockMargin(4, 0, 0, 0)
+		b:SetWide(UI.S(26))
+		b:SetText("")
+		b:SetIcon(icon)
+		b:SetTooltip(tip)
+		UI.StyleButton(b, nil, 3)
+		b.DoClick = fn
+		return b
+	end
+	small("icon16/folder_explore.png", L("snd_pick_browse"), function()
+		UI.PickSound({ current = GetConVarString(cv), allowClear = true, onPick = function(path)
+			set(short and UI.ShortSoundPath(path) or path)
+		end })
+	end)
+	small("icon16/sound.png", L("snd_pick_listen"), function() UI.PlayNotifyPath(GetConVarString(cv)) end)
+	return r, small
+end
+
 local function button(parent, text, icon, fn)
 	local b = vgui.Create("DButton", parent)
 	b:Dock(LEFT)
@@ -262,6 +296,12 @@ local function buildLook(page)
 	combo(page, L("uis_tabs"), "speditor_ui_tabstyle", tabs)
 	check(page, L("uis_anim"), "speditor_ui_anim")
 	check(page, L("uis_sounds"), "speditor_ui_sounds")
+	soundRow(page, "   " .. L("uis_snd_click"), "speditor_ui_snd_click", true)
+	soundRow(page, "   " .. L("uis_snd_back"), "speditor_ui_snd_back", true)
+	local note = UI.Label(page, L("uis_snd_note"), COL.DIM)
+	note:SetWrap(true)
+	note:SetAutoStretchVertical(true)
+	note:DockMargin(10, 2, 10, 4)
 end
 
 ---------------------------------------------------------------------
@@ -612,31 +652,9 @@ local function buildNotify(page)
 
 	-- "Custom": a sound for every kind
 	for _, k in ipairs(KIND_IDS) do
-		local r = row(page, "   " .. L("notify_kind_" .. k))
-		local e = vgui.Create("DTextEntry", r)
-		e:Dock(FILL)
-		e:SetValue(GetConVarString("speditor_notify_snd_" .. k))
-		e:SetPlaceholderText(L("nsnd_path_hint"))
-		e.OnEnter = function(s) RunConsoleCommand("speditor_notify_snd_" .. k, string.Trim(s:GetValue())) end
-		e.OnLoseFocus = function(s) RunConsoleCommand("speditor_notify_snd_" .. k, string.Trim(s:GetValue())) end
-		cvars.AddChangeCallback("speditor_notify_snd_" .. k, function(_, _, new)
-			if IsValid(e) and not e:HasFocus() then e:SetValue(new) end
-		end, "SPeditor.NotifyCustomRow")
-		local play = vgui.Create("DButton", r)
-		play:Dock(RIGHT)
-		play:DockMargin(4, 0, 0, 0)
-		play:SetWide(UI.S(26))
-		play:SetText("")
-		play:SetIcon("icon16/sound.png")
-		UI.StyleButton(play, nil, 3)
-		play.DoClick = function() UI.PlayNotifyPath(GetConVarString("speditor_notify_snd_" .. k)) end
+		local r, small = soundRow(page, "   " .. L("notify_kind_" .. k), "speditor_notify_snd_" .. k, true)
 		-- pick one from the sets that are there
-		local more = vgui.Create("DButton", r)
-		more:Dock(RIGHT)
-		more:DockMargin(4, 0, 0, 0)
-		more:SetWide(UI.S(26))
-		more:SetText("…")
-		UI.StyleButton(more, nil, 3)
+		local more = small("icon16/bullet_arrow_down.png", L("nsa_title"), nil)
 		more.DoClick = function()
 			local m = UI.Menu()
 			for _, id in ipairs(UI.NotifySoundSets) do
@@ -804,13 +822,13 @@ local function buildKeys(page)
 		end
 		keyRow(a.id)
 	end
-	local mods = {}
-	for _, h in ipairs(SPeditor.Mods.hotkeys) do
-		if h.desc then mods[#mods + 1] = h end
+	local comps = {}
+	for _, h in ipairs(SPeditor.Components.hotkeys) do
+		if h.desc then comps[#comps + 1] = h end
 	end
-	if #mods > 0 then
-		heading(page, L("keys_g_mods"))
-		for _, h in ipairs(mods) do keyRow("mod:" .. h.id) end
+	if #comps > 0 then
+		heading(page, L("keys_g_anim"))
+		for _, h in ipairs(comps) do keyRow("comp:" .. h.id) end
 	end
 
 	local tools = vgui.Create("DPanel", page)

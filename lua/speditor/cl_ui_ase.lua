@@ -244,7 +244,7 @@ function UI.BuildASE(body)
 		m:AddOption(L("eff_add"), function() UI.ToggleEffects() end):SetIcon("icon16/lightning_add.png")
 		m:AddSpacer()
 		m:AddOption(L("rig_make"), function() C.SpawnLightRig(C.selected) end):SetIcon("icon16/lightbulb_add.png")
-		SPeditor.Mods.RunMenu("create", m)
+		SPeditor.Components.RunMenu("create", m)
 		m:Open()
 	end
 
@@ -299,6 +299,35 @@ function UI.BuildASE(body)
 	local tree = UI.StyleTree(vgui.Create("DTree", treeHost))
 	tree:Dock(FILL)
 	UI.ObjectTree = tree
+
+	-- an empty scene (a0.7): what to do first, instead of an empty list. Props and ragdolls
+	-- spawned from the Sandbox spawn menu are not scene objects until they are taken in.
+	local empty = vgui.Create("DPanel", treeHost)
+	empty:SetPaintBackground(false)
+	empty:DockPadding(8, 8, 8, 8)
+	local emptyText = vgui.Create("DLabel", empty)
+	emptyText:Dock(TOP)
+	emptyText:SetFont("SPeditor.Small")
+	emptyText:SetTextColor(COL.DIM)
+	emptyText:SetWrap(true)
+	emptyText:SetAutoStretchVertical(true)
+	emptyText:SetText(L("ase_empty"))
+	local b1 = UI.Button(empty, L("ase_add_model"), "icon16/user_add.png", function() UI.ToggleBrowser() end)
+	b1:Dock(TOP)
+	b1:DockMargin(0, 8, 0, 0)
+	local b2 = UI.Button(empty, L("adopt_title") .. "…", "icon16/arrow_in.png", function() UI.OpenAdopt() end)
+	b2:Dock(TOP)
+	b2:DockMargin(0, 4, 0, 0)
+	empty:SetVisible(false)
+	treeHost.PerformLayout = function(s, w, h) empty:SetSize(w, h) end
+	-- shown by the tree's own check below (a hidden panel gets no Think of its own)
+	local function updateEmpty()
+		local none = #C.Objects() == 0
+		if empty:IsVisible() ~= none then
+			empty:SetVisible(none)
+			tree:SetVisible(not none)
+		end
+	end
 
 	local presetHost = vgui.Create("DPanel")
 	presetHost.Paint = function(_, w, h)
@@ -460,6 +489,7 @@ function UI.BuildASE(body)
 			presetRow(L("match_cam_work"), function() C.MatchCameraToWork(ent) end)
 			presetRow(L("match_work_cam"), function() C.MatchWorkToCamera(ent) end)
 			presetRow(L("fx_open"), function() UI.OpenRenderDialog(ent) end)
+			presetRow(L("cam_rec"), function() C.SetCameraRecords(ent, not C.CameraRecords(ent)) end)
 			return
 		end
 
@@ -725,6 +755,17 @@ function UI.BuildASE(body)
 				draw.SimpleText(L("ctl_light_texture") .. ":  " .. texName(tex ~= "" and tex or SPeditor.DefaultLightTexture), "SPeditor.Small",
 					w / 2, h / 2, COL.TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 			end
+		else
+			-- shadows of a point light: it shines as six spots, a cube (speditor_light.lua)
+			ctrlHeader(L("light_sec_shadows"))
+			UI.ToggleRow(controls, L("ctl_casts_shadows"), function() return IsValid(ent) and ent:GetLightShadows() end, function(v)
+				sendExtra({ shadows = v })
+			end):SetTooltip(L("ctl_point_shadows_tip"))
+			extraCtrl("area", L("ctl_area"), 0, 64, 1)
+			extraCtrl("soft", L("ctl_shadow_filter"), 0, 5, 2)
+			extraCtrl("bias", L("ctl_shadow_bias"), 0, 10, 2, 10000)
+			extraCtrl("slope", L("ctl_shadow_slope"), 0, 16, 1)
+			extraCtrl("near", L("ctl_shadow_near"), 1, 500, 0)
 		end
 	end
 
@@ -904,9 +945,14 @@ function UI.BuildASE(body)
 				:SetChecked(not look.noshadow)
 			lm:AddSpacer()
 			lm:AddOption(L("props_reset"), function() UI.ResetLook(ent) end)
+			-- PAC3 outfits (cl_pac.lua): props and characters
+			if SPeditor.PAC and (C.IsRagdoll(ent) or ent:GetClass() == "prop_physics" or ent:GetClass() == "prop_dynamic") then
+				SPeditor.PAC.AddMenu(m, ent)
+			end
 			m:AddSpacer()
 		elseif C.IsCamera(ent) then
 			m:AddOption(L("fx_open"), function() UI.OpenRenderDialog(ent) end):SetIcon("icon16/wand.png")
+			m:AddOption(L("cam_rec"), function() C.SetCameraRecords(ent, not C.CameraRecords(ent)) end):SetChecked(C.CameraRecords(ent))
 			m:AddSpacer()
 		elseif C.IsEffect(ent) then
 			m:AddOption(L("eff_play"), function() SPeditor.Effects.Preview(ent) end):SetIcon("icon16/control_play.png")
@@ -931,18 +977,23 @@ function UI.BuildASE(body)
 			local tgt = o.ent
 			if IsValid(tgt) and tgt ~= ent and o.kind ~= "light" and o.kind ~= "camera" and o.kind ~= "effect" then
 				nTargets = nTargets + 1
-				if o.kind == "ragdoll" then
+				-- a ragdoll, or a model with a skeleton but no physics (a character ported from SFM)
+				if o.kind == "ragdoll" or (not C.IsAux(tgt) and (tgt:GetBoneCount() or 0) > 1) then
 					local bm = am:AddSubMenu(o.name)
 					-- clothing, armour, hair for the same skeleton: bends with the bones
 					if not C.IsAux(ent) then
-						bm:AddOption(L("attach_wear"), function() C.SendAttach(ent, tgt, -2) end):SetIcon("icon16/user_suit.png")
+						local w = bm:AddOption(L("attach_wear"), function() C.SendAttach(ent, tgt, -2) end)
+						w:SetIcon("icon16/user_suit.png")
+						w:SetTooltip(L("attach_wear_tip"))
 					end
 					bm:AddOption(L("attach_root"), function() C.SendAttach(ent, tgt, -1) end)
-					bm:AddSpacer()
-					for _, b in ipairs(C.GetBoneList(tgt)) do
-						if b.phys then
-							local short = string.gsub(b.name, "^ValveBiped%.Bip01_", "")
-							bm:AddOption(short, function() C.SendAttach(ent, tgt, b.id) end)
+					if o.kind == "ragdoll" then
+						bm:AddSpacer()
+						for _, b in ipairs(C.GetBoneList(tgt)) do
+							if b.phys then
+								local short = string.gsub(b.name, "^ValveBiped%.Bip01_", "")
+								bm:AddOption(short, function() C.SendAttach(ent, tgt, b.id) end)
+							end
 						end
 					end
 				else
@@ -1003,7 +1054,7 @@ function UI.BuildASE(body)
 				end
 			end
 		end
-		SPeditor.Mods.RunMenu("object", m, ent)
+		SPeditor.Components.RunMenu("object", m, ent)
 		m:Open()
 	end
 
@@ -1030,7 +1081,8 @@ function UI.BuildASE(body)
 		local parts = { search:GetValue() or "", UI.AseTreeMode(), cvNonPhys:GetString(), cvMerged:GetString() }
 		for _, o in ipairs(C.BuildEntityList()) do
 			parts[#parts + 1] = table.concat({ IsValid(o.ent) and o.ent:EntIndex() or 0, o.name, tostring(o.hidden), tostring(o.locked),
-					IsValid(o.parent) and o.parent:EntIndex() or 0 }, ":")
+					IsValid(o.parent) and o.parent:EntIndex() or 0,
+					IsValid(o.ent) and IsValid(o.ent:GetNW2Entity("SPeditor_AimAt")) and o.ent:GetNW2Entity("SPeditor_AimAt"):EntIndex() or 0 }, ":")
 		end
 		return table.concat(parts, "|")
 	end
@@ -1127,6 +1179,9 @@ function UI.BuildASE(body)
 			-- an attached object shows in the tree what it is attached to
 			local label = obj.name
 			if IsValid(obj.parent) then label = label .. "  → " .. C.DisplayName(obj.parent) end
+			-- a look-at (a0.7): what the camera / light keeps turning to
+			local aim = ent:GetNW2Entity("SPeditor_AimAt")
+			if IsValid(aim) then label = label .. "   (" .. string.format(L("aim_tree"), C.DisplayName(aim)) .. ")" end
 			local node = tree:AddNode(label, ICONS[obj.kind] or ICONS.prop)
 			UI.NodeColor(node, (obj.hidden or obj.locked) and COL.DIM or COL.TEXT)
 			nodesByEnt[ent] = node
@@ -1195,9 +1250,10 @@ function UI.BuildASE(body)
 	end)
 
 	local nextCheck = 0
-	tree.Think = function()
+	treeHost.Think = function()
 		if RealTime() < nextCheck or not C.active then return end
 		nextCheck = RealTime() + 0.5
+		updateEmpty()
 		if signature() ~= treeSig then rebuildTree() end
 		if IsValid(cur.ent) == false and cur.ent ~= nil then
 			cur.ent = nil

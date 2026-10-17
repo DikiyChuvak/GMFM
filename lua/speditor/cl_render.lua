@@ -22,8 +22,14 @@ SPeditor = SPeditor or {}
 SPeditor.Render = SPeditor.Render or {}
 local R = SPeditor.Render
 local C = SPeditor.Client
+local L = SPeditor.L
 
-local VP_W, VP_H = 1280, 1024
+-- The viewport frame is drawn into a texture as big as the screen (at least 1280 x 1024). A fixed
+-- 1280 x 1024 one was stretched over big viewports on 1440p / 4K screens, and small far objects
+-- came out blurry ("everything gets blurry a bit farther away").
+local function vpSize()
+	return math.Clamp(ScrW(), 1280, 4096), math.Clamp(ScrH(), 1024, 4096)
+end
 
 -- Frame exposure. In HDR the engine adjusts brightness to what the main
 -- camera sees (auto exposure), and this adjustment is shared by all views:
@@ -88,6 +94,10 @@ end
 -- Draws the scene into rt (area 0,0,rw,rh). pass: "primary" | "secondary" | "export".
 -- aspect — frame proportions if they differ from rw / rh (the frame is stretched over the whole texture).
 local function renderScene(rt, src, rw, rh, pass, wrap2D, fullbright, aspect)
+	-- Fullscreen on Windows: after Alt+Tab the Direct3D device is lost until the game is back,
+	-- and drawing into render targets then is a known way to crash the game (a report of a
+	-- crash on Alt+Tab). The viewports keep their last frame; a render (export) still goes on.
+	if not C.exporting and system.IsWindows() and not system.HasFocus() and not system.IsWindowed() then return end
 	local oldPass, oldEnt = C.vpPass, C.renderViewEnt
 	C.vpPass, C.renderViewEnt = pass, src.ent
 	render.PushRenderTarget(rt)
@@ -136,12 +146,131 @@ local vpFrames = {}   -- [pass] = { rw, rh }
 -- twice a second, the frame time goes to the render.
 local BUSY_INTERVAL = 0.5
 
+-- The render look of the Primary Viewport (a0.7, as in SFM): the frame as the render makes it —
+-- depth of field, soft shadows, smoothing and the camera effects (bloom, curves, vignette…).
+-- While the view or the scene moves (flying, dragging, playback) a light version is shot
+-- every frame; once everything rests, one full frame is shot and kept. The frames are shot
+-- in PostRender (R.Viewport only asks for them and shows the last one); the helper graphics
+-- (gizmo, skeleton) are not in them.
+local cvLook = CreateClientConVar("speditor_vp_look", "0", true, false)
+local LOOK_FAST_PASSES = 4       -- depth of field / soft shadow passes of the light version
+local LOOK_REST = 0.3            -- s without changes before the full frame
+local look = { }
+
+function R.LookOn() return cvLook:GetBool() end
+function R.SetLook(on)
+	RunConsoleCommand("speditor_vp_look", on and "1" or "0")
+	look.rt, look.full = nil, nil
+end
+
+-- anything that changes the picture without moving the view: edits, undo, keys, the frame
+local function lookDirty() look.changed = RealTime() end
+hook.Add("SPeditor_HistoryPushed", "SPeditor.ViewportLook", lookDirty)
+hook.Add("SPeditor_HistoryStep", "SPeditor.ViewportLook", lookDirty)
+hook.Add("SAeditor_Changed", "SPeditor.ViewportLook", lookDirty)
+
+hook.Add("PostRender", "SPeditor.ViewportLook", function()
+	local req = look.req
+	look.req = nil
+	if not req or not cvLook:GetBool() or not C.active or C.hideUI or C.exporting or R.busy then return end
+	if SPeditor.Export and SPeditor.Export.pending then return end
+	local FX = SPeditor.FX
+	local src = req.src
+	local W, H = C.GetRenderSize()
+	local aspect = W / H
+	local VP_W, VP_H = vpSize()
+	local pw = math.Clamp(math.floor(math.min(req.iw, W)), 16, VP_W)
+	local ph = math.Clamp(math.floor(pw / aspect), 16, VP_H)
+	local fx = FX and FX.For(src.ent) or nil
+	local now = RealTime()
+	local o, a = src.origin, src.angles
+	local sig = string.format("%.1f %.1f %.1f %.2f %.2f %.2f %.2f %d %s %s", o.x, o.y, o.z, a.p, a.y, a.r, src.fov, pw,
+		tostring(C.SceneTime and C.SceneTime() or 0), tostring(src.ent))
+	if sig ~= look.sig then look.sig, look.changed = sig, now end
+	local busy = (C.ScenePlaying and C.ScenePlaying()) or input.IsMouseDown(MOUSE_LEFT) or input.IsMouseDown(MOUSE_RIGHT)
+	if busy then look.changed = now end
+	local resting = now - (look.changed or 0) >= LOOK_REST
+	-- the full frame is shot once per rest
+	if resting and look.full and look.fullAt and look.fullAt >= look.changed then return end
+
+	-- "Engine frame": the engine shoots the view with the addon shaders (SSAO / HBAO of
+	-- GShader Library, bloom, SMAA…), as the render does in this mode; no depth of field then
+	if R.EngineMode() then
+		R.FinishEngineFrame()
+		local E = R.Engine
+		if E.info and E.info.owner == look and E.serial ~= look.engSerial then
+			look.engSerial = E.serial
+			local ok, rt = pcall(function()
+				local base = R.EngineToRT(pw, ph, aspect)
+				return base and R.ApplyFX(base, fx, pw, ph, aspect)
+			end)
+			if ok and rt then
+				local own_rt = getRT("vplook_" .. pw .. "x" .. ph, pw, ph)
+				R.Copy(rt, own_rt)
+				look.rt, look.w, look.h = own_rt, pw, ph
+				-- a few frames after the rest: effects that settle over frames have settled
+				look.engRest = E.info.rest and (look.engRest or 0) + 1 or 0
+				look.full = look.engRest >= 3
+				if look.full then look.fullAt = now end
+			end
+		end
+		if not E.want and not E.cur then
+			R.RequestEngineFrame(R.FXSource(src, fx), { fullbright = C.fullbright or GetConVar("speditor_render_fullbright"):GetBool(),
+				aspect = aspect, owner = look })
+			E.want.rest = resting
+		end
+		return
+	end
+
+	local opts = { fullbright = C.fullbright or GetConVar("speditor_render_fullbright"):GetBool(), aspect = aspect }
+	if GetConVar("speditor_dof"):GetBool() then
+		opts.dof = { aperture = math.Clamp(GetConVar("speditor_dof_aperture"):GetFloat(), 0.05, 20),
+			samples = math.Clamp(GetConVar("speditor_dof_samples"):GetInt(), 2, 128), focus = SPeditor.Export.FocusDistance(src) }
+	end
+	local own = FX and FX.DOF(fx)
+	if own then opts.dof = table.Copy(own) end
+	if resting then
+		if GetConVar("speditor_render_ss"):GetBool() and pw <= 960 then opts.ss = 2 end
+	else
+		if opts.dof then opts.dof.samples = math.min(opts.dof.samples or 32, LOOK_FAST_PASSES) end
+		opts.softMax = LOOK_FAST_PASSES
+	end
+	local prevHide, prevExp = C.hideUI, C.exporting
+	C.hideUI, C.exporting = true, true
+	local ok, rt = pcall(function()
+		local base = R.RenderBase(R.FXSource(src, fx), pw, ph, opts)
+		return R.ApplyFX(base, fx, pw, ph, aspect)
+	end)
+	C.hideUI, C.exporting = prevHide, prevExp
+	if not ok then
+		ErrorNoHalt("[SPeditor] render look: " .. tostring(rt) .. "\n")
+		look.rt = nil
+		return
+	end
+	-- its own texture: the render and the preview reuse the ones it was shot in
+	local own_rt = getRT("vplook_" .. pw .. "x" .. ph, pw, ph)
+	R.Copy(rt, own_rt)
+	look.rt, look.w, look.h = own_rt, pw, ph
+	look.full = resting
+	if resting then look.fullAt = now end
+end)
+
 function R.Viewport(src, w, h, pass, frozen)
 	local ix, iy, iw, ih = C.FitRect(w, h, C.GetAspect())
 	if iw < 4 or ih < 4 then return end
 
 	pass = pass or "primary"
-	local rt = getRT("vp_" .. pass, VP_W, VP_H)
+	if pass == "primary" and cvLook:GetBool() and not R.busy then
+		look.req = { src = src, iw = iw }
+		if look.rt then
+			R.DrawRT(look.rt, ix, iy, iw, ih)
+			draw.SimpleTextOutlined(L(look.full and "vp_look_full" or "vp_look_fast"), "SPeditor.Small", ix + iw - 8, iy + 6,
+				look.full and Color(140, 220, 140) or Color(230, 190, 90), TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP, 1, color_black)
+			return ix, iy, iw, ih
+		end
+	end
+	local VP_W, VP_H = vpSize()
+	local rt = getRT("vp_" .. pass .. "_" .. VP_W .. "x" .. VP_H, VP_W, VP_H)
 	local st = vpFrames[pass] or {}
 	vpFrames[pass] = st
 	if R.busy and st.rw and RealTime() < (st.busyNext or 0) then frozen = true end
@@ -239,6 +368,29 @@ function R.FXSource(src, fx)
 end
 
 R.GetRT = getRT
+
+-- Motion blur (a0.7, SAeditor): the finished frames of several moments inside one video
+-- frame (the shutter) are averaged the same way — a running mean in a floating-point RT.
+-- R.Accumulate(rt, i, W, H) lays the i-th of them on (i = 1 starts anew);
+-- R.AccumulatedRT(W, H) — the mean as an ordinary RT, ready to be captured.
+function R.Accumulate(rt, i, W, H)
+	opaqueAlpha(rt)
+	local acc = getFloatRT("mblur_" .. W .. "x" .. H, W, H)
+	render.PushRenderTarget(acc)
+	if i <= 1 then render.Clear(0, 0, 0, 255) end
+	drawFull(matBlend, rt, 1 / math.max(i, 1))
+	render.PopRenderTarget()
+end
+
+function R.AccumulatedRT(W, H)
+	local acc = getFloatRT("mblur_" .. W .. "x" .. H, W, H)
+	local out = getRT("mblur_out_" .. W .. "x" .. H, W, H)
+	render.PushRenderTarget(out)
+	render.Clear(0, 0, 0, 255, true, true)
+	drawFull(matShow, acc)
+	render.PopRenderTarget()
+	return out
+end
 
 ---------------------------------------------------------------------
 -- Engine frame
@@ -341,7 +493,10 @@ end
 -- a W x H texture. Returns the texture, or nil if there is no frame yet.
 function R.EngineToRT(W, H, aspect)
 	if not E.tex then return nil end
-	return R.CropToRT(E.tex, E.w, E.h, W, H, aspect, "eng_")
+	local rt = R.CropToRT(E.tex, E.w, E.h, W, H, aspect, "eng_")
+	-- the editor's ambient occlusion over the engine's frame (a depth pass of the same view)
+	if R.ApplySSAO and E.info and E.info.src and not E.info.fullbright then R.ApplySSAO(rt, E.info.src, W, H, aspect) end
+	return rt
 end
 
 -- The same for any texture tex of tw x th pixels (SAeditor's player takes the screen this way)
@@ -370,6 +525,15 @@ function R.ApplyFX(rt, fx, W, H, aspect)
 	local FX = SPeditor.FX
 	if not fx or not FX then return rt end
 	return FX.Apply(rt, getRT("fx_" .. W .. "x" .. H, W, H), W, H, fx, aspect)
+end
+
+-- A finished frame stretched over the whole current target, or over its top left w x h
+-- (the screen, for the WebM writer)
+function R.DrawFull(rt, w, h)
+	render.Clear(0, 0, 0, 255, true, true)
+	matShow:SetTexture("$basetexture", rt)
+	render.SetMaterial(matShow)
+	if w and h then render.DrawScreenQuadEx(0, 0, w, h) else render.DrawScreenQuad() end
 end
 
 -- A copy of the frame from one texture into another of the same size
@@ -418,6 +582,8 @@ function R.RenderBase(src, W, H, opts)
 	if ss == 1 and not dof and soft == 0 then
 		local rt = getRT("exp_" .. W .. "x" .. H, W, H)
 		renderScene(rt, src, W, H, "export", true, opts.fullbright, opts.aspect)
+		-- ambient occlusion (cl_ssao.lua) from the centre of the view
+		if R.ApplySSAO and not opts.fullbright then R.ApplySSAO(rt, src, W, H, opts.aspect) end
 		return rt
 	end
 
@@ -464,5 +630,6 @@ function R.RenderBase(src, W, H, opts)
 	render.Clear(0, 0, 0, 255, true, true)
 	drawFull(matShow, result)
 	render.PopRenderTarget()
+	if R.ApplySSAO and not opts.fullbright then R.ApplySSAO(out, src, W, H, opts.aspect) end
 	return out
 end

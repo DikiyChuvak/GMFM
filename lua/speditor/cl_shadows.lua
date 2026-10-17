@@ -6,7 +6,10 @@ What the GMod API allows (checked against the wiki):
     (edge blur), SetShadowDepthBias, SetShadowSlopeScaleDepthBias; after a
     change :Update() is needed — the light entity does that.
   * A point light (DynamicLight) CANNOT cast shadows — an engine
-    limitation. Use a spot for shadows.
+    limitation. A point light with shadows therefore shines as six spots along the faces
+    of a cube (speditor_light.lua), six shadow maps.
+  * The engine has 8 shadow maps for all projected textures together (the wiki; the launch
+    option -numshadowtextures N raises it): a spot takes one, a point light six.
   * The shadow map resolution is set by r_flashlightdepthres; the engine reads it at
     start-up, so after a change vid_restart may be needed (or the
     launch option +r_flashlightdepthres).
@@ -43,6 +46,7 @@ local cvQuality = CreateClientConVar("speditor_shadow_quality", "2", true, false
 local cvSlope   = CreateClientConVar("speditor_shadow_slope", "2", true, false)
 local cvDist    = CreateClientConVar("speditor_shadow_dist", "0", true, false)
 local cvSoftMul = CreateClientConVar("speditor_shadow_softscale", "1", true, false)
+local cvOnly    = CreateClientConVar("speditor_shadow_onlylights", "1", true, false)   -- no map-light blob shadows on scene objects
 
 Sh.QUALITY = {
 	{ name = "Low",    res = 512 },
@@ -52,6 +56,11 @@ Sh.QUALITY = {
 }
 
 function Sh.IsEnabled() return cvEnabled:GetBool() end
+
+-- shadows of the scene's objects only from the editor's lights (cl_scene.lua drops the
+-- engine's blob shadow along the map light while the editor is open)
+function Sh.OnlyLights() return cvOnly:GetBool() end
+function Sh.SetOnlyLights(on) RunConsoleCommand("speditor_shadow_onlylights", on and "1" or "0") end
 function Sh.SetEnabled(on) RunConsoleCommand("speditor_shadows", on and "1" or "0") end
 
 function Sh.GetMax() return math.Clamp(cvMax:GetInt(), 1, 16) end
@@ -77,7 +86,10 @@ function Sh.SetQuality(i)
 	RunConsoleCommand("r_flashlightdepthres", tostring(Sh.QUALITY[i].res))
 end
 
--- Which lights get shadows: the N nearest to the camera among the enabled ones
+-- Which lights get shadows: the nearest to the camera among the enabled ones, at most N of
+-- them and as many as the engine's shadow maps allow (a point light needs six; one that does
+-- not fit stays an ordinary point light without shadows)
+Sh.SHADOW_MAPS = 8
 local allowed = {}
 local skipped = 0          -- how many lights were cut off by the draw distance
 local nextScan = 0
@@ -91,20 +103,25 @@ local function rescan()
 	local list = {}
 	local limit = Sh.GetDistance()
 	for _, e in ipairs(ents.FindByClass("speditor_light")) do
-		if IsValid(e) and e:GetLightEnabled() and e:GetLightType() == 1 and e:GetLightShadows() then
+		if IsValid(e) and e:GetLightEnabled() and e:GetLightShadows() and e:GetLightBrightness() > 0 then
 			local d = e:GetPos():DistToSqr(origin)
 			-- the distance is measured to the lit area: a light may stand far away and shine nearby
 			local reach = math.max(math.sqrt(d) - e:GetLightRadius(), 0)
 			if limit <= 0 or reach <= limit then
-				list[#list + 1] = { ent = e, d = d }
+				list[#list + 1] = { ent = e, d = d, cost = e:GetLightType() == 0 and 6 or 1 }
 			else
 				skipped = skipped + 1
 			end
 		end
 	end
 	table.sort(list, function(a, b) return a.d < b.d end)
-	for i = 1, math.min(#list, Sh.GetMax()) do
-		allowed[list[i].ent] = true
+	local count, maps = 0, 0
+	for _, it in ipairs(list) do
+		if count >= Sh.GetMax() then break end
+		if maps + it.cost <= Sh.SHADOW_MAPS then
+			allowed[it.ent] = true
+			count, maps = count + 1, maps + it.cost
+		end
 	end
 end
 

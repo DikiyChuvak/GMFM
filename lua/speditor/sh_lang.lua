@@ -61,6 +61,8 @@ SPeditor.Lang = {
 		render_saved = "Render saved: data/%s (%dx%d)", render_failed = "Render failed",
 		render_fmt_steam = "Steam screenshot (PNG + Steam library)",
 		guide_title = "How to use", guide_open = "How to use this tool", guide_result = "Result:",
+		guide_v_play = "Play", guide_v_pause = "Pause", guide_v_stop = "Stop", guide_v_back = "5 s back", guide_v_fwd = "5 s forward",
+		guide_v_mute = "Sound on / off", guide_v_loop = "Repeat", guide_v_full = "Full screen (Esc — back)", guide_v_unfull = "Leave full screen",
 		render_steam_done = "Added to Steam screenshots: Steam → View → Screenshots → Garry's Mod — publish it from there. The shot has the size of your screen.",
 		render_steam_failed = "Could not show the render to make a Steam screenshot",
 		render_busy = "A render is already in progress",
@@ -108,13 +110,14 @@ SPeditor.Lang = {
 		shadow_cast = "Cast shadows", shadow_soft = "Shadow softness",
 		browser_all = "All models", browser_spawnlists = "Spawnlists", browser_status = "%d models%s", browser_indexing = "indexing models/…",
 		browser_more = "Show %d more…",
-		tab_shadows = "Shadows", shadows_master = "Spot lights cast shadows", shadows_quality = "Shadow map quality",
+		tab_shadows = "Shadows", shadows_master = "Lights cast shadows", shadows_quality = "Shadow map quality",
 		shadows_max = "Max shadow-casting lights", shadows_slope = "Slope bias (global)", shadows_active = "Casting shadows now: %d",
 		shadow_bias = "Depth bias (×0.0001)",
-		shadows_note = "Only SPOT lights cast shadows (a GMod limitation: point lights cannot). Each shadow-casting light costs FPS, so only the N nearest to the camera, within the draw distance, cast. Per-light settings — edge softness, depth and slope bias, near plane, falloff, parallel beam, light mask — are in the Animation Set Editor when a spot light is selected. Quality changes r_flashlightdepthres: the engine reads it at start, so after changing it you may need vid_restart (or the launch option +r_flashlightdepthres 2048).",
+		shadows_note = "Spot and point lights cast shadows. A point light with shadows shines as six spots (a cube); the game has 8 shadow maps for all lights, a spot takes one, a point light six. Each shadow-casting light costs FPS, so only the N nearest to the camera, within the draw distance and the 8 maps, cast. Per-light settings — edge softness, depth and slope bias, near plane, falloff, parallel beam, light mask — are in the Animation Set Editor when a light is selected. Quality changes r_flashlightdepthres: the engine reads it at start, so after changing it you may need vid_restart (or the launch option +r_flashlightdepthres 2048).",
 		menu_edit = "Edit", menu_create = "Create", edit_undo = "Undo", edit_redo = "Redo", edit_deselect = "Deselect",
 		view_guides = "Frame guides", guide_thirds = "Rule of thirds", guide_center = "Center cross", guide_safe = "Safe areas", guide_golden = "Golden ratio",
 		sec_appearance = "Appearance", sec_actions = "Actions", autosave = "Autosave scene (every 2.5 min)",
+		ase_empty = "The scene is empty. Add a model from the Model Browser, or take into the scene what already stands on the map (props and ragdolls spawned from the Sandbox spawn menu are not in the scene until they are taken in). The + button above adds cameras and lights.",
 		ase_add = "Add (model, camera, light)", ase_add_model = "Model…", ase_lenses = "Lenses", ase_presets = "Presets",
 		ase_renderable = "Renderable", ase_selectable = "Selectable", ase_set_body = "Set Body", ase_set_skin = "Set Skin",
 		ase_show_ev = "Show in Element Viewer", ase_show_groups = "Show control groups", ase_utilities = "Utilities",
@@ -131,6 +134,12 @@ SPeditor.Lang = {
 		undo_gone = "Nothing to restore (object is no longer in the trash)",
 		attach_to = "Attach to…", attach_root = "(whole object)", attach_detach = "Detach",
 		attach_wear = "Wear (clothing: follows the skeleton)",
+		cam_rec = "Record this camera's moves (keys)", cam_rec_on = "The camera records its moves: every move, turn and zoom sets a key at the current frame",
+		cam_rec_off = "The camera no longer records its moves", cam_rec_need = "Look through a scene camera (V) or select one first",
+		vp_look = "Render look: the frame as the render makes it (depth of field, soft shadows, camera effects)",
+		vp_look_on_hint = "Render look on: at rest the viewport shows the finished frame; the gizmo and the skeleton are hidden in it",
+		vp_look_off_hint = "Render look off", vp_look_full = "Render look", vp_look_fast = "Render look · preview",
+		attach_wear_tip = "For clothes, armour, hair and TF2 cosmetics: the model bends with every bone of the character. Attaching to the whole object or to one bone only carries it rigidly.",
 		err_attach = "Cannot attach: the target is attached to this object",
 		undo_nothing = "Nothing to undo", redo_nothing = "Nothing to redo", undo_done = "Undo", redo_done = "Redo",
 		hist_move = "move", hist_rotate = "rotate", hist_scale = "scale", hist_spawn = "create", hist_delete = "delete",
@@ -148,10 +157,16 @@ SPeditor.Lang = {
 		scene_other_map = "This scene was saved on map %s: objects may be out of place",
 		err_pose_name = "Invalid pose name", pose_saved = "Pose saved: %s — garrysmod/data/speditor/poses/%s.json", err_pose_damaged = "Pose file is damaged",
 		pose_other_model = "This pose was saved for another model", ik_off = "IK: off",
-		qmenu_lang_hint = "The language is applied the next time the editor is opened. Inside the editor: Help → Interface language (applied at once).",
+		qmenu_lang_hint = "The language is applied the next time the editor is opened. Inside the editor: Help → Interface language (applied at once). Other languages come as language packs from the Workshop.",
+		lang_template = "Write a translation template", lang_template_prompt = "Language code (two Latin letters, e.g. ja, de, pt_br)",
+		lang_template_done = "Translation template saved: %s (untranslated: %d). Rename it to <code>.lua and put it into lua/speditor_lang/ of your addon",
+		lang_code_bad = "Language code: Latin lowercase letters, at least two (ja, de, pt_br); English is the original",
 		ik_on = "IK", ik_hint = "IK: move a hand/foot, the limb follows",
+		stretch_on = "Stretch", stretch_off = "Stretch: off", stretch_hint = "Stretch: Move takes a bone away from its parent (the limb grows longer)",
+		help_stretch = "Stretch bones",
 		aim_at = "Aim camera at object…", aim_hint = "Select a scene camera first",
 		aim_none = "No objects to aim at",
+		aim_follow = "Keep looking at (follows it)", aim_follow_stop = "Stop looking at", aim_tree = "looks at %s",
 		light_palette = "Palette", light_custom = "Custom color",
 		light_range = "Range", light_range_point = "Range / radius", light_brightness = "Brightness",
 		light_cone = "Cone angle", light_type = "Type", light_point = "Point", light_spot = "Spot",
@@ -334,6 +349,16 @@ SPeditor.Lang = {
 		ctl_eyes_dist = "eyes_distance",
 		light_sec_shadows = "Shadows",
 		light_sec_beam = "Beam and falloff",
+		pac_menu = "PAC3 outfits", pac_add = "Put on an outfit", pac_none = "No saved outfits: make one in the PAC3 editor and save it", pac_remove = "Take off", pac_clear = "Take off all", pac_editor = "Open the PAC3 editor", pac_missing = "PAC3 is not installed: the outfits are kept with the scene but not shown (Workshop: PAC3)", pac_bad = "This file is not a PAC3 outfit", pac_big = "The outfit is too big (more than 60 KB compressed)", pac_too_many = "At most %s outfits on one object",
+		pac_win = "PAC3 outfits", pac_win_open = "PAC3 window: outfits and a model on a bone…", pac_worn = "Worn outfits", pac_worn_none = "No outfits on this object",
+		pac_choose = "Choose a saved outfit…", pac_none_short = "No saved outfits yet", pac_refresh = "Read the outfit files again",
+		pac_new = "New part: a model on a bone", pac_new_hint = "A hat, glasses, a backpack, a TF2 cosmetic: choose the model and the bone and set the place — the part is seen on the object at once. Save makes it an ordinary PAC3 outfit and puts it on.",
+		pac_model = "Model", pac_model_ph = "models/….mdl, then Enter", pac_model_scene = "Scene prop", pac_bone = "Bone",
+		pac_fwd = "Forward", pac_side = "Side", pac_up = "Up", pac_pitch = "Pitch", pac_yaw = "Yaw", pac_roll = "Roll", pac_size = "Size",
+		pac_reset = "Reset the place", pac_name = "Name", pac_name_ph = "the name of the outfit file", pac_save = "Save and put on",
+		pac_saved = "Outfit %s saved and put on: %s", pac_select = "Select a character or a prop first",
+		shadows_onlylights = "Objects: shadows only from spot and point lights", shadows_onlylights_tip = "Props and characters of the scene drop the game's blob shadow that falls along the map light, whatever lights the scene has; they keep the real shadows of the editor's spot and point lights. Only in the editor; the rest of the game is not touched.",
+		ctl_point_shadows_tip = "A point light with shadows shines as six spots (a cube), each with its own shadow map. The game has 8 shadow maps for all lights, so only the point light nearest to the camera gets shadows; the others shine without them.",
 		ctl_casts_shadows = "castsShadows",
 		ctl_shadow_filter = "shadowFilterSize",
 		ctl_shadow_bias = "shadowDepthBias (×0.0001)",
@@ -376,7 +401,7 @@ SPeditor.Lang = {
 		ev_orthographic = "orthographic",
 		ev_orthosize = "orthoSize",
 		ev_linearattenuation = "linearAttenuation",
-		shadows_sec_lights = "Shadows from spot lights",
+		shadows_sec_lights = "Shadows from spot and point lights",
 		shadows_sec_map = "Prop shadows from map lighting",
 		shadows_q1 = "Low",
 		shadows_q2 = "Medium",
@@ -410,6 +435,10 @@ SPeditor.Lang = {
 		shaders_tab_addons = "Addon effects",
 		shaders_tab_packs = "Shader folder",
 		render_engine = "Engine frame: shaders from addons and the Workshop",
+		render_tab_still = "Picture", render_tab_anim = "Animation", render_go_anim = "Render animation",
+		render_no_anim = "The scene has no animation yet",
+		render_ssao = "Ambient occlusion (SSAO)", render_ssao_radius = "SSAO radius, units", render_ssao_strength = "SSAO strength",
+		render_ssao_tip = "Soft contact shadows in corners, folds and under objects, as in SFM. The editor's own effect: no other addon is needed. Seen in the preview, the render, the video and the Render look of the viewport.",
 		render_engine_tip = "The picture is rendered by the game's own renderer through the chosen camera, with every enabled post-processing addon (standard GMod effects, Workshop shaders, shaders built on GShader Library), then taken from the screen. Limits: the resolution is not higher than the screen, 2× smoothing and the editor's depth of field are not applied.",
 		render_engine_size = "source: %d × %d px of the screen",
 		shaders_addons_note = "Every post-processing effect registered in the game: standard GMod ones and those from addons and the Workshop. Tick an effect and tune it on the right — it is the effect's own panel, the same as in the Q menu. These effects draw themselves in the game's main frame, so they reach the preview and the render only in Engine frame mode.",
@@ -472,7 +501,7 @@ SPeditor.Lang = {
 		ctl_tip_attc = "Constant falloff: the light does not fade with distance. The three falloff values are mixed; engine default is 0 / 100 / 0.",
 		ctl_tip_attl = "Linear falloff: the light fades evenly with distance (engine default 100).",
 		ctl_tip_attq = "Quadratic falloff: the light fades fast, like a real lamp — bright near the source, dim far away.",
-		-- a0.2: soft light, visible source, mods
+		-- a0.2: soft light, visible source
 		light_sec_soft = "Soft light", light_sec_visible = "Visible source",
 		ctl_edge = "edge softness", ctl_area = "source size",
 		ctl_glow = "glow size", ctl_glow_bright = "glow brightness",
@@ -487,17 +516,6 @@ SPeditor.Lang = {
 		ev_beamlength = "beamLength", ev_glowsize = "glowSize", ev_glowbrightness = "glowBrightness",
 		render_soft_samples = "Soft shadows (passes)",
 		render_soft_samples_tip = "How many times the scene is rendered for lights that have a source size. More passes — smoother penumbra, longer render.",
-		mods_title = "Mods",
-		mods_intro = "Mods add tools to SPeditor. A mod is a folder lua/speditor_mods/<id>/ inside SPeditor or inside any other addon.",
-		mods_none = "No mods found.",
-		mods_state_loaded = "on", mods_state_off = "off", mods_state_error = "error", mods_state_outdated = "needs a newer SPeditor",
-		mods_restart = "after the map restarts",
-		mods_author = "Author", mods_folder = "Folder", mods_enabled = "Enabled",
-		mods_dev_title = "For mod authors",
-		mods_dev_text = "A mod can add pages to the editor windows, menu items, hotkeys, its own network messages and its own data in scene files. A working example is the built-in mod lua/speditor_mods/saeditor. The buttons below save the guide with examples and a ready mod template to garrysmod/data/speditor (console: speditor_mod_guide, speditor_mod_template <id>).",
-		mods_guide_save = "Save the guide", mods_guide_done = "Mod guide saved: %s",
-		mods_template_id = "mod id, e.g. mytool", mods_template_make = "Write a mod template",
-		mods_template_done = "Mod template saved: %s", mods_template_bad = "Mod id: Latin letters, digits and _, not starting with a digit",
 		-- a0.2: soft light kinds and editor masks
 		light_kinds = "Light kinds", light_kinds_spawn = "Soft light",
 		lkind_softbox = "Softbox", lkind_strip_light = "Strip light", lkind_beauty_dish = "Beauty dish", lkind_ring_light = "Ring light",
@@ -567,6 +585,13 @@ SPeditor.Lang = {
 		corners_0 = "Square", corners_3 = "Slightly rounded", corners_6 = "Rounded", corners_10 = "Very rounded",
 		uis_tabs = "Active tab mark", tabs_top = "Line on top", tabs_bottom = "Line at the bottom",
 		tabs_fill = "Tinted with the accent", tabs_none = "No mark",
+		uis_snd_click = "Click sound", uis_snd_back = "Window close sound",
+		uis_snd_note = "Empty: the theme's own sound (only Vanilla UI has them). A sound of your own plays with any theme. The folder button opens the game's file browser: the sounds of the game and of all addons, or your own files from garrysmod/data/speditor/sounds/.",
+		snd_pick_title = "Choose a sound", snd_pick_game = "Game and addon sounds", snd_pick_user = "My files (data/speditor/sounds)",
+		snd_pick_refresh = "Read the folders again", snd_pick_listen = "Listen", snd_pick_stop = "Stop", snd_pick_clear = "No sound",
+		snd_pick_choose = "Choose", snd_pick_none = "Click a sound in the list first", snd_pick_browse = "Choose in the file browser…",
+		snd_pick_failed = "The sound does not play: %s",
+		snd_pick_hint = "A click plays a sound, a double click chooses it. Your own .wav, .mp3 and .ogg files: put them into garrysmod/data/speditor/sounds/ and press the refresh button.",
 		uis_anim = "Animations (fades, smooth highlight)", uis_sounds = "Interface sounds (themes that have them)",
 		uis_reset = "Reset to defaults", uis_reset_confirm = "Return all interface and notification settings to their defaults?",
 		uis_notify_look = "Look", uis_notify_behaviour = "Behaviour",
@@ -603,15 +628,23 @@ SPeditor.Lang = {
 		nse_where = "Saved to garrysmod/data/speditor/notify_styles/<name>.json. To share a style in a Workshop addon, put the file into data_static/speditor/notify_styles/; a lua file in lua/speditor_notify/ can draw a style completely (SPeditor.UI.AddNotifyStyle).",
 		-- About: list of changes of the current version
 		about_news = "New in %s",
-		about_n1 = "Help → How to use: short illustrated guides to the tools inside the game, with live demonstrations (how a key moves between keys, bone keys, camera cuts) and a ? button in the tool windows. The Curve editor shows the motion of the selected key with a moving ball and says it in plain words.",
-		about_n2 = "Lip sync: right click a voice sound on the timeline → Lip sync. The mouth follows the phonemes written in the WAV (as Faceposer / Source Filmmaker write them; Valve game voices have them), otherwise the loudness of the sound (MP3 and OGG too). The keys go to the Face track, the rest of the face is kept.",
-		about_n3 = "Camera cuts and the player: the Cameras row of the timeline says which camera the animation is seen through from which frame. The player (the TV button) is in the style of Windows Media Player — play / pause, stop, previous / next shot, seek bar, repeat, volume — follows the cuts and can show the video with the render settings before rendering; the video render follows the cuts too. The eye button plays the animation while you walk around the scene yourself.",
-		about_n4 = "Legacy addons (folders in garrysmod/addons, not from the Workshop) appear in the model browser. Animation import takes animations from animation packs of any installed addon (Source → Animation pack of an addon…), and the Stop Motion Helper import finds SMH saves inside addons.",
-		about_n5 = "Bone keys: a key of the selected bone holds only that bone, each bone moves between its own keys (as in SFM). Ghosts show the pose at the keys around the playhead. Several keys can be selected (Ctrl + click, Shift + box) and moved, copied or deleted together. Camera effects (depth of field, exposure) are keyed, and Auto key records a camera you fly through.",
-		about_n6 = "The rotate gizmo has a trackball (drag inside the rings to turn freely) and a ring around the line of sight. Render → Format → Steam screenshot puts the picture into your Steam screenshots to publish. The animation render writes AVI video only (no frame pictures). Interface settings → Interface scale makes the whole editor bigger on 2K / 4K screens (by default it follows the screen).",
-		about_n7 = "Record gameplay (machinima): play the game and it becomes animation — you as your player model with skin and weapon, the NPCs around with theirs, their sounds, tracers, explosions and weapon effects become keys, sounds and effect objects, rockets and grenades fly as models, and only the weapon in hand is shown (the webcam button of the timeline).",
-		about_n8 = "Keys are continuous now: a new key is a spline, the motion flows through it without stopping. New kinds of motion between keys: gentle (sine), sharp (expo), with a swing (back), springy (elastic), bouncing.",
-		about_n9 = "Selection and keys: Shift + click (or Ctrl + click) adds objects to the selection in the viewport and the object list; with the cursor over the object list Ctrl + A selects everything, Ctrl + C / Ctrl + V copy and paste objects (several at once, one undo step). Every hotkey can be changed: Interface settings → Keys. Interface scale goes from 50 % to 200 %, and the windows keep their places when it changes.",
+		about_n1 = "Motion Editor (as in SFM): Shift + drag on the frame numbers of the timeline makes a time selection. A pose edit then goes over the whole stretch, in full in its middle and fading out over its edges (the falloff), and nothing outside it changes. The clock button and a right click on the frame numbers make one from the selected keys or around the playhead and set the falloff.",
+		about_n2 = "Motion blur in the animation render: every frame of the video is the mean of several moments around it, with a shutter of 90°, 180° (the film look) or 360°. Render window → Motion blur.",
+		about_n3 = "Look-at: a camera or a light can keep looking at an object — the head of a character, the middle of a prop — while the animation moves either of them. Aim at… → Keep looking at. It is saved with the scene.",
+		about_n4 = "SAeditor is a part of SPeditor now, not a mod: the mod system is gone. Old scenes, layouts and changed keys load as before.",
+		about_n5 = "Languages from the community: a language pack (lua/speditor_lang/<code>.lua in any addon) adds a language to Help → Interface language. Help → Interface language → Write a translation template saves a ready file with every string to translate.",
+		about_n6 = "Wear works on any model with a skeleton (models without physics too); the own bones of worn clothes (coat tails, hair) can be posed; TF2 paint and crit glow of the Hat Painter tools show on worn cosmetics and are saved with the scene, with the settings other tools keep in the duplicator.",
+		about_n7 = "Fixed: characters whose models report wrong physics bones (Enhanced TF2 MvM bots) — importing their own animations said “another skeleton”, posing and attaching took the wrong body. Viewports no longer draw while a fullscreen game is minimised with Alt+Tab on Windows.",
+		about_n8 = "How to use: new guides — Clothes, hats, TF2 cosmetics and Your dupes, saves and other addons' objects; screenshots of how demo_a07 is made; the demo video plays in a player with pause, stop, seeking, volume, repeat and full screen.",
+		about_n9 = "Render look of the Primary Viewport (the photo button), as in SFM: at rest it shows the finished frame — depth of field, soft shadows, camera effects; while flying or playing, a quick draft of it. The Render window preview no longer freezes a moving camera that has depth of field.",
+		about_n10 = "A camera can record its own moves (its object menu, or the red dot of the viewport): every move, turn and zoom sets a key even with Auto key off; REC blinks beside its name.",
+		about_n11 = "Ambient occlusion (SSAO), the editor's own: soft contact shadows in corners, folds and under objects — in the preview, renders, video, the viewport Render look and the Engine frame. Render window → Ambient occlusion; radius and strength are saved with the scene.",
+		about_n12 = "The Render window has two tabs: Picture (a still) and Animation (the video: frames, video settings and the cameras of the video — the shots are listed and edited right there). Physics recording: the scene's ragdolls and props fall and collide and get their own keys, in a game take or with the editor open.",
+		about_n13 = "Sounds of your own through the game's file browser: interface click and window-close sounds for any theme (Interface settings → Appearance), the folder button next to custom notification sounds, Replace the sound… on a timeline clip. Game and addon sounds, or your files from garrysmod/data/speditor/sounds/. On Windows the animation can be rendered as WebM (Render → Animation → Video file): a ready garrysmod/videos/<name>.webm, the sound next to it as .wav. Fixed: ragdoll limbs that could not be moved when another addon unfreezes ragdolls; the interface stuck without the mouse after Alt+Tab with a mouse button held; a WebM video smeared into slanted stripes; the Render window kept the frames, cameras and name of the previous scene after another one was loaded.",
+		about_n14 = "PAC3 outfits on characters and props (right click → PAC3 outfits; PAC3 itself comes from the Workshop): they follow the bones, are saved with the scene and seen by other players. Point lights cast shadows (six spot lights, a cube); props and characters keep only the shadows of the editor's lights (Shadows tab). Record gameplay keeps the objects of the map that moved. Fixed: the game HUD that sometimes stayed hidden after the editor; ambient occlusion that crossed big renders with dark stripes and bands. IK is now on from the start and the editor remembers it. Stretch (T, a button of the viewport bar): Move takes a bone away from its parent — a longer neck, arm or leg, on ragdolls too. The PAC3 window (right click → PAC3 outfits): a hat, glasses or any model on a bone with sliders, saved as a PAC3 outfit, without PAC3's own editor. Fixed: PAC3 wiped the pose of a character wearing an outfit; the player under the Render preview did not come back after a scene with animation was loaded.",
+		about_p1 = "Record gameplay → Record my view as a camera: what you see while you play — where you look, how you turn, the zoom — becomes a scene camera keyed along the take, so the video is shot through your eyes (with no camera cuts yet it is made the first one). A character is not drawn in a view from inside its own head.",
+		about_p2 = "Record gameplay also records doors and lifts spawned by tools and addons, not only those of the map.",
+		about_p3 = "Fixed: viewports looked blurry on big screens (1440p, 4K) or when enlarged — small far objects most of all.",
 		empty_hint = "All windows are closed. Open them one by one from the Windows menu, or bring the whole default layout back (Windows → Layout).",
 		empty_restore = "Restore the default layout",
 		files_title = "Where are my files", files_copy = "Copy path",
@@ -631,7 +664,7 @@ SPeditor.Lang = {
 		uis_keys = "Keys", keys_change = "Change keys…",
 		keys_note = "Click a key and press the new one (Esc: cancel). A key shown in red is also taken by another action.",
 		keys_g_select = "Selection and objects", keys_g_gizmo = "Gizmo and skeleton", keys_g_edit = "Editing",
-		keys_g_camera = "Camera and flight (keys held with the right mouse button)", keys_g_mods = "Mods",
+		keys_g_camera = "Camera and flight (keys held with the right mouse button)", keys_g_anim = "Animation (SAeditor)",
 		keys_select_add = "Add to / remove from selection (click)", keys_select_add2 = "Add to / remove from selection (second click)",
 		keys_gizmo_move = "Move tool", keys_gizmo_rotate = "Rotate tool", keys_gizmo_scale = "Scale tool", keys_redo2 = "Redo (second key)",
 		keys_fly_forward = "Fly forward", keys_fly_back = "Fly back", keys_fly_left = "Fly left", keys_fly_right = "Fly right",
@@ -704,6 +737,8 @@ SPeditor.Lang = {
 		render_saved = "Рендер сохранён: data/%s (%dx%d)", render_failed = "Не удалось сделать рендер",
 		render_fmt_steam = "Скриншот Steam (PNG + библиотека Steam)",
 		guide_title = "Как пользоваться", guide_open = "Как пользоваться этим инструментом", guide_result = "Результат:",
+		guide_v_play = "Воспроизвести", guide_v_pause = "Пауза", guide_v_stop = "Стоп", guide_v_back = "Назад на 5 с", guide_v_fwd = "Вперёд на 5 с",
+		guide_v_mute = "Звук вкл. / выкл.", guide_v_loop = "Повтор", guide_v_full = "Во весь экран (Esc — назад)", guide_v_unfull = "Выйти из полноэкранного режима",
 		render_steam_done = "Добавлено в скриншоты Steam: Steam → Вид → Скриншоты → Garry's Mod — оттуда его можно опубликовать. Размер снимка равен размеру экрана.",
 		render_steam_failed = "Не удалось показать рендер, чтобы сделать скриншот Steam",
 		render_busy = "Рендер уже выполняется",
@@ -751,13 +786,14 @@ SPeditor.Lang = {
 		shadow_cast = "Отбрасывать тени", shadow_soft = "Мягкость теней",
 		browser_all = "Все модели", browser_spawnlists = "Списки спавна", browser_status = "Моделей: %d%s", browser_indexing = "идёт индексация models/…",
 		browser_more = "Показать ещё %d…",
-		tab_shadows = "Тени", shadows_master = "Прожекторы отбрасывают тени", shadows_quality = "Качество карты теней",
+		tab_shadows = "Тени", shadows_master = "Источники света отбрасывают тени", shadows_quality = "Качество карты теней",
 		shadows_max = "Макс. источников с тенями", shadows_slope = "Смещение по наклону (slope bias, общее)", shadows_active = "Сейчас отбрасывают тени: %d",
 		shadow_bias = "Смещение глубины (depth bias, ×0.0001)",
-		shadows_note = "Тени отбрасывают только ПРОЖЕКТОРЫ (ограничение GMod: точечный свет теней не даёт). Каждый источник с тенями стоит FPS, поэтому тени получают N ближайших к камере в пределах дальности прорисовки. Настройки отдельного источника — мягкость края, смещения глубины и наклона, ближняя граница, затухание, параллельный луч, маска света — находятся в редакторе набора анимаций, когда выделен прожектор. Качество меняет r_flashlightdepthres: движок читает его при запуске, поэтому после смены может понадобиться vid_restart (или параметр запуска +r_flashlightdepthres 2048).",
+		shadows_note = "Тени отбрасывают прожекторы и точечный свет. Точечный свет с тенями светит шестью прожекторами (куб); карт теней в игре 8 на все источники, прожектор занимает одну, точечный свет — шесть. Каждый источник с тенями стоит FPS, поэтому тени получают N ближайших к камере в пределах дальности прорисовки и восьми карт. Настройки отдельного источника — мягкость края, смещения глубины и наклона, ближняя граница, затухание, параллельный луч, маска света — находятся в редакторе набора анимаций, когда выделен источник света. Качество меняет r_flashlightdepthres: движок читает его при запуске, поэтому после смены может понадобиться vid_restart (или параметр запуска +r_flashlightdepthres 2048).",
 		menu_edit = "Правка", menu_create = "Создать", edit_undo = "Отменить", edit_redo = "Повторить", edit_deselect = "Снять выделение",
 		view_guides = "Направляющие кадра", guide_thirds = "Правило третей", guide_center = "Крест в центре", guide_safe = "Безопасные зоны", guide_golden = "Золотое сечение",
 		sec_appearance = "Внешний вид", sec_actions = "Действия", autosave = "Автосохранение сцены (каждые 2,5 мин)",
+		ase_empty = "Сцена пуста. Добавьте модель из браузера моделей или заберите в сцену то, что уже стоит на карте (пропы и рэгдоллы из меню спавна Sandbox не попадают в сцену, пока их не забрать). Кнопка + сверху добавляет камеры и свет.",
 		ase_add = "Добавить (модель, камеру, свет)", ase_add_model = "Модель…", ase_lenses = "Объективы", ase_presets = "Пресеты",
 		ase_renderable = "Отображать", ase_selectable = "Выбираемый", ase_set_body = "Группы тела (bodygroups)", ase_set_skin = "Скин",
 		ase_show_ev = "Показать в «Просмотре элементов»", ase_show_groups = "Показывать группы контролов", ase_utilities = "Утилиты",
@@ -774,6 +810,12 @@ SPeditor.Lang = {
 		undo_gone = "Нечего восстанавливать (объекта уже нет в корзине)",
 		attach_to = "Привязать к…", attach_root = "(объект целиком)", attach_detach = "Отвязать",
 		attach_wear = "Надеть (одежда: гнётся по скелету)",
+		cam_rec = "Записывать движения этой камеры (ключи)", cam_rec_on = "Камера записывает свои движения: каждый перенос, поворот и зум ставит ключ на текущем кадре",
+		cam_rec_off = "Камера больше не записывает свои движения", cam_rec_need = "Сначала посмотрите через камеру сцены (V) или выделите её",
+		vp_look = "Вид рендера: кадр, как его сделает рендер (глубина резкости, мягкие тени, эффекты камеры)",
+		vp_look_on_hint = "Вид рендера включён: в покое вьюпорт показывает готовый кадр; гизмо и скелет в нём скрыты",
+		vp_look_off_hint = "Вид рендера выключен", vp_look_full = "Вид рендера", vp_look_fast = "Вид рендера · черновик",
+		attach_wear_tip = "Для одежды, брони, волос и косметики TF2: модель гнётся вместе со всеми костями персонажа. Привязка к объекту целиком или к одной кости только жёстко переносит её.",
 		err_attach = "Нельзя привязать: цель сама привязана к этому объекту",
 		undo_nothing = "Нечего отменять", redo_nothing = "Нечего возвращать", undo_done = "Отмена", redo_done = "Возврат",
 		hist_move = "перемещение", hist_rotate = "поворот", hist_scale = "масштаб", hist_spawn = "создание", hist_delete = "удаление",
@@ -791,10 +833,16 @@ SPeditor.Lang = {
 		scene_other_map = "Сцена сохранена на карте %s: объекты могут оказаться не на месте",
 		err_pose_name = "Неверное имя позы", pose_saved = "Поза сохранена: %s — garrysmod/data/speditor/poses/%s.json", err_pose_damaged = "Файл позы повреждён",
 		pose_other_model = "Эта поза сохранена для другой модели", ik_off = "IK: выкл",
-		qmenu_lang_hint = "Язык применяется при следующем открытии редактора. В самом редакторе: Справка → Язык интерфейса (применяется сразу).",
+		qmenu_lang_hint = "Язык применяется при следующем открытии редактора. В самом редакторе: Справка → Язык интерфейса (применяется сразу). Другие языки ставятся языковыми пакетами из Мастерской.",
+		lang_template = "Записать шаблон перевода", lang_template_prompt = "Код языка (две латинские буквы, например ja, de, pt_br)",
+		lang_template_done = "Шаблон перевода сохранён: %s (не переведено: %d). Переименуйте его в <код>.lua и положите в lua/speditor_lang/ своего аддона",
+		lang_code_bad = "Код языка: строчные латинские буквы, не меньше двух (ja, de, pt_br); английский — оригинал",
 		ik_on = "IK", ik_hint = "IK: двигайте кисть/стопу, конечность следует за ней",
+		stretch_on = "Растяжение", stretch_off = "Растяжение: выкл", stretch_hint = "Растяжение: перемещение уводит кость от родителя (конечность удлиняется)",
+		help_stretch = "Растягивание костей",
 		aim_at = "Навести камеру на объект…", aim_hint = "Сначала выберите сцен-камеру",
 		aim_none = "Нет объектов, на которые можно навести",
+		aim_follow = "Следить за объектом (поворачивается за ним)", aim_follow_stop = "Перестать следить", aim_tree = "смотрит на %s",
 		light_palette = "Палитра", light_custom = "Свой цвет",
 		light_range = "Дальность", light_range_point = "Дальность / радиус", light_brightness = "Яркость",
 		light_cone = "Угол конуса", light_type = "Тип", light_point = "Точечный", light_spot = "Прожектор",
@@ -977,6 +1025,16 @@ SPeditor.Lang = {
 		ctl_eyes_dist = "глаза: расстояние до цели",
 		light_sec_shadows = "Тени",
 		light_sec_beam = "Луч и затухание",
+		pac_menu = "Наряды PAC3", pac_add = "Надеть наряд", pac_none = "Нет сохранённых нарядов: соберите наряд в редакторе PAC3 и сохраните его", pac_remove = "Снять", pac_clear = "Снять все", pac_editor = "Открыть редактор PAC3", pac_missing = "PAC3 не установлен: наряды хранятся в сцене, но не показываются (Мастерская: PAC3)", pac_bad = "Этот файл — не наряд PAC3", pac_big = "Наряд слишком большой (больше 60 КБ в сжатом виде)", pac_too_many = "На одном объекте не больше %s нарядов",
+		pac_win = "Наряды PAC3", pac_win_open = "Окно PAC3: наряды и модель на кости…", pac_worn = "Надетые наряды", pac_worn_none = "На этом объекте нет нарядов",
+		pac_choose = "Выберите сохранённый наряд…", pac_none_short = "Сохранённых нарядов пока нет", pac_refresh = "Перечитать файлы нарядов",
+		pac_new = "Новая деталь: модель на кости", pac_new_hint = "Шляпа, очки, рюкзак, косметика TF2: выберите модель и кость и задайте место — деталь сразу видна на объекте. «Сохранить» делает из неё обычный наряд PAC3 и надевает его.",
+		pac_model = "Модель", pac_model_ph = "models/….mdl, затем Enter", pac_model_scene = "Проп сцены", pac_bone = "Кость",
+		pac_fwd = "Вперёд", pac_side = "Вбок", pac_up = "Вверх", pac_pitch = "Наклон", pac_yaw = "Поворот", pac_roll = "Крен", pac_size = "Размер",
+		pac_reset = "Сбросить место", pac_name = "Имя", pac_name_ph = "имя файла наряда", pac_save = "Сохранить и надеть",
+		pac_saved = "Наряд %s сохранён и надет: %s", pac_select = "Сначала выделите персонажа или проп",
+		shadows_onlylights = "Объекты: тени только от прожекторов и точечного света", shadows_onlylights_tip = "Пропы и персонажи сцены теряют игровую карточную тень, которая падает по свету карты независимо от света сцены; настоящие тени от прожекторов и точечного света редактора остаются. Только в редакторе, остальную игру не трогает.",
+		ctl_point_shadows_tip = "Точечный свет с тенями светит шестью прожекторами (куб), у каждого своя карта теней. Карт теней в игре 8 на все источники, поэтому тени получает только ближайший к камере точечный свет, остальные светят без них.",
 		ctl_casts_shadows = "отбрасывает тени",
 		ctl_shadow_filter = "мягкость края тени",
 		ctl_shadow_bias = "смещение глубины (×0.0001)",
@@ -1019,7 +1077,7 @@ SPeditor.Lang = {
 		ev_orthographic = "параллельный луч",
 		ev_orthosize = "размер луча",
 		ev_linearattenuation = "линейное затухание",
-		shadows_sec_lights = "Тени от прожекторов",
+		shadows_sec_lights = "Тени от прожекторов и точечного света",
 		shadows_sec_map = "Тени пропов от света карты",
 		shadows_q1 = "Низкое",
 		shadows_q2 = "Среднее",
@@ -1053,6 +1111,10 @@ SPeditor.Lang = {
 		shaders_tab_addons = "Эффекты аддонов",
 		shaders_tab_packs = "Папка шейдеров",
 		render_engine = "Кадр движка: шейдеры аддонов и мастерской",
+		render_tab_still = "Картинка", render_tab_anim = "Анимация", render_go_anim = "Рендер анимации",
+		render_no_anim = "В сцене пока нет анимации",
+		render_ssao = "Затенение окружения (SSAO)", render_ssao_radius = "Радиус SSAO, единицы", render_ssao_strength = "Сила SSAO",
+		render_ssao_tip = "Мягкие контактные тени в углах, складках и под предметами, как в SFM. Собственный эффект редактора: другие аддоны не нужны. Видно в превью, рендере, видео и виде рендера во вьюпорте.",
 		render_engine_tip = "Кадр снимает сам движок игры через выбранную камеру — со всеми включёнными эффектами аддонов (стандартная пост-обработка GMod, шейдеры из мастерской, шейдеры на GShader Library) — и забирается с экрана. Ограничения: разрешение не выше разрешения экрана, сглаживание 2× и глубина резкости редактора не применяются.",
 		render_engine_size = "источник: %d × %d px экрана",
 		shaders_addons_note = "Все эффекты пост-обработки, зарегистрированные в игре: стандартные и из аддонов и мастерской. Включите эффект и настройте его справа — это родная панель эффекта, та же, что в Q-меню. Такие эффекты рисуют себя в основном кадре игры, поэтому в предпросмотр и рендер попадают только в режиме «Кадр движка».",
@@ -1115,7 +1177,7 @@ SPeditor.Lang = {
 		ctl_tip_attc = "Постоянное затухание: свет не слабеет с расстоянием. Три значения затухания смешиваются; у движка по умолчанию 0 / 100 / 0.",
 		ctl_tip_attl = "Линейное затухание: свет равномерно слабеет с расстоянием (у движка по умолчанию 100).",
 		ctl_tip_attq = "Квадратичное затухание: свет слабеет быстро, как у настоящей лампы, — ярко у источника, тускло вдали.",
-		-- a0.2: soft light, visible source, mods
+		-- a0.2: soft light, visible source
 		light_sec_soft = "Мягкий свет", light_sec_visible = "Видимый источник",
 		ctl_edge = "мягкость края", ctl_area = "размер источника",
 		ctl_glow = "ореол", ctl_glow_bright = "яркость ореола",
@@ -1130,17 +1192,6 @@ SPeditor.Lang = {
 		ev_beamlength = "длина луча", ev_glowsize = "ореол", ev_glowbrightness = "яркость ореола",
 		render_soft_samples = "Мягкие тени (проходов)",
 		render_soft_samples_tip = "Сколько раз снимается сцена для источников света с размером. Больше проходов — ровнее полутень, дольше рендер.",
-		mods_title = "Моды",
-		mods_intro = "Моды добавляют в SPeditor инструменты. Мод — это папка lua/speditor_mods/<id>/ в самом SPeditor или в любом другом аддоне.",
-		mods_none = "Моды не найдены.",
-		mods_state_loaded = "включён", mods_state_off = "выключен", mods_state_error = "ошибка", mods_state_outdated = "нужен SPeditor новее",
-		mods_restart = "после перезагрузки карты",
-		mods_author = "Автор", mods_folder = "Папка", mods_enabled = "Включён",
-		mods_dev_title = "Авторам модов",
-		mods_dev_text = "Мод может добавлять страницы в окна редактора, пункты меню, горячие клавиши, свои сетевые сообщения и свои данные в файлах сцен. Рабочий пример — встроенный мод lua/speditor_mods/saeditor. Кнопки ниже сохраняют руководство с примерами и готовую заготовку мода в garrysmod/data/speditor (в консоли: speditor_mod_guide, speditor_mod_template <id>).",
-		mods_guide_save = "Сохранить руководство", mods_guide_done = "Руководство сохранено: %s",
-		mods_template_id = "id мода, например mytool", mods_template_make = "Записать заготовку мода",
-		mods_template_done = "Заготовка мода сохранена: %s", mods_template_bad = "Id мода: латинские буквы, цифры и _, не с цифры",
 		-- a0.2: soft light kinds and editor masks
 		light_kinds = "Виды света", light_kinds_spawn = "Мягкий свет",
 		lkind_softbox = "Софтбокс", lkind_strip_light = "Стрипбокс", lkind_beauty_dish = "Портретная тарелка", lkind_ring_light = "Кольцевой свет",
@@ -1210,6 +1261,13 @@ SPeditor.Lang = {
 		corners_0 = "Прямые", corners_3 = "Слегка скруглённые", corners_6 = "Скруглённые", corners_10 = "Сильно скруглённые",
 		uis_tabs = "Метка активной вкладки", tabs_top = "Линия сверху", tabs_bottom = "Линия снизу",
 		tabs_fill = "Подкрашена акцентом", tabs_none = "Без метки",
+		uis_snd_click = "Звук клика", uis_snd_back = "Звук закрытия окна",
+		uis_snd_note = "Пусто — звук самой темы (есть только у Vanilla UI). Свой звук играет с любой темой. Кнопка с папкой открывает файловый браузер игры: звуки игры и всех аддонов или ваши файлы из garrysmod/data/speditor/sounds/.",
+		snd_pick_title = "Выбор звука", snd_pick_game = "Звуки игры и аддонов", snd_pick_user = "Мои файлы (data/speditor/sounds)",
+		snd_pick_refresh = "Перечитать папки", snd_pick_listen = "Прослушать", snd_pick_stop = "Стоп", snd_pick_clear = "Без звука",
+		snd_pick_choose = "Выбрать", snd_pick_none = "Сначала щёлкните звук в списке", snd_pick_browse = "Выбрать в файловом браузере…",
+		snd_pick_failed = "Звук не воспроизводится: %s",
+		snd_pick_hint = "Щелчок — прослушать, двойной щелчок — выбрать. Свои файлы .wav, .mp3 и .ogg кладите в garrysmod/data/speditor/sounds/ и нажмите кнопку обновления.",
 		uis_anim = "Анимации (появление, плавная подсветка)", uis_sounds = "Звуки интерфейса (у тем, где они есть)",
 		uis_reset = "Сбросить по умолчанию", uis_reset_confirm = "Вернуть все настройки интерфейса и уведомлений по умолчанию?",
 		uis_notify_look = "Вид", uis_notify_behaviour = "Поведение",
@@ -1246,15 +1304,23 @@ SPeditor.Lang = {
 		nse_where = "Сохраняется в garrysmod/data/speditor/notify_styles/<имя>.json. Чтобы поделиться стилем через мастерскую, положите файл в data_static/speditor/notify_styles/ аддона; lua-файл в lua/speditor_notify/ может нарисовать стиль полностью (SPeditor.UI.AddNotifyStyle).",
 		-- About: list of changes of the current version
 		about_news = "Что нового в %s",
-		about_n1 = "Справка → Как пользоваться: короткие иллюстрированные статьи об инструментах прямо в игре, с живыми демонстрациями (как ключ движется к следующему, ключи костей, смены камер) и кнопкой ? в окнах инструментов. Редактор кривых показывает движение выбранного ключа бегущим шариком и описывает его простыми словами.",
-		about_n2 = "Липсинк: ПКМ по звуку голоса на таймлайне → Липсинк. Рот двигается по фонемам, записанным в WAV (как их пишут Faceposer и Source Filmmaker; они есть у голосов игр Valve), а если их нет — по громкости звука (MP3 и OGG тоже). Ключи ложатся на дорожку «Лицо», остальное лицо не трогается.",
-		about_n3 = "Смены камер и плеер: строка «Камеры» на таймлайне говорит, через какую камеру смотреть анимацию с какого кадра. Плеер (кнопка с телевизором) в стиле Windows Media Player — пуск / пауза, стоп, предыдущий / следующий план, перемотка, повтор, громкость — следует сменам камер и может показать видео с настройками рендера ещё до рендера; рендер видео тоже следует сменам. Кнопка с глазом проигрывает анимацию, пока вы сами ходите по сцене.",
-		about_n4 = "Legacy-аддоны (папки в garrysmod/addons, не из Мастерской) видны в браузере моделей. Импорт анимации берёт анимации из паков анимаций любого установленного аддона (Источник → Пак анимаций из аддона…), а импорт Stop Motion Helper находит сохранения SMH внутри аддонов.",
-		about_n5 = "Ключи костей: ключ выделенной кости хранит только её, каждая кость движется между своими ключами (как в SFM). Призраки показывают позу на ключах вокруг головки. Можно выбрать несколько ключей (Ctrl + клик, Shift + рамка) и двигать, копировать или удалять их вместе. Эффекты камеры (глубина резкости, экспозиция) анимируются, а автоключ записывает камеру, через которую вы летите.",
-		about_n6 = "У гизмо поворота появились трекбол (тяните внутри колец — свободный поворот) и кольцо вокруг линии взгляда. Рендер → Формат → Скриншот Steam кладёт картинку в ваши скриншоты Steam для публикации. Рендер анимации пишет только видео AVI (без покадровых картинок). Настройки интерфейса → Масштаб интерфейса делает весь редактор крупнее на экранах 2K / 4K (по умолчанию — по экрану).",
-		about_n7 = "Запись игры (машинима): играйте — и игра станет анимацией: вы своей моделью игрока со скином и оружием, NPC вокруг со своим оружием, их звуки, трассеры, взрывы и эффекты оружия становятся ключами, звуками и объектами-эффектами, ракеты и гранаты летят моделями, а видно только оружие в руке (кнопка с веб-камерой на таймлайне).",
-		about_n8 = "Ключи теперь непрерывные: новый ключ — сплайн, движение проходит через него без остановки. Новые виды движения между ключами: мягко (синус), резко (экспонента), с замахом, упруго, с подскоками.",
-		about_n9 = "Выделение и клавиши: Shift + клик (или Ctrl + клик) добавляет объекты к выделению во вьюпорте и в списке объектов; с курсором над списком объектов Ctrl + A выделяет всё, Ctrl + C / Ctrl + V копируют и вставляют объекты (сразу несколько, одним шагом отмены). Любую горячую клавишу можно сменить: Настройки интерфейса → Клавиши. Масштаб интерфейса — от 50 % до 200 %, и окна остаются на своих местах при его смене.",
+		about_n1 = "Motion Editor (как в SFM): Shift + перетаскивание по номерам кадров таймлайна создаёт выделение времени. Правка позы тогда ложится на весь отрезок — полностью в его середине и плавно сходя на нет к краям (затухание), а вне его ничего не меняется. Кнопка с часами и ПКМ по номерам кадров создают выделение по выбранным ключам или вокруг курсора и задают затухание.",
+		about_n2 = "Размытие движения в рендере анимации: каждый кадр видео — среднее из нескольких моментов вокруг него, затвор 90°, 180° (кинематографичный вид) или 360°. Окно рендера → Размытие движения.",
+		about_n3 = "Слежение: камера или свет могут постоянно смотреть на объект — на голову персонажа, на середину пропа — пока анимация двигает любого из них. Навести на… → Следить за объектом. Сохраняется вместе со сценой.",
+		about_n4 = "SAeditor теперь часть SPeditor, а не мод: системы модов больше нет. Старые сцены, раскладки и изменённые клавиши загружаются как раньше.",
+		about_n5 = "Языки от сообщества: языковой пакет (lua/speditor_lang/<код>.lua в любом аддоне) добавляет язык в Справка → Язык интерфейса. Справка → Язык интерфейса → Записать шаблон перевода сохраняет готовый файл со всеми строками для перевода.",
+		about_n6 = "«Надеть» работает на любой модели со скелетом (и без физики); собственные кости надетой одежды (полы пальто, волосы) можно позировать; краска TF2 и свечение крита из Hat Painter видны на надетой косметике и сохраняются со сценой — вместе с настройками, которые другие инструменты хранят в дупликаторе.",
+		about_n7 = "Исправлено: персонажи, чьи модели неверно сообщают физические кости (Enhanced TF2 MvM bots), — импорт их собственных анимаций говорил «другой скелет», позирование и привязка брали не ту часть тела. Вьюпорты больше не рисуются, пока полноэкранная игра свёрнута через Alt+Tab в Windows.",
+		about_n8 = "Как пользоваться: новые статьи — «Одежда, шапки, косметика TF2» и «Свои дупы, сейвы и объекты других аддонов»; скриншоты того, как сделана demo_a07; демо-видео играет в плеере с паузой, стопом, перемоткой, громкостью, повтором и полным экраном.",
+		about_n9 = "Вид рендера в основном вьюпорте (кнопка с фотографией), как в SFM: в покое — готовый кадр с глубиной резкости, мягкими тенями и эффектами камеры; при полёте и проигрывании — его быстрый черновик. Превью окна «Рендер» больше не замирает на движущейся камере с глубиной резкости.",
+		about_n10 = "Камера может записывать свои движения (меню объекта или красная точка вьюпорта): каждый перенос, поворот и зум ставит ключ даже без автоключа; рядом с её именем мигает REC.",
+		about_n11 = "Затенение окружения (SSAO), собственное: мягкие контактные тени в углах, складках и под предметами — в превью, рендере, видео, виде рендера во вьюпорте и кадре движка. Окно «Рендер» → «Затенение окружения»; радиус и сила сохраняются со сценой.",
+		about_n12 = "В окне «Рендер» две вкладки: «Картинка» (один кадр) и «Анимация» (видео: кадры, настройки видео и камеры видео — планы перечислены и правятся прямо там). Запись физики: регдоллы и пропы сцены падают и сталкиваются и получают свои ключи — в записи игры или не выходя из редактора.",
+		about_n13 = "Свои звуки через файловый браузер игры: звук клика и закрытия окна для любой темы (Настройки интерфейса → Внешний вид), кнопка с папкой у своих звуков уведомлений, «Заменить звук…» у клипа на таймлайне. Звуки игры и аддонов или ваши файлы из garrysmod/data/speditor/sounds/. На Windows анимацию можно снять в WebM (Рендер → Анимация → Видеофайл): готовый garrysmod/videos/<имя>.webm, звук рядом в .wav. Исправлено: конечности рэгдолла не двигались, если другой аддон размораживает рэгдоллы; интерфейс оставался без мыши после Alt+Tab с зажатой кнопкой мыши; видео WebM расползалось косыми полосами; окно «Рендер» держало кадры, камеры и имя прошлой сцены после загрузки другой.",
+		about_n14 = "Наряды PAC3 на персонажах и пропах (ПКМ → Наряды PAC3; сам PAC3 ставится из Мастерской): следуют за костями, сохраняются со сценой и видны другим игрокам. Точечный свет отбрасывает тени (шесть прожекторов, куб); у пропов и персонажей остаются только тени от света редактора (вкладка «Тени»). Запись игры сохраняет объекты карты, которые двигались. Исправлено: игровой HUD иногда оставался скрытым после редактора; затенение окружения покрывало большие рендеры тёмными полосами. IK теперь включён с самого начала, и редактор запоминает выбор. Растяжение (T, кнопка на панели вьюпорта): перенос уводит кость от родителя — длиннее шея, рука или нога, и у регдоллов тоже. Окно PAC3 (ПКМ → Наряды PAC3): шляпа, очки или любая модель на кости ползунками, сохраняется как наряд PAC3, без редактора PAC3. Исправлено: PAC3 сбрасывал позу персонажа в наряде; плеер под превью рендера не возвращался после загрузки сцены с анимацией.",
+		about_p1 = "Запись игры → Записать мой вид как камеру: то, что вы видите во время игры, — куда смотрите, как поворачиваетесь, зум — становится камерой сцены с ключами по всему дублю, и видео снимается вашими глазами (если смен камер ещё нет, она становится первой). Персонаж не рисуется в виде изнутри его собственной головы.",
+		about_p2 = "Запись игры записывает и двери и лифты, заспавненные инструментами и аддонами, а не только двери карты.",
+		about_p3 = "Исправлено: вьюпорты были мыльными на больших экранах (1440p, 4K) и в развёрнутом виде — сильнее всего мелкие дальние объекты.",
 		empty_hint = "Все окна закрыты. Откройте их по одному в меню «Окна» или верните всю стандартную раскладку (Окна → Раскладка).",
 		empty_restore = "Вернуть стандартную раскладку",
 		files_title = "Где мои файлы", files_copy = "Копировать путь",
@@ -1274,7 +1340,7 @@ SPeditor.Lang = {
 		uis_keys = "Клавиши", keys_change = "Изменить клавиши…",
 		keys_note = "Нажмите на клавишу и затем новую (Esc — отмена). Красным показана клавиша, занятая ещё каким-то действием.",
 		keys_g_select = "Выделение и объекты", keys_g_gizmo = "Гизмо и скелет", keys_g_edit = "Правка",
-		keys_g_camera = "Камера и полёт (клавиши с зажатой правой кнопкой мыши)", keys_g_mods = "Моды",
+		keys_g_camera = "Камера и полёт (клавиши с зажатой правой кнопкой мыши)", keys_g_anim = "Анимация (SAeditor)",
 		keys_select_add = "Добавить к выделению / убрать (клик)", keys_select_add2 = "Добавить к выделению / убрать (второй клик)",
 		keys_gizmo_move = "Перемещение", keys_gizmo_rotate = "Вращение", keys_gizmo_scale = "Масштаб", keys_redo2 = "Повторить (вторая клавиша)",
 		keys_fly_forward = "Полёт вперёд", keys_fly_back = "Полёт назад", keys_fly_left = "Полёт влево", keys_fly_right = "Полёт вправо",
@@ -1310,4 +1376,100 @@ function SPeditor.LN(prefix, name)
 	local str = SPeditor.L(key)
 	if str == key then return name end
 	return str
+end
+
+---------------------------------------------------------------------
+-- Languages (a0.7). English and Russian are built in; the community adds others as
+-- language packs: any addon puts a file into lua/speditor_lang/<code>.lua that calls
+--
+--   SPeditor.AddLanguage({
+--       code = "ja", name = "日本語", author = "…", version = "a0.7",
+--       font = "Meiryo",                 -- optional: the interface font for this language
+--       strings = { menu_file = "ファイル", … },        -- keys of SPeditor.Lang.en
+--       texts = { ["English text of a guide"] = "…" }, -- Help → How to use, by its English text
+--   })
+--
+-- A key the pack does not have is shown in English. A ready template with every key:
+-- Help → Language → Write a translation template (console: speditor_lang_template <code>).
+---------------------------------------------------------------------
+SPeditor.Languages = SPeditor.Languages or {
+	{ code = "en", name = "English", builtin = true },
+	{ code = "ru", name = "Русский", builtin = true },
+}
+SPeditor.LangText = SPeditor.LangText or {}     -- [code][English guide text] = translation
+
+function SPeditor.LanguageInfo(code)
+	for _, l in ipairs(SPeditor.Languages) do
+		if l.code == code then return l end
+	end
+end
+
+-- the format specifiers of a string ("%s", "%d", "%.1f"…): a translation must keep them,
+-- otherwise string.format with it would break the window that shows it
+local function specs(s)
+	local out = {}
+	for spec in string.gmatch(string.gsub(s, "%%%%", ""), "%%[%-%+0]*%d*%.?%d*[sdifgxXqc]") do
+		out[#out + 1] = string.sub(spec, -1)
+	end
+	return table.concat(out)
+end
+
+local function langWarn(...)
+	MsgC(Color(255, 200, 80), "[SPeditor lang] ", ...)
+	MsgC("\n")
+end
+
+function SPeditor.AddLanguage(def)
+	if not istable(def) then return end
+	local code = def.code
+	if not isstring(code) or not string.match(code, "^%l%l[%l_%-]*$") then
+		langWarn("a language pack without a valid code (two or more Latin lowercase letters): ", tostring(code))
+		return
+	end
+	if code == "en" or code == "ru" then
+		langWarn(code, ": built-in languages cannot be replaced by a pack")
+		return
+	end
+	local info = SPeditor.LanguageInfo(code)
+	if not info then
+		info = { code = code }
+		SPeditor.Languages[#SPeditor.Languages + 1] = info
+	end
+	info.name    = isstring(def.name) and def.name or info.name or code
+	info.author  = isstring(def.author) and def.author or info.author
+	info.version = isstring(def.version) and def.version or info.version
+	info.font    = isstring(def.font) and def.font ~= "" and def.font or info.font
+
+	local en = SPeditor.Lang.en
+	local dict = SPeditor.Lang[code] or {}
+	SPeditor.Lang[code] = dict
+	local bad = 0
+	for k, v in pairs(istable(def.strings) and def.strings or {}) do
+		if isstring(k) and isstring(v) and v ~= "" then
+			if en[k] and specs(en[k]) ~= specs(v) then
+				bad = bad + 1
+				langWarn(code, ": ", k, ": the translation must keep the same %s / %d as the English text — skipped")
+			else
+				dict[k] = v
+			end
+		end
+	end
+	local texts = SPeditor.LangText[code] or {}
+	SPeditor.LangText[code] = texts
+	for k, v in pairs(istable(def.texts) and def.texts or {}) do
+		if isstring(k) and isstring(v) and v ~= "" then texts[k] = v end
+	end
+	info.bad = (info.bad or 0) + bad
+	return info
+end
+
+-- The keys of a language that are not translated yet (sorted), and how many keys there are
+function SPeditor.LangMissing(code)
+	local dict, out, total = SPeditor.Lang[code] or {}, {}, 0
+	for k in pairs(SPeditor.Lang.en) do
+		total = total + 1
+		if dict[k] == nil then out[#out + 1] = k end
+	end
+	table.sort(out)
+	return out, total
 end

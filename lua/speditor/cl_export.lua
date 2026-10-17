@@ -36,17 +36,21 @@ SPeditor.Export.pending = nil
 -- opts: { camera = Entity | "work" | nil (the Primary Viewport source), name = string,
 -- dir = subfolder in renders (frame sequences), silent = no success notification,
 -- format = "png" | "jpeg" | "steam" (otherwise from the settings), onDone = function(ok, path),
--- single = true — exactly one frame, without asking the mods,
+-- single = true — exactly one frame, without asking SAeditor,
 -- quality = JPEG quality (otherwise from the settings),
 -- capture = function(data, W, H) — the encoded frame is handed over instead of being written
+-- rtCapture = function(rt, W, H) — the finished frame itself (a texture), nothing is encoded
+--   (the WebM video: the engine's writer takes the screen, cl_saeditor_video.lua)
 -- to a file (return false on failure); onDone then gets no path,
 -- warmup = game frames skipped in "engine frame" mode (for frame sequences: the effects are
 -- already settled by the previous frame), sampleScale = 0..1 — part of the depth of field and
--- soft shadow passes to make (frame sequences: neighbouring frames hide the difference) }
+-- soft shadow passes to make (frame sequences: neighbouring frames hide the difference),
+-- accum = { i, n } — motion blur (SAeditor): the frame is the i-th of n moments of one video
+-- frame; it is averaged with the ones before, and only the n-th is captured (onDone(true) for the rest) }
 -- Returns true if the job was accepted.
--- Before rendering the mods are asked (the SPeditor_RenderRequest hook): a mod that knows
+-- Before rendering SAeditor is asked (the SPeditor_RenderRequest hook): when it knows
 -- the scene is more than one frame (SAeditor: the scene has animation) renders it itself and
--- returns true. Such a mod makes its own per-frame calls with single = true.
+-- returns true. It makes its own per-frame calls with single = true.
 function SPeditor.Export.Render(opts)
 	opts = opts or {}
 	if not opts.single and hook.Run("SPeditor_RenderRequest", opts) == true then return true end
@@ -69,6 +73,8 @@ function SPeditor.Export.Render(opts)
 		steam      = fmt == "steam" and not opts.capture and not opts.dir,
 		quality    = math.Clamp(math.floor(tonumber(opts.quality) or GetConVar("speditor_render_quality"):GetInt()), 1, 100),
 		capture    = isfunction(opts.capture) and opts.capture or nil,
+		rtCapture  = isfunction(opts.rtCapture) and opts.rtCapture or nil,
+		accum      = istable(opts.accum) and opts.accum or nil,
 		warmup     = tonumber(opts.warmup) and math.Clamp(math.floor(opts.warmup), 1, 30) or nil,
 		sampleScale = tonumber(opts.sampleScale),
 		name       = (opts.name and opts.name ~= "") and SPeditor.SafeName(opts.name) or ("speditor_" .. os.date("%Y%m%d_%H%M%S")),
@@ -203,6 +209,28 @@ hook.Add("PostRender", "SPeditor.Export", function()
 	if not ok or not rt then
 		SPeditor.Notify(L("render_failed"), 1)
 		done(false)
+		return
+	end
+
+	if job.accum then
+		local R = SPeditor.Render
+		local okAcc, err = pcall(R.Accumulate, rt, job.accum.i, W, H)
+		if not okAcc then
+			ErrorNoHalt("[SPeditor] render: " .. tostring(err) .. "\n")
+			done(false)
+			return
+		end
+		if job.accum.i < job.accum.n then
+			done(true)
+			return
+		end
+		rt = R.AccumulatedRT(W, H)
+	end
+
+	if job.rtCapture then
+		local okCb, res = pcall(job.rtCapture, rt, W, H)
+		if not okCb then ErrorNoHalt("[SPeditor] render capture: " .. tostring(res) .. "\n") end
+		done(okCb and res ~= false)
 		return
 	end
 

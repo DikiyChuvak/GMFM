@@ -302,6 +302,34 @@ function C.SendAttach(ent, parent, bone, noHist)
 	net.SendToServer()
 end
 
+-- Look-at (a0.7): the camera / light ent keeps turning to target (bone: a ragdoll bone, -1 —
+-- the head of a character or the middle of a prop); target = nil — it stops.
+function C.SendAim(ent, target, bone, noHist)
+	if not IsValid(ent) then return end
+	if not noHist then
+		local t0, ref = ent:GetNW2Entity("SPeditor_AimAt"), C.Ref(ent)
+		local tref0 = IsValid(t0) and C.Ref(t0) or nil
+		local tref1 = IsValid(target) and C.Ref(target) or nil
+		local ang0 = ent:GetAngles()
+		local function apply(tref, b)
+			local e = C.Deref(ref)
+			if e then C.SendAim(e, tref and C.Deref(tref) or nil, b, true) end
+		end
+		C.PushHistory(IsValid(target) and "aim follow" or "aim stop",
+			function()
+				apply(tref0, -1)
+				local e = C.Deref(ref)
+				if e and not tref0 then C.SendTransform(e, e:GetPos(), ang0, true) end
+			end,
+		function() apply(tref1, bone or -1) end)
+	end
+	net.Start(Net.Aim)
+	net.WriteEntity(ent)
+	net.WriteEntity(IsValid(target) and target or NULL)
+	net.WriteInt(bone or -1, 16)
+	net.SendToServer()
+end
+
 function C.SendDuplicate(ent)
 	if not IsValid(ent) then return end
 	net.Start(Net.Duplicate)
@@ -766,6 +794,8 @@ end)
 
 net.Receive(Net.SceneLoaded, function()
 	local meta = net.ReadString()
+	-- open windows (Render) compare it to drop what they took from the previous scene
+	C.sceneSerial = (C.sceneSerial or 0) + 1
 	hook.Run("SPeditor_SceneLoaded", meta)
 end)
 

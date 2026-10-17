@@ -2,6 +2,7 @@
 -- The guides of SAeditor are in its own folder (cl_saeditor_guides.lua).
 local UI = SPeditor.UI
 local C  = SPeditor.Client
+local L  = SPeditor.L
 
 UI.AddGuide({ id = "start", order = 1, title = { en = "Your first scene", ru = "Первая сцена" }, blocks = {
 	{ "p", "A scene is models, lights and cameras placed in the map. You pose them, light them and render a picture — as in Source Filmmaker, but inside the running game.",
@@ -25,7 +26,74 @@ UI.AddGuide({ id = "start", order = 1, title = { en = "Your first scene", ru = "
 	{ "try", "Open the model browser", "Открыть браузер моделей", fn = function() UI.ToggleBrowser() end },
 } })
 
-UI.AddGuide({ id = "posing", order = 2, title = { en = "Posing: move, turn, IK, locks", ru = "Позирование: перенос, поворот, IK, замки" }, blocks = {
+-- an example scene: asks first when the current scene has objects (loading replaces it)
+local function loadExample(name)
+	if #C.Objects() == 0 then
+		C.SceneLoad(name)
+		return
+	end
+	Derma_Query(string.format(L("load_confirm"), name), "SPeditor", L("load"), function() C.SceneLoad(name) end, L("cancel"), function() end)
+end
+
+UI.AddGuide({ id = "examples", order = 1.5, icon = "icon16/film.png", title = { en = "Example scenes: see the tools at work", ru = "Сцены-примеры: инструменты в деле" }, blocks = {
+	{ "p", "SPeditor comes with ready scenes. Load one, press Space and take it apart: select objects, open their keys on the timeline, look through the cameras. They are made on gm_construct and gm_construct_sunset.",
+		"С SPeditor идут готовые сцены. Загрузите, нажмите пробел и разберите: выделяйте объекты, смотрите их ключи на таймлайне, глядите через камеры. Сделаны на gm_construct и gm_construct_sunset." },
+	{ "h", "demo_a07 — what is new, in 20 seconds", "demo_a07 — новое за 20 секунд" },
+	{ "video", atlas = "speditor/help/video/demo_a07_%02d.jpg", count = 241, fps = 12, cols = 4, rows = 4, w = 480, h = 358,
+		sound = "sound/speditor/help/demo_a07.ogg",
+		"demo_a07 rendered to video with motion blur (the music of the scene is MP3, so it is not in the video — see Render the animation to video). Click to pause, the bar to seek.",
+		"demo_a07, отрендеренная в видео с размытием движения (музыка сцены — MP3, поэтому в видео её нет — см. «Рендер анимации в видео»). Клик — пауза, полоса — перемотка." },
+	{ "img", "speditor/help/demo_a07.jpg", "The four shots of demo_a07, switched by the Cameras row of the timeline.",
+		"Четыре плана demo_a07, их переключает строка «Камеры» на таймлайне." },
+	{ "steps",
+		en = { "0–4 s, Wide: the hero walks in — an imported walk animation with footstep sounds.",
+			"4–9 s, Follow: a still camera turns after him by itself — look-at (object menu → Aim at… → Keep looking at). The spot light above follows him the same way.",
+			"9–14 s, Dolly: the camera flies an arc on continuous (spline) keys and keeps looking at him; he waves and says hello with lip sync.",
+			"14–20 s, Ball cam: the ball falls with the Bouncing motion, the camera follows the ball, and the hero turns his head to it — one edit made with the Motion Editor over frames 330–480, fading in and out at the edges.",
+			"Render it with Motion blur on (Render animation… → Motion blur) to see the film look of a fast ball." },
+		ru = { "0–4 с, Wide: герой входит в кадр — импортированная анимация ходьбы со звуками шагов.",
+			"4–9 с, Follow: неподвижная камера сама поворачивается за ним — слежение (меню объекта → Навести на… → Следить за объектом). Прожектор сверху следит за ним так же.",
+			"9–14 с, Dolly: камера пролетает дугу на непрерывных (сплайн) ключах и не сводит с него взгляда; он машет и здоровается с липсинком.",
+			"14–20 с, Ball cam: мяч падает с движением «С подскоками», камера ведёт мяч, а герой поворачивает к нему голову — одна правка Motion Editor на кадрах 330–480, плавно нарастающая и сходящая к краям.",
+			"Отрендерите её с размытием движения (Рендер анимации… → Размытие движения) — быстрый мяч получит кинематографичный след." } },
+	{ "h", "How it is made", "Как это сделано" },
+	{ "img", "speditor/help/aim_menu.jpg", "Follow and Dolly: object menu of the camera → Aim at… → Keep looking at → Hero. Nothing else is keyed for the turn of the camera.",
+		"Follow и Dolly: меню объекта у камеры → Навести на… → Следить за объектом → Hero. Для поворота камеры больше ничего не ставится." },
+	{ "img", "speditor/help/motion_editor.jpg", "The head turn to the ball: Shift + drag on the frame numbers selects 330–480 (the blue band, soft at the edges); turn the head at frame 400 and press K.",
+		"Поворот головы к мячу: Shift + перетаскивание по номерам кадров выделяет 330–480 (синяя полоса, мягкая к краям); поверните голову на кадре 400 и нажмите K." },
+	{ "img", "speditor/help/cuts.jpg", "The shots: the Cameras row of the timeline switches Wide → Follow → Dolly → Ball cam.",
+		"Планы: строка «Камеры» таймлайна переключает Wide → Follow → Dolly → Ball cam." },
+	{ "img", "speditor/help/render_anim.jpg", "Render → Animation: the four shots under Cameras of the video, Motion blur — 4 moments a frame, Shutter 180°.",
+		"Рендер → «Анимация»: четыре плана в «Камерах видео», размытие движения — 4 момента на кадр, затвор 180°." },
+	{ "try", "Load demo_a07", "Загрузить demo_a07", fn = function() loadExample("demo_a07") end },
+	{ "h", "shootout_construct — a scene with effects", "shootout_construct — сцена с эффектами" },
+	{ "p", "A shootout on gm_construct: several characters with imported animations, muzzle flashes, explosions and smoke played by keys, lights and cameras.",
+		"Перестрелка на gm_construct: несколько персонажей с импортированными анимациями, вспышки выстрелов, взрывы и дым по ключам, свет и камеры." },
+	{ "try", "Load shootout_construct", "Загрузить shootout_construct", fn = function() loadExample("shootout_construct") end },
+	{ "result", "A working example of every tool to copy from.", "Рабочий пример каждого инструмента, с которого можно брать." },
+} })
+
+UI.AddGuide({ id = "adopt", order = 1.7, icon = "icon16/world_add.png", title = { en = "Your dupes, saves and other addons' objects", ru = "Свои дупы, сейвы и объекты других аддонов" }, blocks = {
+	{ "p", "Whatever already stands on the map can become part of the scene: a dupe or a save you loaded, ragdolls posed with Ragdoll Mover, models put on with Advanced / Easy Bonemerge, lights of Advanced Light Entities and Soft Lamps. Nothing has to be made again.",
+		"Всё, что уже стоит на карте, может войти в сцену: загруженный дуп или сейв, регдоллы, поставленные Ragdoll Mover, модели, надетые Advanced / Easy Bonemerge, свет Advanced Light Entities и Soft Lamps. Ничего не нужно делать заново." },
+	{ "steps",
+		en = { "Leave the editor (Exit Editor, top right) and spawn your dupe or load your save as usual: spawn menu → Dupes / Saves.",
+			"Open the editor again. File → Take objects from the map… (an empty scene also shows this button in the object list).",
+			"The window lists your objects that are not in the scene yet; the With column says how many bonemerged models come along. Take all, or select some and Take selected (Show points the camera at the selected one).",
+			"They are ordinary scene objects now: pose them, key them, save the scene. Bonemerged models stay on their characters, lights keep their own settings." },
+		ru = { "Выйдите из редактора («Выйти из редактора», справа вверху) и заспавньте дуп или загрузите сейв как обычно: меню спавна → Dupes / Saves.",
+			"Снова откройте редактор. Файл → Взять объекты с карты… (в пустой сцене эта кнопка есть и в списке объектов).",
+			"В окне — ваши объекты, которых ещё нет в сцене; столбец «С ним» говорит, сколько надетых моделей придёт вместе. «Взять все» или выберите нужные и «Взять выбранные» («Показать» наводит камеру на выбранный).",
+			"Теперь это обычные объекты сцены: позируйте, ставьте ключи, сохраняйте сцену. Надетые модели остаются на персонажах, свет — со своими настройками." } },
+	{ "img", "speditor/help/adopt.jpg", "Take objects from the map: a ragdoll and a prop of a loaded save, ready to be taken into the scene.",
+		"Взять объекты с карты: регдолл и проп из загруженного сейва, готовые войти в сцену." },
+	{ "p", "Animations of Stop Motion Helper come in another way — see Stop Motion Helper saves.",
+		"Анимации Stop Motion Helper переносятся иначе — см. «Сохранения Stop Motion Helper»." },
+	{ "result", "Your old work inside the scene, ready to be animated and rendered.", "Ваши прежние работы внутри сцены — их можно анимировать и рендерить." },
+	{ "try", "Take objects from the map…", "Взять объекты с карты…", fn = function() UI.OpenAdopt() end },
+} })
+
+UI.AddGuide({ id = "posing", order = 2, title = { en = "Posing: move, turn, IK, stretch, locks", ru = "Позирование: перенос, поворот, IK, растяжение, замки" }, blocks = {
 	{ "p", "The gizmo moves (1), turns (2) and scales (4) what is selected — the whole object or one bone. 3 switches between the world axes and the object's own.",
 		"Гизмо переносит (1), поворачивает (2) и масштабирует (4) выделенное — весь объект или одну кость. 3 переключает мировые оси и собственные оси объекта." },
 	{ "h", "Turning freely", "Свободный поворот" },
@@ -40,13 +108,84 @@ UI.AddGuide({ id = "posing", order = 2, title = { en = "Posing: move, turn, IK, 
 			"Тяните внутри колец (не за кольцо): кость катится за мышью во все стороны сразу, как шар под ладонью. Простой щелчок там по-прежнему выделяет кость под курсором." } },
 	{ "h", "IK: pull a hand or a foot", "IK: тянуть кисть или стопу" },
 	{ "img", "speditor/help/ik.jpg", "With IK on (I) a hand drags its arm: the elbow bends by itself.", "С включённым IK (I) кисть тянет за собой руку: локоть сгибается сам." },
-	{ "p", "Turn IK on with I or the button of the viewport bar, select a hand or a foot and move it. Moving the body keeps the feet planted (View → IK: keep the feet planted).",
-		"Включите IK клавишей I или кнопкой на панели вьюпорта, выделите кисть или стопу и двигайте. При переносе тела стопы остаются на месте (Вид → IK: стопы стоят на месте)." },
+	{ "p", "IK is on from the start (I or the button of the viewport bar switches it; the editor remembers the choice): select a hand or a foot and move it — the limb follows. Switch it off to move one bone by itself. Moving the body keeps the feet planted (View → IK: keep the feet planted).",
+		"IK включён с самого начала (клавиша I или кнопка на панели вьюпорта переключают его; редактор запоминает выбор): выделите кисть или стопу и двигайте — конечность следует за ней. Выключите его, чтобы двигать одну кость саму по себе. При переносе тела стопы остаются на месте (Вид → IK: стопы стоят на месте)." },
+	{ "h", "Stretch: a longer neck, arm or leg", "Растяжение: длиннее шея, рука или нога" },
+	{ "img", "speditor/help/stretch.jpg", "Stretch on (T), the head moved up: the neck grows longer, and the hat and the glasses (PAC3) go with the head.",
+		"Растяжение включено (T), голова поднята: шея удлинилась, а шляпа и очки (PAC3) едут вместе с головой." },
+	{ "steps",
+		en = { "Switch Stretch on: T or the button with four arrows on the viewport bar (the status bar then says STRETCH).",
+			"Select a bone and drag it with Move (1): the bone goes away from its parent, the part between them stretches, everything below the bone goes with it. Any bone works — the physical ones of a ragdoll (head, hands, feet, spine) too.",
+			"The offset is kept like the other bone settings: in poses, keys of the animation, the scene and the render. Undo takes it back; right click the character → Utilities → Reset pose of selected removes every offset (with the rest of the pose).",
+			"Switch Stretch off to move bones as usual again (with IK)." },
+		ru = { "Включите «Растяжение»: T или кнопка с четырьмя стрелками на панели вьюпорта (в строке состояния появится «РАСТЯЖЕНИЕ»).",
+			"Выделите кость и тяните её инструментом «Перенос» (1): кость уходит от родителя, участок между ними растягивается, всё, что ниже кости, едет вместе с ней. Подходит любая кость — и физические кости регдолла (голова, кисти, стопы, позвоночник).",
+			"Смещение хранится, как другие настройки костей: в позах, ключах анимации, сцене и рендере. Отмена (Ctrl + Z) возвращает его; ПКМ по персонажу → Утилиты → «Сбросить позу выбранного» убирает все смещения (вместе с остальной позой).",
+			"Выключите «Растяжение», чтобы снова двигать кости как обычно (с IK)." } },
 	{ "h", "Bone locks: one hand holds the other", "Замки костей: одна рука держит другую" },
 	{ "img", "speditor/help/bone_lock.jpg", "Right click a physical bone → Lock … to bone: the locked bone follows the other one when you pose.",
 		"ПКМ по физической кости → Привязать … к кости: привязанная кость следует за другой при позировании." },
 	{ "result", "Natural poses in a few drags: free turns with the trackball, limbs that bend by themselves, hands that keep holding things.",
 		"Естественные позы за несколько движений: свободные повороты трекболом, конечности сгибаются сами, руки продолжают держать." },
+} })
+
+UI.AddGuide({ id = "wear", order = 2.7, icon = "icon16/user_suit.png", title = { en = "Clothes, hats, TF2 cosmetics", ru = "Одежда, шапки, косметика TF2" }, blocks = {
+	{ "p", "Clothes, armour, hair and TF2 cosmetics are separate models made for the skeleton of a character. Put on with Wear, they bend with every bone of the character, whatever pose or animation it has.",
+		"Одежда, броня, волосы и косметика TF2 — отдельные модели, сделанные под скелет персонажа. Надетые через «Надеть», они гнутся вместе со всеми костями персонажа, в любой позе и анимации." },
+	{ "img", "speditor/help/wear_menu.jpg", "Right click the coat → Attach to… → the character → Wear.",
+		"ПКМ по пальто → Привязать к… → персонаж → Надеть." },
+	{ "steps",
+		en = { "Add the character and the clothing model (the model browser; TF2 cosmetics are in models/player/items and models/workshop/player/items).",
+			"Right click the clothing (in a viewport or in the object list) → Attach to… → the character → Wear. It jumps onto the character.",
+			"Pose or animate the character: the clothing follows. Its own extra bones (coat tails, hair, straps) can still be selected and turned.",
+			"(whole object) or a bone in the same menu only carry a model rigidly — for a weapon in a hand, a hat that must not bend, a prop on a shoulder. Detach is in the same menu." },
+		ru = { "Добавьте персонажа и модель одежды (браузер моделей; косметика TF2 лежит в models/player/items и models/workshop/player/items).",
+			"ПКМ по одежде (во вьюпорте или в списке объектов) → Привязать к… → персонаж → Надеть. Она перескакивает на персонажа.",
+			"Позируйте или анимируйте персонажа — одежда следует за ним. Её собственные лишние кости (полы пальто, волосы, ремни) можно выделять и поворачивать.",
+			"«(объект целиком)» или кость в том же меню только жёстко переносят модель — для оружия в руке, шапки, которая не должна гнуться, предмета на плече. «Отвязать» — в том же меню." } },
+	{ "img", "speditor/help/wear_result.jpg", "The coat and a painted hat on a running Heavy: both bend with the run imported from the model.",
+		"Пальто и покрашенная шапка на бегущем Хэви: обе гнутся вместе с бегом, импортированным из модели." },
+	{ "h", "TF2 paint", "Краска TF2" },
+	{ "p", "Paint from the Hat Painter & Crit Glow Tools (and other tools that keep their settings in the duplicator) stays on a worn cosmetic and is saved with the scene.",
+		"Краска из Hat Painter & Crit Glow Tools (и других инструментов, которые хранят настройки в дупликаторе) остаётся на надетой косметике и сохраняется со сценой." },
+	{ "result", "A dressed character that keeps its clothes in every pose, frame and render.",
+		"Одетый персонаж, на котором одежда держится в любой позе, кадре и рендере." },
+} })
+
+UI.AddGuide({ id = "pac3", order = 2.75, icon = "icon16/user_suit.png", title = { en = "PAC3 outfits: hats, glasses, cosmetics", ru = "Наряды PAC3: шляпы, очки, косметика" }, blocks = {
+	{ "p", "PAC3 (a separate Workshop addon) builds outfits from parts: models, effects, sprites, trails, materials. SPeditor puts such outfits on any character or prop of the scene. An outfit sits on the object's bones, so it moves with every pose, animation frame and render, and it is saved with the scene. A hat, glasses or any model on a bone is made right in SPeditor's small PAC3 window — PAC3's own editor is needed only for outfits of many parts and effects.",
+		"PAC3 (отдельный аддон из Мастерской) собирает наряды из деталей: модели, эффекты, спрайты, следы, материалы. SPeditor надевает такие наряды на любого персонажа или проп сцены. Наряд сидит на костях объекта, поэтому двигается в любой позе, кадре анимации и рендере и сохраняется со сценой. Шляпа, очки или любая модель на кости делаются прямо в маленьком окне PAC3 в SPeditor — собственный редактор PAC3 нужен только для нарядов из многих деталей и эффектов." },
+	{ "img", "speditor/help/pac3_menu.jpg", "Right click the character → PAC3 outfits: the PAC3 window, the saved outfits, taking an outfit off.",
+		"ПКМ по персонажу → Наряды PAC3: окно PAC3, сохранённые наряды, снять наряд." },
+	{ "h", "A hat: a model on the head bone", "Шляпа: модель на кости головы" },
+	{ "img", "speditor/help/pac3_window.jpg", "The PAC3 window: the TF2 top hat on the head bone; Forward / Side / Up, the turn and the size are set with sliders and the hat is seen on the character at once.",
+		"Окно PAC3: цилиндр из TF2 на кости головы; «Вперёд / Вбок / Вверх», поворот и размер задаются ползунками, и шляпа сразу видна на персонаже." },
+	{ "steps",
+		en = { "Install PAC3 from the Workshop. Right click the character (in a viewport or in the object list) → PAC3 outfits → PAC3 window.",
+			"Model: choose one of the list — the props of your scene come first (spawn any prop from the model browser and pick it here), then a few ready hats — or type a path (models/….mdl) and press Enter. TF2 cosmetics are in models/player/items/ when TF2 is mounted.",
+			"Bone: head for a hat or glasses, spine 4 for a backpack, right hand for something held.",
+			"Move the sliders until it sits: Forward, Side and Up move it along the bone, Pitch, Yaw and Roll turn it, Size scales it. Start with the turn: get the model upright first, then move it into place. A model made for another character (a TF2 cosmetic of a heavy) may need a smaller size.",
+			"Name it and press Save and put on: the part becomes an ordinary PAC3 outfit file (garrysmod/data/pac3/<name>.txt — PAC3's own editor opens it too) and the character wears it. The window keeps the settings: change the model and make the next part." },
+		ru = { "Установите PAC3 из Мастерской. ПКМ по персонажу (во вьюпорте или в списке объектов) → Наряды PAC3 → Окно PAC3.",
+			"«Модель»: выберите из списка — сначала идут пропы вашей сцены (создайте любой проп из браузера моделей и выберите его здесь), потом несколько готовых шляп — или впишите путь (models/….mdl) и нажмите Enter. Косметика TF2 лежит в models/player/items/, если TF2 подключён.",
+			"«Кость»: head — для шляпы или очков, spine 4 — для рюкзака, right hand — для того, что в руке.",
+			"Двигайте ползунки, пока не сядет: «Вперёд», «Вбок» и «Вверх» сдвигают вдоль кости, «Наклон», «Поворот» и «Крен» поворачивают, «Размер» масштабирует. Начните с поворота: сначала поставьте модель ровно, потом сдвиньте на место. Модели, сделанной под другого персонажа (косметике TF2 Хэви), может понадобиться размер поменьше.",
+			"Дайте имя и нажмите «Сохранить и надеть»: деталь становится обычным файлом наряда PAC3 (garrysmod/data/pac3/<имя>.txt — его открывает и сам редактор PAC3), и персонаж его надевает. Окно сохраняет настройки: смените модель и делайте следующую деталь." } },
+	{ "h", "More cosmetics: glasses on top of the hat", "Ещё косметика: очки поверх шляпы" },
+	{ "img", "speditor/help/pac3_glasses.jpg", "The second part: TF2 VR glasses (all_class_oculus_heavy) on the same head bone, Size 0.7; the hat is already worn and listed in Worn outfits.",
+		"Вторая деталь: VR-очки из TF2 (all_class_oculus_heavy) на той же кости головы, размер 0.7; шляпа уже надета и видна в «Надетых нарядах»." },
+	{ "p", "Several outfits can be worn at once. Worn outfits lists them with a cross to take one off; Put on an outfit puts on any saved one, also the ones made in PAC3's editor. The window follows the selection: select another character and it dresses that one.",
+		"Можно надеть несколько нарядов сразу. «Надетые наряды» перечисляет их, крестик снимает наряд; «Надеть наряд» надевает любой сохранённый, в том числе сделанный в редакторе PAC3. Окно следует за выделением: выделите другого персонажа — и оно одевает его." },
+	{ "img", "speditor/help/pac3_cosmetics.jpg", "The result: the top hat and the VR glasses on the hero of demo_a07; the pose of the character stays as it was made.",
+		"Результат: цилиндр и VR-очки на герое demo_a07; поза персонажа остаётся такой, какой её сделали." },
+	{ "p", "The scene file keeps the outfits themselves: the scene opens with them even where the files are missing. Without PAC3 the outfits are kept but not shown. Outfits with bone parts of PAC3 (bone, custom animation, jiggle) change the bones themselves — on such an object PAC3 decides the pose. Light parts of PAC3 fail together with GShader Library — use the editor's own lights.",
+		"Файл сцены хранит сами наряды: сцена откроется с ними даже там, где файлов нет. Без PAC3 наряды хранятся, но не показываются. Наряды с деталями костей PAC3 (bone, custom animation, jiggle) сами меняют кости — на таком объекте позу решает PAC3. Детали-светильники PAC3 ломаются вместе с GShader Library — используйте свет редактора." },
+	{ "result", "A character in a hat and glasses that follow every bone in poses, animation and the final render — made without leaving the editor.",
+		"Персонаж в шляпе и очках, которые следуют за каждой костью в позах, анимации и итоговом рендере, — без выхода из редактора." },
+	{ "try", "Open the PAC3 window for the selected object", "Открыть окно PAC3 для выделенного объекта", fn = function()
+		local ent = SPeditor.Client.selected
+		if IsValid(ent) and not SPeditor.Client.IsAux(ent) then UI.OpenPACWindow(ent) else SPeditor.Notify("#pac_select", 1) end
+	end },
 } })
 
 UI.AddGuide({ id = "select", order = 2.5, icon = "icon16/keyboard.png", title = { en = "Selecting, copying, your own keys", ru = "Выделение, копирование, свои клавиши" }, blocks = {
@@ -82,8 +221,8 @@ UI.AddGuide({ id = "select", order = 2.5, icon = "icon16/keyboard.png", title = 
 } })
 
 UI.AddGuide({ id = "lights", order = 3, title = { en = "Light", ru = "Свет" }, blocks = {
-	{ "p", "Lights of the editor cast real shadows. A spot light shines through a mask (a texture: a window, leaves, a soft circle); a point light shines everywhere.",
-		"Источники света редактора отбрасывают настоящие тени. Прожектор светит через маску (текстуру: окно, листва, мягкий круг); точечный свет светит во все стороны." },
+	{ "p", "Lights of the editor cast real shadows — spot lights and point lights alike. A spot light shines through a mask (a texture: a window, leaves, a soft circle); a point light shines everywhere.",
+		"Источники света редактора отбрасывают настоящие тени — и прожекторы, и точечный свет. Прожектор светит через маску (текстуру: окно, листва, мягкий круг); точечный свет светит во все стороны." },
 	{ "img", "speditor/help/lights.jpg", "A scene lit by three spot lights: key, fill and back.", "Сцена со светом из трёх прожекторов: рисующий, заполняющий и контровой." },
 	{ "steps",
 		en = { "+ → Spawn spot light in front puts a light where the camera looks. + → Soft light gives a ready kind (softbox, window light, sun through leaves…).",
@@ -97,8 +236,32 @@ UI.AddGuide({ id = "lights", order = 3, title = { en = "Light", ru = "Свет" 
 			"«размер источника» (в настройках света) смягчает тени в рендере; «ореол» и «луч в воздухе» делают свет видимым в кадре.",
 			"+ → Создать трёхточечную схему света сразу ставит рисующий, заполняющий и контровой свет вокруг выделенного персонажа." } },
 	{ "img", "speditor/help/light_controls.jpg", "The settings of a light.", "Настройки источника света." },
+	{ "h", "Shadows of a point light", "Тени точечного света" },
+	{ "img", "speditor/help/point_shadows.jpg", "A point light with castsShadows on: the character drops a shadow away from the lamp. Below — the Shadows tab.",
+		"Точечный свет с включённым castsShadows: персонаж отбрасывает тень от лампы. Внизу — вкладка «Тени»." },
+	{ "p", "A point light with castsShadows shines as six spot lights, one per side of a cube. The game has 8 shadow maps for all lights together: a spot light takes one, a point light six — so the nearest point light gets shadows and the others shine without them. The Shadows tab: 'Objects: shadows only from spot and point lights' (on by default) removes the game's flat blob shadow that props and characters drop along the map light, whatever lights the scene has.",
+		"Точечный свет с castsShadows светит шестью прожекторами, по одному на грань куба. Карт теней в игре 8 на все источники: прожектор занимает одну, точечный свет — шесть, поэтому тени получает ближайший точечный свет, а остальные светят без них. Вкладка «Тени»: «Объекты: тени только от прожекторов и точечного света» (включено по умолчанию) убирает плоскую игровую тень, которую пропы и персонажи отбрасывают по свету карты независимо от света сцены." },
 	{ "result", "Lighting with soft shadows and a shape of your own — the mask decides what the light paints on the walls.",
 		"Освещение с мягкими тенями и своей формой — маска решает, какой рисунок свет кладёт на стены." },
+} })
+
+UI.AddGuide({ id = "own_sounds", order = 8.5, icon = "icon16/sound.png", title = { en = "Your own sounds: interface, notifications, timeline", ru = "Свои звуки: интерфейс, уведомления, таймлайн" }, blocks = {
+	{ "p", "Every place that takes a sound opens the game's own file browser: the sounds of the game and of every installed addon, and your own files (WAV, MP3, OGG) from garrysmod/data/speditor/sounds/.",
+		"Везде, где нужен звук, открывается файловый браузер самой игры: звуки игры и всех установленных аддонов, а также ваши файлы (WAV, MP3, OGG) из garrysmod/data/speditor/sounds/." },
+	{ "img", "speditor/help/sound_pick.jpg", "Interface settings → Appearance: click and close sounds; the folder button opens Choose a sound.",
+		"Настройки интерфейса → Внешний вид: звук клика и закрытия; кнопка с папкой открывает «Выбор звука»." },
+	{ "steps",
+		en = { "Interface sounds: View → Interface settings → Appearance → Click sound / Window close sound → the folder button. They play with any theme; empty — the theme's own sound.",
+			"Notifications: Interface settings → Notifications → sound set Custom → the folder button next to every kind.",
+			"Timeline: right click a sound clip → Replace the sound… — the clip keeps its place, emitter, volume and fades.",
+			"In Choose a sound a click plays the sound, a double click (or Choose) takes it. My files lists garrysmod/data/speditor/sounds/: put files there and press the refresh button." },
+		ru = { "Звуки интерфейса: Вид → Настройки интерфейса → Внешний вид → Звук клика / Звук закрытия окна → кнопка с папкой. Играют с любой темой; пусто — звук самой темы.",
+			"Уведомления: Настройки интерфейса → Уведомления → набор звуков «Свой» → кнопка с папкой у каждого вида.",
+			"Таймлайн: ПКМ по звуковому клипу → «Заменить звук…» — клип остаётся на месте, с тем же источником, громкостью и затуханиями.",
+			"В окне «Выбор звука» щелчок проигрывает звук, двойной щелчок (или «Выбрать») берёт его. «Мои файлы» — это garrysmod/data/speditor/sounds/: положите туда файлы и нажмите кнопку обновления." } },
+	{ "result", "The editor clicks, notifies and scores your film with the sounds you chose.",
+		"Редактор щёлкает, уведомляет и озвучивает ваш фильм выбранными вами звуками." },
+	{ "try", "Open the interface settings", "Открыть настройки интерфейса", fn = function() UI.OpenSettings("look") end },
 } })
 
 UI.AddGuide({ id = "camera", order = 4, title = { en = "Cameras and their effects", ru = "Камеры и их эффекты" }, blocks = {
@@ -113,6 +276,14 @@ UI.AddGuide({ id = "camera", order = 4, title = { en = "Cameras and their effect
 			"Выделите камеру: её угол обзора, тряска и плавность — в Animation Set Editor.",
 			"Окно «Рендер» → Эффекты камеры: включите «Глубина резкости этой камеры» и задайте дистанцию фокуса (единиц до резкого) и диафрагму (насколько размыто остальное).",
 			"Эффекты анимируются: измените их на другом кадре с включённым автоключом (или нажмите K при выделенной камере) — фокус переходит с одного актёра на другого." } },
+	{ "h", "Following an actor", "Слежение за актёром" },
+	{ "p", "Object menu of a camera or a light → Aim at… → Keep looking at: it keeps turning to that object — the head of a character, the middle of a prop — while the animation moves either of them. Its place stays yours: keys, flying, attaching. Stop looking at — in the same menu.",
+		"Меню объекта у камеры или света → Навести на… → Следить за объектом: она всё время поворачивается к этому объекту — к голове персонажа, к середине пропа, — пока анимация двигает любого из них. Её место остаётся вашим: ключи, полёт, прикрепление. «Перестать следить» — в том же меню." },
+	{ "h", "Recording a camera", "Запись камеры" },
+	{ "p", "A camera can record its own moves: object menu of the camera → Record this camera's moves (or the red dot button of the Primary Viewport while you look through it). Then every move, turn and zoom of it — flying through it, the gizmo, the field of view — sets a key at the current frame, even with Auto key off. The viewport shows a blinking REC beside its name.",
+		"Камера может записывать свои движения: меню объекта у камеры → «Записывать движения этой камеры» (или красная кнопка-точка основного вьюпорта, пока вы смотрите через неё). Тогда каждый её перенос, поворот и зум — полёт через неё, гизмо, угол обзора — ставит ключ на текущем кадре, даже при выключенном автоключе. Во вьюпорте рядом с её именем мигает REC." },
+	{ "img", "speditor/help/aim_menu.jpg", "Aim at… → Keep looking at → Hero: the camera on the left keeps the hero in frame (right viewport) while he walks.",
+		"Навести на… → Следить за объектом → Hero: камера слева держит героя в кадре (правый вьюпорт), пока он идёт." },
 	{ "img", "speditor/help/camera_view.jpg", "Looking through a scene camera.", "Вид через камеру сцены." },
 	{ "img", "speditor/help/camera_fx.jpg", "Camera effects in the Render window.", "Эффекты камеры в окне «Рендер»." },
 	{ "result", "A frame with a blurred background and a focus that can travel during the animation.",
@@ -122,16 +293,25 @@ UI.AddGuide({ id = "camera", order = 4, title = { en = "Cameras and their effect
 UI.AddGuide({ id = "render", order = 5, title = { en = "Render a picture, Steam screenshots", ru = "Рендер картинки и скриншоты Steam" }, blocks = {
 	{ "p", "The Render window shoots the scene off screen at any size, with smoothing, depth of field and soft shadows. A scene with animation renders a video instead (see the SAeditor guides).",
 		"Окно «Рендер» снимает сцену вне экрана в любом размере, со сглаживанием, глубиной резкости и мягкими тенями. Сцена с анимацией вместо этого рендерится в видео (см. статьи SAeditor)." },
-	{ "img", "speditor/help/render.jpg", "The Render window: settings on the left, the live preview on the right.", "Окно «Рендер»: настройки слева, живой предпросмотр справа." },
+	{ "img", "speditor/help/render.jpg", "The Render window, Picture tab: the settings of a still on the left, the live preview on the right. The Animation tab holds the video settings (see Render the animation to video); the look of the frame — size, smoothing, depth of field, SSAO, shaders, camera effects — is shared by both.",
+		"Окно «Рендер», вкладка «Картинка»: настройки кадра слева, живой предпросмотр справа. Во вкладке «Анимация» — настройки видео (см. «Рендер анимации в видео»); вид кадра — размер, сглаживание, глубина резкости, SSAO, шейдеры, эффекты камеры — у обеих общий." },
 	{ "steps",
-		en = { "Render (top right) opens the window. Pick the camera, the aspect and the size.",
+		en = { "Render (top right) opens the window, on the Picture tab. Pick the camera, the aspect and the size.",
 			"Format: PNG (no loss), JPEG (small files) or Steam screenshot.",
 			"Steam screenshot saves the PNG and also puts the picture into your Steam screenshots: the game shows it full screen for a moment and takes a screenshot. Then Steam → View → Screenshots → Garry's Mod → Upload to publish it.",
 			"The files are in garrysmod/data/speditor/renders (File → Where are my files)." },
-		ru = { "«Рендер» (справа вверху) открывает окно. Выберите камеру, пропорции и размер.",
+		ru = { "«Рендер» (справа вверху) открывает окно, вкладка «Картинка». Выберите камеру, пропорции и размер.",
 			"Формат: PNG (без потерь), JPEG (маленькие файлы) или Скриншот Steam.",
 			"«Скриншот Steam» сохраняет PNG и ещё кладёт картинку в ваши скриншоты Steam: игра на мгновение показывает её на весь экран и делает скриншот. Затем Steam → Вид → Скриншоты → Garry's Mod → Загрузить — и он опубликован.",
 			"Файлы лежат в garrysmod/data/speditor/renders (Файл → Где мои файлы)." } },
+	{ "h", "Ambient occlusion (SSAO)", "Затенение окружения (SSAO)" },
+	{ "p", "Render window → Ambient occlusion (SSAO): soft contact shadows where things meet — in corners, folds of clothes, under feet and objects — as in SFM. Radius: how far around a point the shadow reaches (units); Strength: how dark it gets. It is the editor's own effect, no other addon is needed, and it is in the preview, the picture, the video, the Render look of the viewport and the Engine frame. It is saved with the scene.",
+		"Окно «Рендер» → «Затенение окружения (SSAO)»: мягкие контактные тени там, где предметы сходятся, — в углах, складках одежды, под ногами и предметами, как в SFM. «Радиус» — как далеко вокруг точки ложится тень (в единицах), «Сила» — насколько она тёмная. Это собственный эффект редактора, другие аддоны не нужны; он есть в превью, картинке, видео, виде рендера во вьюпорте и в кадре движка. Сохраняется со сценой." },
+	{ "h", "Render look in the viewport", "Вид рендера во вьюпорте" },
+	{ "img", "speditor/help/render_look.jpg", "The photo button of the Primary Viewport: the frame of the Dolly camera with its depth of field, as the render will make it.",
+		"Кнопка с фотографией в основном вьюпорте: кадр камеры Dolly с её глубиной резкости — каким его сделает рендер." },
+	{ "p", "As in SFM: stop on a frame and the Primary Viewport shows the finished picture — depth of field, soft shadows, smoothing and the camera effects (bloom, colour, vignette…). While you fly, drag or play, it shows a quicker draft of the same, so motion and effects are seen together. The gizmo and the skeleton are hidden in it: turn it off to pose. Motion blur is seen only in the video render.",
+		"Как в SFM: остановитесь на кадре — основной вьюпорт покажет готовую картинку: глубину резкости, мягкие тени, сглаживание и эффекты камеры (bloom, цвет, виньетку…). Пока вы летаете, тянете или проигрываете, он показывает более быстрый черновик того же, так что движение и эффекты видны вместе. Гизмо и скелета в нём нет — для позирования выключите его. Размытие движения видно только в рендере видео." },
 	{ "result", "A picture file — and, with the Steam format, a screenshot you can publish on your Steam profile. The Steam copy has the size of your screen.",
 		"Файл картинки, а с форматом Steam — ещё и скриншот, который можно опубликовать в профиле Steam. Копия в Steam размером с ваш экран." },
 	{ "try", "Open the Render window", "Открыть окно «Рендер»", fn = function() UI.OpenRenderDialog() end },

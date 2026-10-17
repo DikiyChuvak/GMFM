@@ -18,6 +18,7 @@ RU
 шейдеры появляются в окне «Рендер»: «Эффекты камеры» → «Свой шейдер».
 
 Важно:
+  * Папка shaders/fxc — шейдеры самого SPeditor (SSAO), не кладите набор с таким именем.
   * Подходят шейдеры-материалы: .vmt на шейдере screenspace_general со своим
     пиксельным шейдером ($pixshader). Кадр они получают через $basetexture
     (_rt_FullFrameFB), числа — через $c0_x … $c3_w (ползунки появятся сами).
@@ -47,6 +48,7 @@ folder. The pack is mounted without restarting the game; its shaders appear in t
 Render window: Camera effects → Custom shader.
 
 Notes:
+  * shaders/fxc holds SPeditor's own shaders (SSAO): do not name a pack "fxc".
   * Shader materials are supported: a .vmt using screenspace_general with its own
     pixel shader ($pixshader). The frame comes in through $basetexture
     (_rt_FullFrameFB), numbers through $c0_x … $c3_w (sliders appear automatically).

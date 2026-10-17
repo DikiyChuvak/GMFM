@@ -117,7 +117,7 @@ function S.CleanupPlayer(ply)
 	end
 	S.Owned[ply] = {}
 	S.Graveyard[ply] = nil
-	hook.Run("SPeditor_PlayerCleanup", ply)      -- mods reset their scene data
+	hook.Run("SPeditor_PlayerCleanup", ply)      -- SAeditor resets its scene data
 end
 
 -- Tell the client the index of the new entity so that it gets selected
@@ -218,8 +218,8 @@ function S.RigidLinks(ent)
 				bone = ent:GetBoneParent(bone)
 				guard = guard + 1
 				if bone and bone >= 0 then
-					local phys = ent:TranslateBoneToPhysBone(bone)
-					if phys and phys >= 0 and phys ~= i and ent:TranslatePhysBoneToBone(phys) == bone then
+					local phys = SPeditor.PhysOfBone(ent, bone)
+					if phys and phys ~= i then
 						parent = phys
 						break
 					end
@@ -261,6 +261,7 @@ function S.SnapRigid(ent)
 		if IsValid(p) then world[i] = { p:GetPos(), p:GetAngles() } end
 	end
 	S.RigidPlaces(ent, world)
+	ent.SPeditor_Placed = true
 	for i, w in pairs(world) do
 		local p = ent:GetPhysicsObjectNum(i)
 		if i > 0 and SPeditor.ValidVec(w[1]) then
@@ -283,6 +284,7 @@ function S.SetTransform(ent, pos, ang)
 		local root = ent:GetPhysicsObjectNum(0)
 		if not IsValid(root) then return end
 		local rp, ra = root:GetPos(), root:GetAngles()
+		ent.SPeditor_Placed = true
 		for i = 0, ent:GetPhysicsObjectCount() - 1 do
 			local p = ent:GetPhysicsObjectNum(i)
 			if IsValid(p) then
@@ -397,7 +399,7 @@ function S.Attach(ent, parent, bone)
 	local wear = bone == S.WEAR and not S.IsAux(ent) and not S.IsAux(parent) and parent:GetBoneCount() > 1
 	local phys = -1
 	if S.IsRagdoll(parent) and bone >= 0 and bone < parent:GetBoneCount() then
-		phys = parent:TranslateBoneToPhysBone(bone) or -1
+		phys = SPeditor.PhysOfBoneUp(parent, bone) or -1
 		if phys >= 0 then bone = parent:TranslatePhysBoneToBone(phys) end   -- the actual bone of the physics object
 	else
 		bone = -1
@@ -424,7 +426,10 @@ end
 -- Also called by SAeditor right after it has set a frame of the animation, so that a weapon
 -- is in the hand in the same network update as the hand itself.
 function S.AttachFollow()
-	if next(S.Attached) == nil then return end
+	if next(S.Attached) == nil then
+		S.AimFollow()
+		return
+	end
 	local list = {}
 	for ent in pairs(S.Attached) do
 		if IsValid(ent) and ent.SPeditor_Attach and IsValid(ent.SPeditor_Attach.parent) then
@@ -445,8 +450,67 @@ function S.AttachFollow()
 			if SPeditor.ValidVec(pos) and SPeditor.ValidAng(ang) then S.SetTransform(ent, pos, ang) end
 		end
 	end
+	S.AimFollow()
 end
 hook.Add("Think", "SPeditor.AttachFollow", function() S.AttachFollow() end)
+
+---------------------------------------------------------------------
+-- Look-at (a0.7): a camera or a light keeps turning to an object — the head of a character
+-- or the middle of a prop — wherever either of them moves (an animation, a drag). Its own
+-- turn is then ignored; its place stays its own (keys, attachment). Like SFM's aim constraint.
+---------------------------------------------------------------------
+S.Aimed = S.Aimed or {}     -- [ent] = true
+
+-- the point an object is looked at: a bone of a ragdoll (its physics body), by default the
+-- head; the middle of anything else
+function S.AimPoint(target, bone)
+	if not IsValid(target) then return nil end
+	if S.IsRagdoll(target) then
+		bone = (bone and bone >= 0) and bone or target:LookupBone("ValveBiped.Bip01_Head1")
+		local phys = bone and SPeditor.PhysOfBoneUp(target, bone)
+		local p = phys and target:GetPhysicsObjectNum(phys)
+		if IsValid(p) then return p:GetPos() end
+	end
+	if S.IsAux(target) then return target:GetPos() end
+	return target:LocalToWorld(target:OBBCenter())
+end
+
+function S.SetAim(ent, target, bone)
+	if not IsValid(ent) or not S.IsAux(ent) or S.IsEffect(ent) then return false end
+	if not IsValid(target) or target == ent then
+		ent.SPeditor_Aim = nil
+		S.Aimed[ent] = nil
+		ent:SetNW2Entity("SPeditor_AimAt", NULL)
+		return true
+	end
+	ent.SPeditor_Aim = { target = target, bone = math.floor(SPeditor.Num(bone, -1)) }
+	S.Aimed[ent] = true
+	ent:SetNW2Entity("SPeditor_AimAt", target)
+	S.AimFollow()
+	return true
+end
+
+function S.AimFollow()
+	if next(S.Aimed) == nil then return end
+	for ent in pairs(S.Aimed) do
+		local a = IsValid(ent) and ent.SPeditor_Aim
+		if not a or not IsValid(a.target) then
+			-- the target is gone: the object keeps the direction it had
+			if IsValid(ent) then S.SetAim(ent, nil) else S.Aimed[ent] = nil end
+		else
+			local point = S.AimPoint(a.target, a.bone)
+			local pos, ang = ent:GetPos(), ent:GetAngles()
+			if point and point:DistToSqr(pos) > 1 then
+				local want = (point - pos):Angle()
+				want.r = S.IsCamera(ent) and 0 or ang.r
+				if math.abs(math.AngleDifference(want.p, ang.p)) > 0.01 or math.abs(math.AngleDifference(want.y, ang.y)) > 0.01
+					or math.abs(math.AngleDifference(want.r, ang.r)) > 0.01 then
+					S.SetTransform(ent, pos, want)
+				end
+			end
+		end
+	end
+end
 
 ---------------------------------------------------------------------
 -- Ragdoll guard. Addons that drive ragdolls by themselves (active ragdolls such as Fedhoria,
@@ -455,6 +519,10 @@ hook.Add("Think", "SPeditor.AttachFollow", function() S.AttachFollow() end)
 -- went back to where the other addon wanted them and could not be posed. While the owner's
 -- editor is open, an editor ragdoll keeps its bodies frozen: a body someone unfroze is
 -- frozen again at the place it had (taken while it rested). Off: speditor_ragdoll_guard 0.
+-- Whatever places the bodies itself (an edit, a pose, playback) marks the ragdoll with
+-- SPeditor_Placed: that place is the new one to keep, even if the other addon has already
+-- unfrozen the bodies in the same tick (otherwise every edit was undone and the limbs of
+-- such a ragdoll could not be moved at all).
 ---------------------------------------------------------------------
 local cvGuard = CreateConVar("speditor_ragdoll_guard", "1", FCVAR_ARCHIVE,
 	"SPeditor: keep the bodies of editor ragdolls frozen when other addons unfreeze them")
@@ -464,17 +532,25 @@ hook.Add("Think", "SPeditor.RagdollGuard", function()
 	for ply, list in pairs(S.Owned) do
 		if S.Active[ply] then
 			for _, ent in ipairs(list) do
-				if IsValid(ent) and ent:GetClass() == "prop_ragdoll" then
+				-- a ragdoll whose physics is being recorded (SAeditor) moves on purpose
+				if IsValid(ent) and ent:GetClass() == "prop_ragdoll" and not ent.SPeditor_PhysRec then
 					local g = ent.SPeditor_Guard
 					if not g then
 						g = { pos = {}, ang = {} }
 						ent.SPeditor_Guard = g
 					end
-					local fixed = false
+					local fixed, placed = false, ent.SPeditor_Placed
+					ent.SPeditor_Placed = nil
 					for i = 0, ent:GetPhysicsObjectCount() - 1 do
 						local p = ent:GetPhysicsObjectNum(i)
 						if IsValid(p) then
-							if p:IsMotionEnabled() then
+							if placed then
+								g.pos[i], g.ang[i] = p:GetPos(), p:GetAngles()
+								if p:IsMotionEnabled() then
+									p:EnableMotion(false)
+									p:Wake()
+								end
+							elseif p:IsMotionEnabled() then
 								p:EnableMotion(false)
 								if g.pos[i] then
 									p:SetPos(g.pos[i])
@@ -642,8 +718,7 @@ function S.ApplyLook(ent, d)
 	local locks, parts = {}, {}
 	if S.IsRagdoll(ent) and type(d.locks) == "table" then
 		local function phys(b)
-			local pb = ent:TranslateBoneToPhysBone(b)
-			return pb and pb >= 0 and ent:TranslatePhysBoneToBone(pb) == b
+			return SPeditor.PhysOfBone(ent, b) ~= nil
 		end
 		for k, v in pairs(d.locks) do
 			local b, t = math.floor(SPeditor.Num(k, -1)), math.floor(SPeditor.Num(v, -1))
@@ -937,6 +1012,7 @@ local function resetPhys(ent)
 	local init = ent.SPeditor_Init
 	local root = ent:GetPhysicsObjectNum(0)
 	if not init or not IsValid(root) then return end
+	ent.SPeditor_Placed = true
 	local rp, ra = root:GetPos(), root:GetAngles()
 	for i, st in pairs(init) do
 		local p = ent:GetPhysicsObjectNum(i)
@@ -982,8 +1058,8 @@ local function physParent(ent, idx)
 	local bone = ent:TranslatePhysBoneToBone(idx)
 	local b, guard = bone and ent:GetBoneParent(bone) or -1, 0
 	while b and b >= 0 and guard < 256 do
-		local pi = ent:TranslateBoneToPhysBone(b)
-		if pi and pi >= 0 and pi ~= idx and ent:TranslatePhysBoneToBone(pi) == b then return pi end
+		local pi = SPeditor.PhysOfBone(ent, b)
+		if pi and pi ~= idx then return pi end
 		b = ent:GetBoneParent(b)
 		guard = guard + 1
 	end
@@ -1041,6 +1117,7 @@ local function applyForeignPhys(ent, pose)
 	local root = ent:GetPhysicsObjectNum(0)
 	local init = ent.SPeditor_Init
 	if not IsValid(root) or not init then return end
+	ent.SPeditor_Placed = true
 	local rp, ra = root:GetPos(), root:GetAngles()
 	local names = pose.names.phys
 
@@ -1048,8 +1125,8 @@ local function applyForeignPhys(ent, pose)
 	local wantAng = {}
 	for k, d in pairs(pose.phys) do
 		local bone = names[k] and ent:LookupBone(names[k])
-		local idx = bone and ent:TranslateBoneToPhysBone(bone)
-		if idx and idx >= 0 and ent:TranslatePhysBoneToBone(idx) == bone and type(d) == "table" then
+		local idx = bone and SPeditor.PhysOfBone(ent, bone)
+		if idx and type(d) == "table" then
 			local la = SPeditor.TableToAng(d.a)
 			if la then
 				local _, wa = LocalToWorld(vector_origin, la, rp, ra)
@@ -1110,6 +1187,7 @@ function S.ApplyPose(ent, pose)
 		else
 			local root = ent:GetPhysicsObjectNum(0)
 			if IsValid(root) then
+				ent.SPeditor_Placed = true
 				local rp, ra = root:GetPos(), root:GetAngles()
 				for k, d in pairs(pose.phys) do
 					local idx = tonumber(k)
@@ -1241,6 +1319,8 @@ S.Receive("Duplicate", function(ply)
 	end
 	local a = ent.SPeditor_Attach
 	if a and IsValid(a.parent) then S.Attach(copy, a.parent, a.wear and S.WEAR or a.bone) end
+	local aim = ent.SPeditor_Aim
+	if aim and IsValid(aim.target) then S.SetAim(copy, aim.target, aim.bone) end
 	S.SendSpawned(ply, copy)
 end)
 
@@ -1263,6 +1343,13 @@ S.Receive("Attach", function(ply)
 	elseif not S.Attach(ent, parent, bone) then
 		S.Notice(ply, "#err_attach", 1)
 	end
+end)
+
+S.Receive("Aim", function(ply)
+	local ent    = S.ReadOwned(ply)
+	local target = S.ReadOwned(ply)
+	local bone   = net.ReadInt(16)
+	if ent then S.SetAim(ent, target, bone) end
 end)
 
 S.Receive("Scale", function(ply)
@@ -1288,6 +1375,7 @@ S.Receive("PhysBone", function(ply)
 	local ent = S.ReadOwned(ply)
 	local count = net.ReadUInt(8)
 	if not S.IsRagdoll(ent) then return end
+	ent.SPeditor_Placed = true
 	local max = ent:GetPhysicsObjectCount()
 	for _ = 1, count do
 		local idx = net.ReadUInt(8)

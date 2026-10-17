@@ -30,10 +30,58 @@ local function withMeta(ent, d)
 		d.attachBone = (a.bone >= 0) and a.parent:GetBoneName(a.bone) or ""
 		d.attachWear = a.wear or nil
 	end
+	-- look-at (a0.7): UID of the target and the bone name
+	local aim = ent.SPeditor_Aim
+	if aim and IsValid(aim.target) then
+		d.aimUID  = aim.target.SPeditor_UID
+		d.aimBone = (aim.bone >= 0) and aim.target:GetBoneName(aim.bone) or ""
+	end
 	d.name   = ent.SPeditor_Name
+	d.pac    = S.PACSave and S.PACSave(ent) or nil      -- PAC3 outfits (sv_pac.lua)
 	d.hidden = ent:GetNW2Bool("SPeditor_Hidden", false)
 	d.locked = ent:GetNW2Bool("SPeditor_Locked", false)
 	return d
+end
+
+-- Duplicator modifiers of other tools (TF2 paint and crit glow, proxy colours…): saved with
+-- the object and applied again when it is restored. The ones the editor keeps itself
+-- (colour, material, bones) are left out, the editor's look would be overwritten by them.
+local OWN_MODIFIERS = { colour = true, material = true, mass = true, physprops = true, gravity = true,
+	bonemanipulate = true, submaterials = true }
+
+local function plainData(v, depth)
+	local t = type(v)
+	if t == "number" or t == "string" or t == "boolean" or isvector(v) or isangle(v) then return true end
+	if t ~= "table" or depth > 4 then return false end
+	local n = 0
+	for k, x in pairs(v) do
+		n = n + 1
+		if n > 64 or (type(k) ~= "string" and type(k) ~= "number") or not plainData(x, depth + 1) then return false end
+	end
+	return true
+end
+
+local function captureModifiers(ent)
+	local out
+	for k, v in pairs(istable(ent.EntityMods) and ent.EntityMods or {}) do
+		if isstring(k) and not OWN_MODIFIERS[string.lower(k)] and plainData(v, 0) then
+			out = out or {}
+			out[k] = table.Copy(v)
+		end
+	end
+	return out
+end
+
+function S.RestoreModifiers(ply, ent, mods)
+	if not istable(mods) or not IsValid(ent) then return end
+	for k, v in pairs(mods) do
+		local fn = isstring(k) and not OWN_MODIFIERS[string.lower(k)] and duplicator.EntityModifiers[k]
+		if fn and istable(v) then
+			ent.EntityMods = ent.EntityMods or {}
+			ent.EntityMods[k] = v
+			ProtectedCall(function() fn(ply, ent, v) end)
+		end
+	end
 end
 
 local function serializeBase(ent)
@@ -71,6 +119,7 @@ local function serializeBase(ent)
 			scale      = ent.SPeditor_Scale,
 			look       = S.CaptureLook(ent),
 			pose       = S.CapturePose(ent),
+			dupemods   = captureModifiers(ent),
 	})
 end
 
@@ -134,6 +183,8 @@ function S.RestoreItem(ply, it)
 			ent:SetNW2String("SPeditor_Name", it.name)
 		end
 		S.SetFlags(ent, it.hidden, it.locked)
+		if it.pac and S.PACRestore then S.PACRestore(ent, it.pac) end
+		if it.kind == "prop" then S.RestoreModifiers(ply, ent, it.dupemods) end
 		-- bonemerged models of other tools come back onto their object
 		if type(it.extras) == "table" and S.RestoreExtras then S.RestoreExtras(ply, ent, it.extras, it.extrasOff) end
 	end
@@ -146,8 +197,16 @@ function S.RestoreItem(ply, it)
 		-- undo of deletion: bring the attachment back if the parent is still there
 		local parent = tonumber(it.attachUID) and S.FindUID(ply, tonumber(it.attachUID))
 		if parent then S.AttachByName(ent, parent, it.attachBone, it.attachWear) end
+		local target = tonumber(it.aimUID) and S.FindUID(ply, tonumber(it.aimUID))
+		if target then S.AimByName(ent, target, it.aimBone) end
 	end
 	return ent
+end
+
+function S.AimByName(ent, target, boneName)
+	local bone = -1
+	if type(boneName) == "string" and boneName ~= "" then bone = target:LookupBone(boneName) or -1 end
+	return S.SetAim(ent, target, bone)
 end
 
 function S.AttachByName(ent, parent, boneName, wear)
@@ -232,6 +291,9 @@ S.Receive("SceneSave", function(ply)
 		local a = ent.SPeditor_Attach
 		it.attachUID = nil
 		it.attachTo = a and IsValid(a.parent) and indexOf[a.parent] or nil
+		local aim = ent.SPeditor_Aim
+		it.aimUID = nil
+		it.aimTo = aim and IsValid(aim.target) and indexOf[aim.target] or nil
 		items[i] = it
 	end
 	ensureDir(sceneDir(ply))
@@ -240,8 +302,9 @@ S.Receive("SceneSave", function(ply)
 	-- the map is recorded so that loading on another map can warn:
 	-- object coordinates would end up in random places there
 	local data = { version = 2, name = name, map = game.GetMap(), meta = meta, items = items }
-	-- mod data (MOD:SceneData): it refers to objects by their number in the items list
-	data.mods = SPeditor.Mods.SaveScene(ply, { ents = list, indexOf = indexOf })
+	-- component data (COMP:SceneData): it refers to objects by their number in the items list
+	-- (the field is still called "mods": a0.6 and older read their SAeditor data from it)
+	data.mods = SPeditor.Components.SaveScene(ply, { ents = list, indexOf = indexOf })
 	file.Write(scenePath(ply, name), util.TableToJSON(data))
 	if auto then
 		S.Notice(ply, "#scene_autosaved|" .. #items, 3)
@@ -285,10 +348,12 @@ S.Receive("SceneLoad", function(ply)
 	for i, it in ipairs(data.items) do
 		local parent = type(it) == "table" and tonumber(it.attachTo) and spawned[tonumber(it.attachTo)]
 		if spawned[i] and parent then S.AttachByName(spawned[i], parent, it.attachBone, it.attachWear) end
+		local target = type(it) == "table" and tonumber(it.aimTo) and spawned[tonumber(it.aimTo)]
+		if spawned[i] and target then S.AimByName(spawned[i], target, it.aimBone) end
 	end
 	local indexOf = {}
 	for i, ent in pairs(spawned) do indexOf[ent] = i end
-	SPeditor.Mods.LoadScene(ply, data.mods, { ents = spawned, indexOf = indexOf })
+	SPeditor.Components.LoadScene(ply, data.mods, { ents = spawned, indexOf = indexOf })
 	net.Start(Net.SceneLoaded)
 	net.WriteString(type(data.meta) == "string" and data.meta or "")
 	net.Send(ply)

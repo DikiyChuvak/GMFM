@@ -8,14 +8,14 @@
   <h2><span class="l-en">Scenes</span><span class="l-ru">Сцены</span></h2>
   <ul class="l-en">
     <li><strong>Save Scene</strong> asks for a name. <strong>Load</strong> replaces the current scene (asks first). <strong>Delete</strong> removes the file. The refresh button rereads the list.</li>
-    <li>A scene keeps: every object with its pose, face, appearance and attachments; light settings; camera settings and camera effects; the work camera; the frame settings (aspect, size, exposure, depth of field); the SAeditor animation and sounds; data of other mods.</li>
+    <li>A scene keeps: every object with its pose, face, appearance and attachments; light settings; camera settings and camera effects; the work camera; the frame settings (aspect, size, exposure, depth of field); the SAeditor animation and sounds; what cameras and lights keep looking at.</li>
     <li>The map is recorded too. Loading on another map warns you: coordinates would put objects in random places.</li>
     <li><strong>Autosave scene (every 2.5 min)</strong>: <code>autosave</code> is the newest copy, <code>autosave_2</code>… are older ones.</li>
     <li><code>shootout_construct</code> is an example that comes with the addon; it cannot be deleted.</li>
   </ul>
   <ul class="l-ru">
     <li><strong>Save Scene</strong> спрашивает имя. <strong>Load</strong> заменяет текущую сцену (с подтверждением). <strong>Delete</strong> удаляет файл. Кнопка обновления перечитывает список.</li>
-    <li>Сцена хранит: все объекты с позами, мимикой, внешним видом и привязками; настройки света; настройки и эффекты камер; рабочую камеру; настройки кадра (пропорции, размер, экспозиция, глубина резкости); анимацию и звуки SAeditor; данные других модов.</li>
+    <li>Сцена хранит: все объекты с позами, мимикой, внешним видом и привязками; настройки света; настройки и эффекты камер; рабочую камеру; настройки кадра (пропорции, размер, экспозиция, глубина резкости); анимацию и звуки SAeditor; за чем следят камеры и свет.</li>
     <li>Записывается и карта. При загрузке на другой карте будет предупреждение: объекты окажутся в случайных местах.</li>
     <li><strong>Autosave scene (every 2.5 min)</strong>: <code>autosave</code> — самая новая копия, <code>autosave_2</code>… — более старые.</li>
     <li><code>shootout_construct</code> — пример, который идёт с аддоном; удалить его нельзя.</li>
@@ -80,41 +80,48 @@
   </div>
 </section>
 
-<!-- ============================================================ MODS -->
-<section class="page" id="pg-mods" data-group="files" data-en="Mods" data-ru="Моды">
-  <h1><span class="l-en">Mods</span><span class="l-ru">Моды</span></h1>
-  <p class="lede l-en">A mod adds tools to SPeditor: pages in the editor windows, menu items, hotkeys, its own network messages and its own data in scene files. SAeditor itself is a mod and the working example.</p>
-  <p class="lede l-ru">Мод добавляет в SPeditor инструменты: страницы в окнах редактора, пункты меню, горячие клавиши, свои сетевые сообщения и свои данные в файлах сцен. Сам SAeditor — мод и рабочий пример.</p>
-  <div class="row">
-    <figure class="fit"><img src="img/25_mods.jpg" alt="Mods window" style="--w:520px"></figure>
-    <div style="flex:1 1 260px;min-width:0">
-      <p class="l-en"><span class="ui">Windows → Mods</span> lists installed mods with their state (on, off, error, needs a newer SPeditor), author and folder. Untick <em>Enabled</em> to switch a mod off (applied after the map restarts).</p>
-      <p class="l-ru"><span class="ui">Windows → Mods</span> показывает установленные моды с состоянием (on, off, error, needs a newer SPeditor), автором и папкой. Снимите <em>Enabled</em>, чтобы выключить мод (действует после перезапуска карты).</p>
-    </div>
-  </div>
-  <h2><span class="l-en">For mod authors</span><span class="l-ru">Для авторов модов</span></h2>
+<!-- ============================================================ LANGUAGES -->
+<section class="page" id="pg-languages" data-group="files" data-en="Languages" data-ru="Языки">
+  <h1><span class="l-en">Interface languages</span><span class="l-ru">Языки интерфейса</span> <span class="badge new">new</span></h1>
+  <p class="lede l-en">English and Russian are built in. Other languages come from the community as language packs: small addons that anyone can make and share in the Workshop.</p>
+  <p class="lede l-ru">Английский и русский встроены. Другие языки делает сообщество — это языковые пакеты: небольшие аддоны, которые может сделать и выложить в Workshop кто угодно.</p>
+  <ul class="l-en">
+    <li>Switch the language: <span class="ui">Help → Interface language</span> in the editor (applied at once) or <span class="ui">Q menu → SPeditor → Language</span>. Installed packs are listed there with their authors.</li>
+    <li>A string the pack has not translated yet is shown in English.</li>
+    <li>On a server the server must have the pack installed too.</li>
+  </ul>
+  <ul class="l-ru">
+    <li>Сменить язык: <span class="ui">Help → Interface language</span> в редакторе (применяется сразу) или <span class="ui">меню Q → SPeditor → Language</span>. Установленные пакеты показаны там вместе с авторами.</li>
+    <li>Строка, которую пакет ещё не перевёл, показывается по-английски.</li>
+    <li>На сервере пакет должен быть установлен и у сервера.</li>
+  </ul>
+  <h2><span class="l-en">Making a language pack</span><span class="l-ru">Как сделать языковой пакет</span></h2>
   <ol class="steps l-en">
-    <li>A mod is a folder <code>lua/speditor_mods/&lt;id&gt;/</code> with a <code>mod.lua</code>, inside SPeditor or inside any other addon.</li>
-    <li><strong>Save the guide</strong> writes the full guide with examples to <code>garrysmod/data/speditor/</code> (console: <code>speditor_mod_guide</code>).</li>
-    <li>Type an id (Latin letters, digits and <code>_</code>, not starting with a digit) and press <strong>Write a mod template</strong> (console: <code>speditor_mod_template &lt;id&gt;</code>) for a ready skeleton to start from.</li>
+    <li><span class="ui">Help → Interface language → Write a translation template</span>, type the language code (two Latin letters: <code>ja</code>, <code>de</code>, <code>pt_br</code>…). The file <code>garrysmod/data/speditor/lang/&lt;code&gt;.txt</code> holds every string of the editor and of the Help guides, in English, marked <code>TODO</code> (console: <code>speditor_lang_template &lt;code&gt;</code>).</li>
+    <li>Translate the texts on the right. Keep <code>%s</code>, <code>%d</code>, <code>%.1f</code> and <code>\n</code> as they are — SPeditor puts names and numbers there; a line that loses them is skipped. Set <code>name</code> (the language's own name) and <code>author</code>; <code>font</code> can name a font that has the letters of the language.</li>
+    <li>Rename the file to <code>&lt;code&gt;.lua</code> and put it into an addon of your own: <code>garrysmod/addons/&lt;your_addon&gt;/lua/speditor_lang/&lt;code&gt;.lua</code>. Restart the map — the language is in the menu.</li>
+    <li>Publish the addon to the Workshop. After an SPeditor update <code>speditor_lang_missing &lt;code&gt;</code> lists the new strings, and a new template keeps everything already translated.</li>
   </ol>
   <ol class="steps l-ru">
-    <li>Мод — папка <code>lua/speditor_mods/&lt;id&gt;/</code> с файлом <code>mod.lua</code> внутри SPeditor или любого другого аддона.</li>
-    <li><strong>Save the guide</strong> записывает полное руководство с примерами в <code>garrysmod/data/speditor/</code> (консоль: <code>speditor_mod_guide</code>).</li>
-    <li>Введите id (латинские буквы, цифры и <code>_</code>, не с цифры) и нажмите <strong>Write a mod template</strong> (консоль: <code>speditor_mod_template &lt;id&gt;</code>) — получите готовую заготовку.</li>
+    <li><span class="ui">Help → Interface language → Write a translation template</span>, введите код языка (две латинские буквы: <code>ja</code>, <code>de</code>, <code>pt_br</code>…). Файл <code>garrysmod/data/speditor/lang/&lt;код&gt;.txt</code> содержит все строки редактора и статей Help по-английски с пометкой <code>TODO</code> (консоль: <code>speditor_lang_template &lt;код&gt;</code>).</li>
+    <li>Переведите тексты справа. <code>%s</code>, <code>%d</code>, <code>%.1f</code> и <code>\n</code> оставьте как есть — туда SPeditor подставляет имена и числа; строка, которая их потеряет, пропускается. Задайте <code>name</code> (название языка на нём самом) и <code>author</code>; в <code>font</code> можно указать шрифт, в котором есть буквы языка.</li>
+    <li>Переименуйте файл в <code>&lt;код&gt;.lua</code> и положите в свой аддон: <code>garrysmod/addons/&lt;ваш_аддон&gt;/lua/speditor_lang/&lt;код&gt;.lua</code>. Перезапустите карту — язык появится в меню.</li>
+    <li>Опубликуйте аддон в Workshop. После обновления SPeditor <code>speditor_lang_missing &lt;код&gt;</code> покажет новые строки, а новый шаблон сохранит всё уже переведённое.</li>
   </ol>
+  <div class="note l-en"><p>Until a0.6 SPeditor had a mod system. In a0.7 it is gone: SAeditor is a part of the editor, and languages are what the community adds. Scenes saved by a0.6 load as before.</p></div>
+  <div class="note l-ru"><p>До a0.6 в SPeditor была система модов. В a0.7 её нет: SAeditor — часть редактора, а сообщество добавляет языки. Сцены, сохранённые в a0.6, загружаются как раньше.</p></div>
 </section>
 
 <!-- ============================================================ HOTKEYS -->
 <section class="page" id="pg-hotkeys" data-group="ref" data-en="Hotkeys" data-ru="Горячие клавиши">
   <h1><span class="l-en">Hotkeys</span><span class="l-ru">Горячие клавиши</span></h1>
-  <p class="lede l-en">The same list is in the editor: <span class="ui">Help → Hotkeys</span>. Mods add their keys to it. <span class="badge new">new</span> Every key can be changed: <span class="ui">View → Interface settings → Keys</span> (<a href="#workspace">more</a>); below are the defaults.</p>
-  <p class="lede l-ru">Тот же список есть в редакторе: <span class="ui">Help → Hotkeys</span>. Моды добавляют туда свои клавиши. <span class="badge new">new</span> Любую клавишу можно сменить: <span class="ui">View → Interface settings → Keys</span> (<a href="#workspace">подробнее</a>); ниже — клавиши по умолчанию.</p>
+  <p class="lede l-en">The same list is in the editor: <span class="ui">Help → Hotkeys</span>, with the keys of SAeditor. Every key can be changed: <span class="ui">View → Interface settings → Keys</span> (<a href="#workspace">more</a>); below are the defaults.</p>
+  <p class="lede l-ru">Тот же список есть в редакторе: <span class="ui">Help → Hotkeys</span>, вместе с клавишами SAeditor. Любую клавишу можно сменить: <span class="ui">View → Interface settings → Keys</span> (<a href="#workspace">подробнее</a>); ниже — клавиши по умолчанию.</p>
   <div class="tbl"><table>
     <tr><th><span class="l-en">Key</span><span class="l-ru">Клавиша</span></th><th><span class="l-en">Action</span><span class="l-ru">Действие</span></th></tr>
     <tr><th colspan="2"><span class="l-en">Selection and camera</span><span class="l-ru">Выделение и камера</span></th></tr>
     <tr><td><kbd>LMB</kbd></td><td class="wrap"><span class="l-en">Select object / bone</span><span class="l-ru">Выделить объект / кость</span></td></tr>
-    <tr><td><kbd>Shift</kbd> / <kbd>Ctrl</kbd> + <kbd>LMB</kbd></td><td class="wrap"><span class="l-en">Add to / remove from selection</span><span class="l-ru">Добавить к выделению / убрать</span> <span class="badge new">new</span></td></tr>
+    <tr><td><kbd>Shift</kbd> / <kbd>Ctrl</kbd> + <kbd>LMB</kbd></td><td class="wrap"><span class="l-en">Add to / remove from selection</span><span class="l-ru">Добавить к выделению / убрать</span></td></tr>
     <tr><td><kbd>LMB</kbd> <span class="l-en">on the selected character</span><span class="l-ru">по выделенному персонажу</span></td><td class="wrap"><span class="l-en">Select the body part under the cursor</span><span class="l-ru">Выделить часть тела под курсором</span></td></tr>
     <tr><td><kbd>RMB</kbd> <span class="l-en">(short click)</span><span class="l-ru">(короткий щелчок)</span></td><td class="wrap"><span class="l-en">Object menu</span><span class="l-ru">Меню объекта</span></td></tr>
     <tr><td><kbd>RMB</kbd> + <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>Q</kbd><kbd>E</kbd></td><td class="wrap"><span class="l-en">Fly the work camera (Q down, E up, Shift faster, Ctrl slower)</span><span class="l-ru">Полёт рабочей камеры (Q вниз, E вверх, Shift быстрее, Ctrl медленнее)</span></td></tr>
@@ -134,7 +141,7 @@
     <tr><td><kbd>Ctrl</kbd> + <kbd>D</kbd></td><td class="wrap"><span class="l-en">Duplicate</span><span class="l-ru">Дублировать</span></td></tr>
     <tr><td><kbd>Del</kbd></td><td class="wrap"><span class="l-en">Delete</span><span class="l-ru">Удалить</span></td></tr>
     <tr><td><kbd>Ctrl</kbd> + <kbd>C</kbd> / <kbd>Ctrl</kbd> + <kbd>V</kbd></td><td class="wrap"><span class="l-en">Copy / paste pose (in the viewport)</span><span class="l-ru">Копировать / вставить позу (во вьюпорте)</span></td></tr>
-    <tr><th colspan="2"><span class="l-en">Object list (cursor over it)</span><span class="l-ru">Список объектов (курсор над ним)</span> <span class="badge new">new</span></th></tr>
+    <tr><th colspan="2"><span class="l-en">Object list (cursor over it)</span><span class="l-ru">Список объектов (курсор над ним)</span></th></tr>
     <tr><td><kbd>Ctrl</kbd> + <kbd>A</kbd></td><td class="wrap"><span class="l-en">Select all objects (not locked or hidden ones)</span><span class="l-ru">Выделить все объекты (кроме закреплённых и скрытых)</span></td></tr>
     <tr><td><kbd>Ctrl</kbd> + <kbd>C</kbd> / <kbd>Ctrl</kbd> + <kbd>V</kbd></td><td class="wrap"><span class="l-en">Copy / paste objects</span><span class="l-ru">Копировать / вставить объекты</span></td></tr>
     <tr><th colspan="2"><span class="l-en">Windows</span><span class="l-ru">Окна</span></th></tr>
@@ -148,7 +155,7 @@
     <tr><td><kbd>Ctrl</kbd> / <kbd>Shift</kbd> + <span class="l-en">wheel on the timeline</span><span class="l-ru">колесо на таймлайне</span></td><td class="wrap"><span class="l-en">Zoom the timeline / scroll it in time</span><span class="l-ru">Масштаб таймлайна / прокрутка по времени</span></td></tr>
     <tr><td><kbd>,</kbd> / <kbd>.</kbd></td><td class="wrap"><span class="l-en">Previous / next frame</span><span class="l-ru">Предыдущий / следующий кадр</span></td></tr>
     <tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td class="wrap"><span class="l-en">First / last frame</span><span class="l-ru">Первый / последний кадр</span></td></tr>
-    <tr><td><kbd>Ctrl</kbd> + <span class="l-en">click</span><span class="l-ru">клик</span> · <kbd>Shift</kbd> + <span class="l-en">box</span><span class="l-ru">рамка</span></td><td class="wrap"><span class="l-en">Select several keys on the timeline</span><span class="l-ru">Выбрать несколько ключей на таймлайне</span> <span class="badge new">new</span></td></tr>
+    <tr><td><kbd>Ctrl</kbd> + <span class="l-en">click</span><span class="l-ru">клик</span> · <kbd>Shift</kbd> + <span class="l-en">box</span><span class="l-ru">рамка</span></td><td class="wrap"><span class="l-en">Select several keys on the timeline</span><span class="l-ru">Выбрать несколько ключей на таймлайне</span></td></tr>
   </table></div>
   <figure class="mid"><img src="img/26_hotkeys.jpg" alt="Hotkeys window"><figcaption class="l-en"><b>Help → Hotkeys</b> in the editor.</figcaption><figcaption class="l-ru"><b>Help → Hotkeys</b> в редакторе.</figcaption></figure>
 </section>
@@ -163,10 +170,10 @@
     <tr><th><span class="l-en">Command</span><span class="l-ru">Команда</span></th><th><span class="l-en">Action</span><span class="l-ru">Действие</span></th></tr>
     <tr><td><code>speditor_toggle</code></td><td class="wrap"><span class="l-en">Open or close the editor</span><span class="l-ru">Открыть или закрыть редактор</span></td></tr>
     <tr><td><code>speditor_render</code></td><td class="wrap"><span class="l-en">Render with the current settings</span><span class="l-ru">Рендер с текущими настройками</span></td></tr>
-    <tr><td><code>speditor_mod_guide</code></td><td class="wrap"><span class="l-en">Save the mod guide to data/speditor</span><span class="l-ru">Сохранить руководство по модам в data/speditor</span></td></tr>
-    <tr><td><code>speditor_mod_template &lt;id&gt;</code></td><td class="wrap"><span class="l-en">Write a mod template</span><span class="l-ru">Записать заготовку мода</span></td></tr>
-    <tr><td><code>saeditor_record</code> · <code>saeditor_record_stop</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Start / stop recording gameplay</span><span class="l-ru">Начать / остановить запись игры</span></td></tr>
-    <tr><td><code>saeditor_show</code> [<code>eyes</code>] · <code>_stop</code> · <code>_toggle</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Play the animation in the game (the player; <code>eyes</code> — walk around the scene)</span><span class="l-ru">Проиграть анимацию в игре (плеер; <code>eyes</code> — прогулка по сцене)</span></td></tr>
+    <tr><td><code>speditor_lang_template &lt;code&gt;</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Write a translation template to data/speditor/lang (<a href="#languages">languages</a>)</span><span class="l-ru">Записать шаблон перевода в data/speditor/lang (<a href="#languages">языки</a>)</span></td></tr>
+    <tr><td><code>speditor_lang_missing &lt;code&gt;</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">List the strings a language has not translated yet</span><span class="l-ru">Показать строки, которые язык ещё не перевёл</span></td></tr>
+    <tr><td><code>saeditor_record</code> · <code>saeditor_record_stop</code></td><td class="wrap"><span class="l-en">Start / stop recording gameplay</span><span class="l-ru">Начать / остановить запись игры</span></td></tr>
+    <tr><td><code>saeditor_show</code> [<code>eyes</code>] · <code>_stop</code> · <code>_toggle</code></td><td class="wrap"><span class="l-en">Play the animation in the game (the player; <code>eyes</code> — walk around the scene)</span><span class="l-ru">Проиграть анимацию в игре (плеер; <code>eyes</code> — прогулка по сцене)</span></td></tr>
   </table></div>
   <h2><span class="l-en">Settings (convars)</span><span class="l-ru">Настройки (convars)</span></h2>
   <div class="tbl"><table>
@@ -177,7 +184,7 @@
     <tr><td><code>speditor_autosave</code></td><td class="wrap"><span class="l-en">Autosave every 2.5 minutes (0/1)</span><span class="l-ru">Автосохранение каждые 2,5 минуты (0/1)</span></td></tr>
     <tr><td><code>speditor_aspect</code></td><td class="wrap"><span class="l-en">Frame aspect</span><span class="l-ru">Пропорции кадра</span></td></tr>
     <tr><td><code>speditor_render_side</code> · <code>_custom</code> · <code>_w</code> · <code>_h</code></td><td class="wrap"><span class="l-en">Render size: the long side, or custom width and height</span><span class="l-ru">Размер рендера: длинная сторона или своя ширина и высота</span></td></tr>
-    <tr><td><code>speditor_render_format</code> · <code>_quality</code></td><td class="wrap"><span class="l-en">png / jpeg / steam (<span class="badge new">new</span> Steam screenshot), JPEG quality</span><span class="l-ru">png / jpeg / steam (<span class="badge new">new</span> скриншот Steam), качество JPEG</span></td></tr>
+    <tr><td><code>speditor_render_format</code> · <code>_quality</code></td><td class="wrap"><span class="l-en">png / jpeg / steam (Steam screenshot), JPEG quality</span><span class="l-ru">png / jpeg / steam (скриншот Steam), качество JPEG</span></td></tr>
     <tr><td><code>speditor_render_ss</code> · <code>_fullbright</code> · <code>_preview</code></td><td class="wrap"><span class="l-en">2× smoothing, fullbright render, live preview</span><span class="l-ru">2× сглаживание, рендер без света, живое превью</span></td></tr>
     <tr><td><code>speditor_render_engine</code></td><td class="wrap">Engine frame (0/1)</td></tr>
     <tr><td><code>speditor_dof</code> · <code>_aperture</code> · <code>_samples</code></td><td class="wrap"><span class="l-en">Depth of field, blur amount, passes</span><span class="l-ru">Глубина резкости, размытие, проходы</span></td></tr>
@@ -190,17 +197,25 @@
     <tr><td><code>speditor_notify</code> · <code>_sound</code> · <code>_time</code></td><td class="wrap"><span class="l-en">Notifications</span><span class="l-ru">Уведомления</span></td></tr>
     <tr><td><code>speditor_notify_style</code> · <code>_anim</code> · <code>_pos</code> · <code>_width</code> · <code>_opacity</code> · <code>_max</code> · <code>_bar</code> · <code>_soundset</code></td><td class="wrap"><span class="l-en">Look of the notifications: style, animation, place, width, opacity, cards at once, time-left line, sound set</span><span class="l-ru">Вид уведомлений: стиль, анимация, место, ширина, прозрачность, карточек сразу, полоска времени, набор звуков</span></td></tr>
     <tr><td><code>speditor_ui_accent</code> · <code>_font</code> · <code>_fontsize</code> · <code>_corners</code> · <code>_tabstyle</code> · <code>_anim</code> · <code>_sounds</code></td><td class="wrap"><span class="l-en">Interface settings</span><span class="l-ru">Настройки интерфейса</span></td></tr>
-    <tr><td><code>speditor_ui_scale</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Interface scale, percent: 0 — by the screen, 50 … 200</span><span class="l-ru">Масштаб интерфейса, проценты: 0 — по экрану, 50 … 200</span></td></tr>
+    <tr><td><code>speditor_ui_scale</code></td><td class="wrap"><span class="l-en">Interface scale, percent: 0 — by the screen, 50 … 200</span><span class="l-ru">Масштаб интерфейса, проценты: 0 — по экрану, 50 … 200</span></td></tr>
     <tr><td><code>speditor_ase_tree</code> · <code>speditor_ase_nonphys</code> · <code>speditor_ase_merged</code></td><td class="wrap"><span class="l-en">Object tree: groups / skeleton / objects only; the skeleton shows bones without physics, bonemerged models</span><span class="l-ru">Дерево объектов: группы / скелет / только объекты; скелет показывает кости без физики, модели на бонмёрдже</span></td></tr>
     <tr><td><code>speditor_browser_sort</code></td><td class="wrap"><span class="l-en">Order of the addons in the Model Browser</span><span class="l-ru">Порядок аддонов в браузере моделей</span></td></tr>
     <tr><td><code>speditor_ragdoll_guard</code></td><td class="wrap"><span class="l-en">Server: hold the pose of the editor's ragdolls against addons that unfreeze them (1 / 0)</span><span class="l-ru">Сервер: держать позу рэгдоллов редактора против аддонов, которые их размораживают (1 / 0)</span></td></tr>
-    <tr><td><code>speditor_mods_off</code></td><td class="wrap"><span class="l-en">Mods switched off</span><span class="l-ru">Выключенные моды</span></td></tr>
-    <tr><td><code>saeditor_render_mode</code> · <code>_quality</code> · <code>_samples</code> · <code>_settle</code></td><td class="wrap"><span class="l-en">Animation render: anim / frame (the current frame), video size, passes, longest wait for the scene</span><span class="l-ru">Рендер анимации: anim / frame (текущий кадр), размер видео, проходы, максимальное ожидание сцены</span></td></tr>
+    <tr><td><code>speditor_ik</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">IK keeps the feet planted (1 by default)</span><span class="l-ru">IK держит стопы на месте (по умолчанию 1)</span></td></tr>
+    <tr><td><code>speditor_stretch</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Stretch: Move takes a bone away from its parent (T)</span><span class="l-ru">Растяжение: перемещение уводит кость от родителя (T)</span></td></tr>
+    <tr><td><code>speditor_vp_look</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Render look of the Primary Viewport</span><span class="l-ru">Вид рендера в основном вьюпорте</span></td></tr>
+    <tr><td><code>speditor_ssao</code> · <code>_radius</code> · <code>_strength</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Ambient occlusion, its radius and strength</span><span class="l-ru">Затенение окружения, его радиус и сила</span></td></tr>
+    <tr><td><code>speditor_shadow_onlylights</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Scene objects keep only the shadows of the editor's lights (1 by default)</span><span class="l-ru">Объекты сцены отбрасывают только тени от света редактора (по умолчанию 1)</span></td></tr>
+    <tr><td><code>speditor_ui_snd_click</code> · <code>_back</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Your own interface click and window-close sounds</span><span class="l-ru">Свои звуки клика и закрытия окна</span></td></tr>
+    <tr><td><code>saeditor_render_video</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Video file: avi / webm (Windows)</span><span class="l-ru">Видеофайл: avi / webm (Windows)</span></td></tr>
+    <tr><td><code>saeditor_rec_phys</code> · <code>saeditor_rec_view</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Record gameplay: physics of the scene (0 off, 1 selected, 2 all); your view as a camera (0/1)</span><span class="l-ru">Запись игры: физика сцены (0 выкл., 1 выделенные, 2 все); ваш вид как камера (0/1)</span></td></tr>
+    <tr><td><code>saeditor_render_mode</code> · <code>_quality</code> · <code>_samples</code> · <code>_settle</code></td><td class="wrap"><span class="l-en">Animation render: anim / frame (the tab of the Render window), video size, passes, longest wait for the scene</span><span class="l-ru">Рендер анимации: anim / frame (вкладка окна рендера), размер видео, проходы, максимальное ожидание сцены</span></td></tr>
     <tr><td><code>saeditor_render_fps</code></td><td class="wrap"><span class="l-en">Video frame rate (0 — as the animation)</span><span class="l-ru">Частота кадров видео (0 — как у анимации)</span></td></tr>
-    <tr><td><code>saeditor_bone_keys</code> · <code>saeditor_ghosts</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Bone keys; ghosts of the pose at the keys around the playhead (0/1)</span><span class="l-ru">Ключи костей; призраки позы на ключах вокруг указателя (0/1)</span></td></tr>
-    <tr><td><code>saeditor_lip_strength</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Lip sync: how wide the mouth opens (0.2 … 2)</span><span class="l-ru">Липсинк: насколько широко открывается рот (0,2 … 2)</span></td></tr>
-    <tr><td><code>saeditor_rec_npcs</code> · <code>_sounds</code> · <code>_effects</code> · <code>_radius</code> · <code>_step</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Record gameplay: NPCs, sounds, effects, radius, a key every N frames</span><span class="l-ru">Запись игры: NPC, звуки, эффекты, радиус, ключ каждые N кадров</span></td></tr>
-    <tr><td><code>saeditor_show_camera</code> · <code>_loop</code> · <code>_look</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">The player: camera (empty — the first; <code>eyes</code> — none), repeat, render look</span><span class="l-ru">Плеер: камера (пусто — первая; <code>eyes</code> — без камеры), повтор, вид рендера</span></td></tr>
+    <tr><td><code>saeditor_render_mblur</code> · <code>_shutter</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Motion blur: moments a frame (0 — off), the part of a frame the shutter is open (0.5 = 180°)</span><span class="l-ru">Размытие движения: моментов на кадр (0 — выкл.), доля кадра, когда затвор открыт (0,5 = 180°)</span></td></tr>
+    <tr><td><code>saeditor_bone_keys</code> · <code>saeditor_ghosts</code></td><td class="wrap"><span class="l-en">Bone keys; ghosts of the pose at the keys around the playhead (0/1)</span><span class="l-ru">Ключи костей; призраки позы на ключах вокруг указателя (0/1)</span></td></tr>
+    <tr><td><code>saeditor_lip_strength</code></td><td class="wrap"><span class="l-en">Lip sync: how wide the mouth opens (0.2 … 2)</span><span class="l-ru">Липсинк: насколько широко открывается рот (0,2 … 2)</span></td></tr>
+    <tr><td><code>saeditor_rec_npcs</code> · <code>_sounds</code> · <code>_effects</code> · <code>_radius</code> · <code>_step</code></td><td class="wrap"><span class="l-en">Record gameplay: NPCs, sounds, effects, radius, a key every N frames</span><span class="l-ru">Запись игры: NPC, звуки, эффекты, радиус, ключ каждые N кадров</span></td></tr>
+    <tr><td><code>saeditor_show_camera</code> · <code>_loop</code> · <code>_look</code></td><td class="wrap"><span class="l-en">The player: camera (empty — the first; <code>eyes</code> — none), repeat, render look</span><span class="l-ru">Плеер: камера (пусто — первая; <code>eyes</code> — без камеры), повтор, вид рендера</span></td></tr>
   </table></div>
 </section>
 
@@ -215,6 +230,14 @@
   <p class="l-en">Since a0.6 the size of the whole interface is set in <span class="ui">View → Interface settings → Appearance → Interface scale</span>: 50 % to 200 %, by default by the screen. The windows keep their places when it changes.</p>
   <p class="l-ru">На экранах уже ~1430 px стандартная раскладка a0.3 ломалась. Исправлено в a0.4. До тех пор: <span class="ui">Windows → Layout → No bottom panel</span> или расставьте окна сами и сохраните через <em>Save layout as…</em>.</p>
   <p class="l-ru">С a0.6 размер всего интерфейса задаётся в <span class="ui">View → Interface settings → Appearance → Interface scale</span>: от 50 % до 200 %, по умолчанию — по экрану. При смене масштаба окна остаются на своих местах.</p>
+
+  <h3><span class="l-en">Far objects look blurry in the viewport</span><span class="l-ru">Дальние объекты во вьюпорте мыльные</span> <span class="badge new">new</span></h3>
+  <p class="l-en">Before a0.7.1 the viewports were drawn into a picture of at most 1280 × 1024 and stretched, which blurred small far objects on 1440p / 4K screens and in an enlarged viewport — fixed. If the photo button (Render look) of the viewport bar is on, the blur is the depth of field: turn it off, or move the focus.</p>
+  <p class="l-ru">До a0.7.1 вьюпорты рисовались в картинку не больше 1280 × 1024 и растягивались, из-за чего мелкие дальние объекты мылились на экранах 1440p / 4K и в развёрнутом вьюпорте — исправлено. Если на панели вьюпорта включена кнопка с фотографией (вид рендера), размытие — это глубина резкости: выключите её или перенесите фокус.</p>
+
+  <h3><span class="l-en">The door I opened is not in the recorded animation</span><span class="l-ru">Открытой двери нет в записанной анимации</span> <span class="badge new">new</span></h3>
+  <p class="l-en">Until a0.7.1 Record gameplay took only the doors of the map itself; doors spawned by tools and addons are recorded since a0.7.1. The door must be within the radius of the take.</p>
+  <p class="l-ru">До a0.7.1 запись игры брала только двери самой карты; двери, заспавненные инструментами и аддонами, записываются с a0.7.1. Дверь должна быть в радиусе записи.</p>
 
   <h3><span class="l-en">I changed a pose and it jumped back</span><span class="l-ru">Изменил позу, а она вернулась</span></h3>
   <p class="l-en">The object is animated and the frame had no key: an edit between keys is not kept when the playhead moves. Press <kbd>K</kbd> or turn Auto key on first. See <a href="#sa-basics">Keys and the timeline</a>.</p>
@@ -300,7 +323,51 @@
 <!-- ============================================================ CHANGELOG -->
 <section class="page" id="pg-changelog" data-group="ref" data-en="What's new" data-ru="Что нового">
   <h1><span class="l-en">What's new</span><span class="l-ru">Что нового</span></h1>
-  <h2>a0.6 <span class="badge new">new</span></h2>
+  <h2>a0.7.1 <span class="badge new">new</span></h2>
+  <p class="l-en">A small patch made from players' comments.</p>
+  <p class="l-ru">Небольшой патч по комментариям игроков.</p>
+  <ul class="l-en">
+    <li><strong>Your view as a camera:</strong> Record gameplay turns what you saw — look, turns, zoom — into a scene camera, and the video can be shot through your eyes; your own body is not drawn in it (<a href="#sa-record">more</a>).</li>
+    <li><strong>Doors spawned by tools and addons</strong> are recorded too, not only the doors of the map (<a href="#sa-record">more</a>).</li>
+    <li>Fixed: viewports looked blurry on big screens (1440p, 4K) or when enlarged, small far objects most of all.</li>
+  </ul>
+  <ul class="l-ru">
+    <li><strong>Ваш вид как камера:</strong> запись игры превращает то, что вы видели, — взгляд, повороты, зум — в камеру сцены, и видео можно снять вашими глазами; ваше тело в ней не рисуется (<a href="#sa-record">подробнее</a>).</li>
+    <li><strong>Двери, заспавненные инструментами и аддонами</strong>, тоже записываются, а не только двери карты (<a href="#sa-record">подробнее</a>).</li>
+    <li>Исправлено: вьюпорты были мыльными на больших экранах (1440p, 4K) и в развёрнутом виде, сильнее всего мелкие дальние объекты.</li>
+  </ul>
+  <h2>a0.7</h2>
+  <ul class="l-en">
+    <li><strong>Motion Editor:</strong> a time selection with falloff on the timeline; one edit goes over a whole stretch of the animation, as in SFM (<a href="#sa-motion">more</a>).</li>
+    <li><strong>Motion blur</strong> in the animation render, with a shutter of 90°, 180° or 360° (<a href="#sa-render">more</a>).</li>
+    <li><strong>Look-at:</strong> a camera or a light keeps looking at an object while the animation moves it (<a href="#cameras">more</a>).</li>
+    <li><strong>SAeditor is built in:</strong> the mod system is gone; old scenes, layouts and changed keys load as before.</li>
+    <li><strong>Community languages:</strong> language packs in the Workshop, a translation template written by the editor (<a href="#languages">more</a>).</li>
+    <li><strong>Render window:</strong> Picture and Animation tabs, the shots of the video edited right there, WebM on Windows (<a href="#render">more</a>, <a href="#sa-render">video</a>).</li>
+    <li><strong>Ambient occlusion (SSAO)</strong> of the editor's own, and the <strong>Render look</strong> of the Primary Viewport (<a href="#render">more</a>).</li>
+    <li><strong>A camera records its own moves</strong> (<a href="#cameras">more</a>); <strong>point lights cast shadows</strong>, scene objects keep only the shadows of your lights (<a href="#lights">more</a>, <a href="#shadows">shadows</a>).</li>
+    <li><strong>PAC3 outfits</strong> and the PAC3 window — a hat or glasses on a bone with sliders (<a href="#attach">more</a>); <strong>Wear</strong> on any skeleton, TF2 paint and crit glow (<a href="#attach">more</a>).</li>
+    <li><strong>Stretching bones</strong> (<kbd>T</kbd>), IK on from the start (<a href="#posing">more</a>).</li>
+    <li><strong>Record gameplay:</strong> physics of ragdolls and props, doors and lifts of the map (<a href="#sa-record">more</a>).</li>
+    <li><strong>Your own sounds</strong> for the interface, notifications and timeline clips (<a href="#workspace">more</a>, <a href="#sa-sounds">clips</a>); your dupes and saves taken into the scene (<a href="#objects">more</a>); new How to use guides with a video player.</li>
+    <li>Fixed: ragdoll limbs that could not be moved when another addon unfreezes ragdolls; characters with wrong physics bones (Enhanced TF2 MvM bots); the interface without the mouse after Alt+Tab; the game HUD that stayed hidden; PAC3 wiping poses; the Render window keeping the previous scene.</li>
+  </ul>
+  <ul class="l-ru">
+    <li><strong>Motion Editor:</strong> выделение времени с затуханием на таймлайне; одна правка ложится на целый отрезок анимации, как в SFM (<a href="#sa-motion">подробнее</a>).</li>
+    <li><strong>Размытие движения</strong> в рендере анимации, затвор 90°, 180° или 360° (<a href="#sa-render">подробнее</a>).</li>
+    <li><strong>Слежение:</strong> камера или свет постоянно смотрят на объект, пока анимация его двигает (<a href="#cameras">подробнее</a>).</li>
+    <li><strong>SAeditor встроен:</strong> системы модов больше нет; старые сцены, раскладки и изменённые клавиши загружаются как раньше.</li>
+    <li><strong>Языки от сообщества:</strong> языковые пакеты в Workshop, шаблон перевода записывает сам редактор (<a href="#languages">подробнее</a>).</li>
+    <li><strong>Окно рендера:</strong> вкладки Picture и Animation, планы видео правятся прямо там, WebM на Windows (<a href="#render">подробнее</a>, <a href="#sa-render">видео</a>).</li>
+    <li><strong>Затенение окружения (SSAO)</strong> собственное и <strong>вид рендера</strong> в основном вьюпорте (<a href="#render">подробнее</a>).</li>
+    <li><strong>Камера записывает свои движения</strong> (<a href="#cameras">подробнее</a>); <strong>точечный свет отбрасывает тени</strong>, у объектов сцены остаются только тени вашего света (<a href="#lights">подробнее</a>, <a href="#shadows">тени</a>).</li>
+    <li><strong>Наряды PAC3</strong> и окно PAC3 — шляпа или очки на кости ползунками (<a href="#attach">подробнее</a>); <strong>Wear</strong> на любом скелете, краска TF2 и свечение крита (<a href="#attach">подробнее</a>).</li>
+    <li><strong>Растяжение костей</strong> (<kbd>T</kbd>), IK включён с самого начала (<a href="#posing">подробнее</a>).</li>
+    <li><strong>Запись игры:</strong> физика рэгдоллов и пропов, двери и лифты карты (<a href="#sa-record">подробнее</a>).</li>
+    <li><strong>Свои звуки</strong> для интерфейса, уведомлений и клипов на таймлайне (<a href="#workspace">подробнее</a>, <a href="#sa-sounds">клипы</a>); свои дупы и сейвы в сцене (<a href="#objects">подробнее</a>); новые статьи How to use с видеоплеером.</li>
+    <li>Исправлено: конечности рэгдоллов не двигались, если другой аддон размораживает рэгдоллы; персонажи с неверными физическими костями (Enhanced TF2 MvM bots); интерфейс без мыши после Alt+Tab; игровой HUD оставался скрытым; PAC3 сбрасывал позы; окно рендера держало прошлую сцену.</li>
+  </ul>
+  <h2>a0.6</h2>
   <p class="l-en">Made from players' feedback in the Workshop comments and discussions.</p>
   <p class="l-ru">Сделано по отзывам игроков в комментариях и обсуждениях Workshop.</p>
   <ul class="l-en">

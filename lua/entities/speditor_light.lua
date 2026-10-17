@@ -31,7 +31,7 @@ function ENT:SetupDataTables()
 	self:NetworkVar("Bool", 2, "LightOrtho")       -- parallel beam ("sun") instead of a cone
 	self:NetworkVar("String", 0, "LightTexture")   -- light mask (the LampTextures list)
 	self:NetworkVar("Bool", 0, "LightEnabled")
-	self:NetworkVar("Bool", 1, "LightShadows")     -- the spot casts shadows
+	self:NetworkVar("Bool", 1, "LightShadows")     -- the light casts shadows (a point light: six spots, a cube)
 	self:NetworkVar("Int", 0, "LightType")   -- 0 = point, 1 = spot
 end
 
@@ -81,6 +81,48 @@ if CLIENT then
 		self.PT = nil
 	end
 
+	-- A point light with shadows. The engine's point light (DynamicLight) casts none, so
+	-- such a light shines as six spots looking along the faces of a cube: 90° each with a
+	-- white square mask, they tile into a light in every direction, each with its own shadow
+	-- map. Six of the engine's eight shadow maps (SPeditor.Shadows counts them).
+	local CUBE = { Angle(0, 0, 0), Angle(0, 90, 0), Angle(0, 180, 0), Angle(0, 270, 0), Angle(-90, 0, 0), Angle(90, 0, 0) }
+	local function killCube(self)
+		for _, pt in ipairs(self.PTCube or {}) do
+			if IsValid(pt) then pt:Remove() end
+		end
+		self.PTCube = nil
+	end
+
+	local function putOutDynamic(self)
+		if not self.SPDynLight then return end
+		-- switched off: the engine keeps a dynamic light until its time runs out (0.25 s) —
+		-- a muzzle flash keyed for one frame shone for six, and in a frame-by-frame
+		-- render it leaked into the following frames. Put out at once.
+		self.SPDynLight = nil
+		local d = DynamicLight(self:EntIndex())
+		if d then
+			d.brightness = 0
+			d.size       = 0
+			d.dietime    = CurTime()
+		end
+	end
+
+	-- falloff; all three zeros (the light was made before the setting existed) — same as the engine default
+	local function attenuation(self, pt)
+		local ac, al, aq = self:GetAttConst(), self:GetAttLinear(), self:GetAttQuad()
+		if ac + al + aq <= 0 then al = 100 end
+		pt:SetConstantAttenuation(ac)
+		pt:SetLinearAttenuation(al)
+		pt:SetQuadraticAttenuation(aq)
+	end
+
+	local function shadowSettings(self, pt, Sh)
+		local slope = self:GetShadowSlope()
+		pt:SetShadowFilter(self:GetShadowSoft() * Sh.GetSoftScale())
+		pt:SetShadowDepthBias(self:GetShadowBias())
+		pt:SetShadowSlopeScaleDepthBias(slope > 0 and slope or Sh.GetSlope())
+	end
+
 	-- Light state -> engine. jx, jy — offset of the source in shares of its size
 	-- (SourceSize) along the "right" and "up" axes: the final render shoots the scene
 	-- several times with the source at different points of its disc and averages the
@@ -89,9 +131,47 @@ if CLIENT then
 		local enabled = self:GetLightEnabled() and self:GetLightBrightness() > 0
 		local ltype   = self:GetLightType()
 		local c       = self:GetLightColor()
+		local Sh      = SPeditor and SPeditor.Shadows
+
+		-- Point with shadows: the cube of spots
+		local cube = enabled and ltype == 0 and Sh ~= nil and Sh.WantsShadows(self)
+		if cube then
+			putOutDynamic(self)
+			self.PTCube = self.PTCube or {}
+			local pos = self:GetPos()
+			local area = self:GetSourceSize()
+			if area > 0 and jx and (jx ~= 0 or jy ~= 0) then
+				local a = self:GetAngles()
+				pos = pos + a:Right() * (jx * area) + a:Up() * (jy * area)
+			end
+			local radius = self:GetLightRadius()
+			local near = self:GetShadowNear()
+			for i, ang in ipairs(CUBE) do
+				local pt = self.PTCube[i]
+				if not IsValid(pt) then
+					pt = ProjectedTexture()
+					pt:SetTexture("vgui/white")
+					pt:SetEnableShadows(true)
+					self.PTCube[i] = pt
+				end
+				pt:SetPos(pos)
+				pt:SetAngles(ang)
+				pt:SetFOV(90)
+				pt:SetFarZ(radius)
+				pt:SetNearZ(math.Clamp(near > 0 and near or 4, 1, math.max(radius - 8, 1)))
+				attenuation(self, pt)
+				pt:SetBrightness(self:GetLightBrightness())
+				pt:SetColor(Color(c.x * 255, c.y * 255, c.z * 255))
+				pt:SetEnableShadows(true)
+				shadowSettings(self, pt, Sh)
+				pt:Update()
+			end
+		else
+			killCube(self)
+		end
 
 		-- Point
-		if enabled and ltype == 0 then
+		if enabled and ltype == 0 and not cube then
 			local d = DynamicLight(self:EntIndex())
 			if d then
 				d.pos        = self:GetPos()
@@ -105,17 +185,8 @@ if CLIENT then
 				d.style      = 0
 			end
 			self.SPDynLight = true
-		elseif self.SPDynLight then
-			-- switched off: the engine keeps a dynamic light until its time runs out (0.25 s) —
-			-- a muzzle flash keyed for one frame shone for six, and in a frame-by-frame
-			-- render it leaked into the following frames. Put out at once.
-			self.SPDynLight = nil
-			local d = DynamicLight(self:EntIndex())
-			if d then
-				d.brightness = 0
-				d.size       = 0
-				d.dietime    = CurTime()
-			end
+		else
+			putOutDynamic(self)
 		end
 
 		-- Spot
@@ -148,12 +219,7 @@ if CLIENT then
 			else
 				pt:SetOrthographic(false)
 			end
-			-- falloff; all three zeros (the light was made before the setting existed) — same as the engine default
-			local ac, al, aq = self:GetAttConst(), self:GetAttLinear(), self:GetAttQuad()
-			if ac + al + aq <= 0 then al = 100 end
-			pt:SetConstantAttenuation(ac)
-			pt:SetLinearAttenuation(al)
-			pt:SetQuadraticAttenuation(aq)
+			attenuation(self, pt)
 			local tex = self:GetLightTexture()
 			if tex == "" then tex = "effects/flashlight001" end
 			-- soft edge: the mask is multiplied by a smooth falloff towards the edge (one texture per "mask + softness" pair)
@@ -167,15 +233,9 @@ if CLIENT then
 			pt:SetBrightness(self:GetLightBrightness())
 			pt:SetColor(Color(c.x * 255, c.y * 255, c.z * 255))
 			-- shadows: the SPeditor.Shadows library decides which lights get shadows
-			local Sh = SPeditor and SPeditor.Shadows
 			local shadowsOn = Sh and Sh.WantsShadows(self) or false
 			pt:SetEnableShadows(shadowsOn)
-			if shadowsOn then
-				local slope = self:GetShadowSlope()
-				pt:SetShadowFilter(self:GetShadowSoft() * Sh.GetSoftScale())
-				pt:SetShadowDepthBias(self:GetShadowBias())
-				pt:SetShadowSlopeScaleDepthBias(slope > 0 and slope or Sh.GetSlope())
-			end
+			if shadowsOn then shadowSettings(self, pt, Sh) end
 			pt:Update()
 		else
 			killProjected(self)
@@ -195,6 +255,7 @@ if CLIENT then
 
 	function ENT:OnRemove()
 		killProjected(self)
+		killCube(self)
 	end
 
 	function ENT:Draw() end

@@ -169,8 +169,13 @@ function UI.OpenAbout()
 	end
 
 	text(scroll, L("about_intro"), COL.TEXT, nil, 10)
-	-- what changed in this version (about_n1, about_n2, … in sh_lang.lua)
-	text(scroll, string.format(L("about_news"), SPeditor.Version or ""), COL.ORANGE, "SPeditor.Bold", 12)
+	-- what changed: a patch (about_p1, about_p2, …) above the release it builds on (about_n1, …)
+	local base = SPeditor.VersionBase or SPeditor.Version or ""
+	if base ~= SPeditor.Version and L("about_p1") ~= "about_p1" then
+		text(scroll, string.format(L("about_news"), SPeditor.Version), COL.ORANGE, "SPeditor.Bold", 12)
+		bullets("about_p")
+	end
+	text(scroll, string.format(L("about_news"), base), COL.ORANGE, "SPeditor.Bold", 12)
 	bullets("about_n")
 	text(scroll, L("about_features"), COL.ORANGE, "SPeditor.Bold", 12)
 	bullets("about_f")

@@ -73,6 +73,44 @@ function SPeditor.TableToAng(t)
 	return Angle(p, y, r)
 end
 
+-- Physics bodies of a ragdoll by bone. On some models (Enhanced TF2 MvM bots)
+-- TranslateBoneToPhysBone gives 0 for every bone on both realms, so the map is built from
+-- TranslatePhysBoneToBone, which is right everywhere. Past the last body it gives 0 for a few
+-- slots and then -1 (the client has no physics objects to count).
+local physMaps = {}
+local function physMap(ent)
+	local mdl = ent:GetModel() or ""
+	local m = physMaps[mdl]
+	if m then return m end
+	m = {}
+	local count = SERVER and ent:GetPhysicsObjectCount() or 128
+	for p = 0, math.min(count, 128) - 1 do
+		local b = ent:TranslatePhysBoneToBone(p)
+		if not b or b < 0 or m[b] or (p > 0 and b == 0) then break end
+		m[b] = p
+	end
+	if next(m) then physMaps[mdl] = m end
+	return m
+end
+
+-- The physics body of exactly this bone, or nil (a finger, a toe)
+function SPeditor.PhysOfBone(ent, bone)
+	if not IsValid(ent) or ent:GetClass() ~= "prop_ragdoll" or not bone then return nil end
+	return physMap(ent)[bone]
+end
+
+-- The body of the bone or of the nearest bone above it that has one (a finger → the hand)
+function SPeditor.PhysOfBoneUp(ent, bone)
+	if not IsValid(ent) or ent:GetClass() ~= "prop_ragdoll" or not bone then return nil end
+	local m, guard = physMap(ent), 0
+	while bone and bone >= 0 and guard < 256 do
+		if m[bone] then return m[bone] end
+		bone = ent:GetBoneParent(bone)
+		guard = guard + 1
+	end
+	return nil
+end
+
 -- Transliteration of Cyrillic (file names are Latin only)
 local RU_LOWER = {
 	"a", "b", "v", "g", "d", "e", "zh", "z", "i", "y", "k", "l", "m", "n", "o", "p",

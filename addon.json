@@ -12,8 +12,8 @@
 		"themes/*",
 		"sounds/*",
 		"addons_ref/*",
-		"shaders/*",
-		"mods/*",
+		"shaders/readme.txt",
+		"shaders_src/*",
 		"text_*.txt",
 		"tools/*",
 		"*.md",
@@ -22,6 +22,9 @@
 		".github/*",
 		"LICENSE",
 		"README*",
-		"wiki/*"
+		"wiki/*",
+		"SSAO/*",
+		".cache/*",
+		"PAC3/*"
 	]
 }

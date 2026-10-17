@@ -11,6 +11,8 @@
     <figcaption class="l-en"><b>The Render window for a still scene.</b> Settings on the left, the preview on the right. The preview grows with the window.</figcaption>
     <figcaption class="l-ru"><b>Окно рендера для статичной сцены.</b> Слева настройки, справа превью. Превью растёт вместе с окном.</figcaption>
   </figure>
+  <p class="l-en"><span class="badge new">new</span> The window has two tabs: <strong>Picture</strong> (one still of the current frame) and <strong>Animation</strong> (the video, see <a href="#sa-render">Video</a>). A scene with animation opens on the Animation tab. The look of the frame — size, smoothing, depth of field, SSAO, shaders, camera effects — is shared by both.</p>
+  <p class="l-ru"><span class="badge new">new</span> У окна две вкладки: <strong>Picture</strong> (один кадр, текущий) и <strong>Animation</strong> (видео, см. <a href="#sa-render">Видео</a>). Сцена с анимацией открывается на вкладке Animation. Вид кадра — размер, сглаживание, глубина резкости, SSAO, шейдеры, эффекты камеры — у обеих общий.</p>
 
   <h2><span class="l-en">Settings</span><span class="l-ru">Настройки</span></h2>
   <div class="tbl"><table>
@@ -21,9 +23,10 @@
     <tr><td>Fullbright (render only)</td><td class="wrap"><span class="l-en">Render without lighting.</span><span class="l-ru">Рендер без освещения.</span></td></tr>
     <tr><td>Smoothing</td><td class="wrap"><span class="l-en">Renders at 2× and scales down: clean edges.</span><span class="l-ru">Рендер в 2× и уменьшение: чистые края.</span></td></tr>
     <tr><td>Depth of field</td><td class="wrap"><span class="l-en">Focus on the selection or the frame centre; <em>Blur amount</em> (aperture) and <em>DoF quality</em> (passes).</span><span class="l-ru">Фокус на выделении или центре кадра; <em>Blur amount</em> (диафрагма) и <em>DoF quality</em> (проходы).</span></td></tr>
+    <tr><td>Ambient occlusion (SSAO) <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Soft contact shadows where things meet — corners, folds of clothes, under feet and objects — as in SFM. <em>SSAO radius</em> (units) is how far around a point the shadow reaches, <em>SSAO strength</em> how dark it gets. The editor's own effect, no other addon needed; in the preview, the picture, the video, the viewport Render look and the Engine frame. Saved with the scene.</span><span class="l-ru">Мягкие контактные тени там, где предметы сходятся, — в углах, складках одежды, под ногами и предметами, как в SFM. <em>SSAO radius</em> (в единицах) — как далеко вокруг точки ложится тень, <em>SSAO strength</em> — насколько она тёмная. Собственный эффект редактора, другие аддоны не нужны; есть в превью, картинке, видео, виде рендера во вьюпорте и кадре движка. Сохраняется со сценой.</span></td></tr>
     <tr><td>Soft shadows (passes)</td><td class="wrap"><span class="l-en">How many times the scene is rendered for lights with a <em>source size</em>. More passes, smoother penumbra, longer render.</span><span class="l-ru">Сколько раз сцена рендерится для источников с <em>source size</em>. Больше проходов — плавнее полутень, дольше рендер.</span></td></tr>
     <tr><td>Engine frame</td><td class="wrap"><span class="l-en">Lets the game's own renderer draw the picture so that post-processing addons and Workshop shaders get in. See <a href="#shaders">Shaders</a>.</span><span class="l-ru">Картинку рисует сам рендерер игры, и в неё попадают аддоны постобработки и шейдеры Workshop. См. <a href="#shaders">Шейдеры</a>.</span></td></tr>
-    <tr><td>Format · JPEG quality</td><td class="wrap"><span class="l-en">PNG (lossless), JPEG or <span class="badge new">new</span> <strong>Steam screenshot</strong>: the PNG is saved and the picture also goes into your Steam screenshots — the game shows it full screen for a moment and takes a screenshot. Publish it from <span class="ui">Steam → View → Screenshots → Garry's Mod → Upload</span>. The Steam copy has the size of your screen.</span><span class="l-ru">PNG (без потерь), JPEG или <span class="badge new">new</span> <strong>Steam screenshot</strong>: PNG сохраняется, и картинка ещё попадает в ваши скриншоты Steam — игра на мгновение показывает её на весь экран и делает скриншот. Опубликовать: <span class="ui">Steam → Вид → Скриншоты → Garry's Mod → Загрузить</span>. Копия в Steam размером с ваш экран.</span></td></tr>
+    <tr><td>Format · JPEG quality</td><td class="wrap"><span class="l-en">PNG (lossless), JPEG or <strong>Steam screenshot</strong>: the PNG is saved and the picture also goes into your Steam screenshots — the game shows it full screen for a moment and takes a screenshot. Publish it from <span class="ui">Steam → View → Screenshots → Garry's Mod → Upload</span>. The Steam copy has the size of your screen.</span><span class="l-ru">PNG (без потерь), JPEG или <strong>Steam screenshot</strong>: PNG сохраняется, и картинка ещё попадает в ваши скриншоты Steam — игра на мгновение показывает её на весь экран и делает скриншот. Опубликовать: <span class="ui">Steam → Вид → Скриншоты → Garry's Mod → Загрузить</span>. Копия в Steam размером с ваш экран.</span></td></tr>
     <tr><td>File name</td><td class="wrap"><span class="l-en">Empty means date and time. Files go to <code>data/speditor/renders/</code>.</span><span class="l-ru">Пусто — дата и время. Файлы попадают в <code>data/speditor/renders/</code>.</span></td></tr>
   </table></div>
   <div class="warn l-en"><p>Close the ESC menu while rendering. A large render with depth of field and soft shadows can take a while — the preview shows the progress (“DoF preview: 12 of 96 samples”).</p></div>
@@ -47,14 +50,27 @@
   <p class="l-en">The effects show in the preview and in the final render; the viewports stay clean. The work camera has no effects — choose a scene camera. <em>Turn all effects off</em> resets them.</p>
   <p class="l-ru">Эффекты видны в превью и в итоговом рендере; вьюпорты остаются чистыми. У рабочей камеры эффектов нет — выберите камеру сцены. <em>Turn all effects off</em> сбрасывает их.</p>
 
+  <figure class="fit"><img src="img/a07_ssao.jpg" alt="Ambient occlusion" style="--w:900px"><figcaption class="l-en"><b>SSAO on:</b> soft shadows under the walking character and in the corners of the walls.</figcaption><figcaption class="l-ru"><b>SSAO включён:</b> мягкие тени под идущим персонажем и в углах стен.</figcaption></figure>
+
+  <h2><span class="l-en">Render look in the viewport</span><span class="l-ru">Вид рендера во вьюпорте</span> <span class="badge new">new</span></h2>
+  <div class="row">
+    <figure class="fit"><img src="img/a07_render_look.jpg" alt="Render look of the Primary Viewport" style="--w:520px"></figure>
+    <div style="flex:1 1 260px;min-width:0">
+      <p class="l-en">The photo button of the Primary Viewport bar, as in SFM: stop on a frame and the viewport shows the finished picture — depth of field, soft shadows, smoothing, SSAO and the camera effects (bloom, colour, vignette…). While you fly, drag or play it shows a quicker draft of the same, so motion and effects are seen together. The gizmo and the skeleton are hidden in it: turn it off to pose. Motion blur is seen only in the video.</p>
+      <p class="l-ru">Кнопка с фотографией на панели Primary Viewport, как в SFM: остановитесь на кадре — вьюпорт покажет готовую картинку: глубину резкости, мягкие тени, сглаживание, SSAO и эффекты камеры (bloom, цвет, виньетку…). Пока вы летаете, тянете или проигрываете, он показывает более быстрый черновик того же, так что движение и эффекты видны вместе. Гизмо и скелета в нём нет — для позирования выключите его. Размытие движения видно только в видео.</p>
+      <div class="tip l-en"><p>Things far from the focus are blurred on purpose while the Render look is on — that is the depth of field.</p></div>
+      <div class="tip l-ru"><p>Пока включён вид рендера, всё вдали от фокуса размыто намеренно — это глубина резкости.</p></div>
+    </div>
+  </div>
+
   <h2><span class="l-en">Animated scenes</span><span class="l-ru">Анимированные сцены</span></h2>
   <figure>
-    <img src="img/21_render.jpg" alt="Render window, animated scene">
-    <figcaption class="l-en"><b>When the scene has an animation</b> the window starts with SAeditor settings: whole animation or the current frame, video format, video size and passes, and a player under the preview.</figcaption>
-    <figcaption class="l-ru"><b>Если в сцене есть анимация</b>, окно начинается с настроек SAeditor: вся анимация или текущий кадр, формат и размер видео, проходы, а под превью — плеер.</figcaption>
+    <img src="img/a07_render_tabs.jpg" alt="Render window, Animation tab">
+    <figcaption class="l-en"><b>The Animation tab:</b> frames, video settings, the cameras of the video with the list of shots, and a player under the preview.</figcaption>
+    <figcaption class="l-ru"><b>Вкладка Animation:</b> кадры, настройки видео, камеры видео со списком планов и плеер под превью.</figcaption>
   </figure>
-  <p class="l-en">See <a href="#sa-render">Animation → Video</a> for the formats, the video frame rate and rendering chosen frames.</p>
-  <p class="l-ru">Форматы, частота кадров видео и рендер выбранных кадров описаны в разделе <a href="#sa-render">Анимация → Видео</a>.</p>
+  <p class="l-en">See <a href="#sa-render">Animation → Video</a> for the video file, the frame rate, motion blur and the shots.</p>
+  <p class="l-ru">Видеофайл, частота кадров, размытие движения и планы описаны в разделе <a href="#sa-render">Анимация → Видео</a>.</p>
   <div class="tip l-en"><p><code>speditor_render</code> in the console renders with the current settings — bind it to a key for quick test shots.</p></div>
   <div class="tip l-ru"><p><code>speditor_render</code> в консоли рендерит с текущими настройками — привяжите к клавише для быстрых пробных кадров.</p></div>
 </section>

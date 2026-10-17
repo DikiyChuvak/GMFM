@@ -4,8 +4,9 @@ themes/
 sounds/
 # other addons kept locally to read their code (compatibility work)
 addons_ref/
-# user shader packs
+# user shader packs (shaders/fxc holds the editor's own SSAO shaders)
 shaders/*/
+!shaders/fxc/
 # local test harness
 lua/speditor/sh_devtest.lua
 *.gma
@@ -14,3 +15,7 @@ wiki/pages/
 wiki/index.html
 wiki/local.html
 wiki/*.pdf
+PAC3/
+SSAO/
+.cache/
+__pycache__/

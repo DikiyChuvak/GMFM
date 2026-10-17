@@ -31,7 +31,7 @@ function S.Receive(key, fn, noActive)
 	S.ReceiveName(name, fn, noActive)
 end
 
--- The same by the full message name (for mods: MOD:NetReceive, sh_mods.lua)
+-- The same by the full message name (for components: COMP:NetReceive, sh_component.lua)
 function S.ReceiveName(name, fn, noActive)
 	net.Receive(name, function(_, ply)
 		if not SPeditor.CanUse(ply) then return end

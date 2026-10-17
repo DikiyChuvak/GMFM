@@ -120,6 +120,16 @@ local function noShadowDraw(self, flags)
 	self:DrawModel(flags)
 end
 
+-- The engine's blob / render-to-texture shadow of a prop falls along the map's light
+-- (shadow_control), whatever lights the scene has. With speditor_shadow_onlylights (Shadows
+-- tab, on by default) the objects of the scene drop it while the editor is open: their
+-- shadows come only from the editor's spot and point lights (shadow maps, cl_shadows.lua).
+local function wantsBlob(e)
+	if e.SPNoShadow then return false end
+	local Sh = SPeditor.Shadows
+	return not (C.active and Sh and Sh.OnlyLights and Sh.OnlyLights())
+end
+
 local function applyLook(e)
 	local st = e:GetNW2Vector("SPeditor_Stretch", ONE)
 	if e.SPStretch ~= st then
@@ -136,9 +146,13 @@ local function applyLook(e)
 		end
 	end
 	local ns = e:GetNW2Bool("SPeditor_NoShadow", false)
+	local blob = not ns and wantsBlob(e)
+	if e.SPBlob ~= blob then
+		e.SPBlob = blob
+		e:DrawShadow(blob)
+	end
 	if e.SPNoShadow ~= ns then
 		e.SPNoShadow = ns
-		e:DrawShadow(not ns)
 		if ns then
 			if not e.SPWorn then e.RenderOverride = noShadowDraw end
 		elseif e.RenderOverride == noShadowDraw then
@@ -191,8 +205,31 @@ local function applyWorn(e)
 	end
 	if csm:GetMaterial() ~= e:GetMaterial() then csm:SetMaterial(e:GetMaterial()) end
 	csm:SetNoDraw(e:GetNoDraw() or parent:GetNoDraw())
-	csm:DrawShadow(not e.SPNoShadow)
+	csm:DrawShadow(e.SPBlob ~= false)
 	csm.RenderOverride = e.SPNoShadow and noShadowDraw or nil
+	-- bone offsets of the worn object (its own bones the wearer lacks: hair, coat tails,
+	-- straps; the merged ones follow the wearer anyway)
+	if e:HasBoneManipulations() or csm.SPManip then
+		csm.SPManip = e:HasBoneManipulations() or nil
+		for b = 0, math.min(e:GetBoneCount(), csm:GetBoneCount()) - 1 do
+			local ma, mp, ms = e:GetManipulateBoneAngles(b), e:GetManipulateBonePosition(b), e:GetManipulateBoneScale(b)
+			if csm:GetManipulateBoneAngles(b) ~= ma then csm:ManipulateBoneAngles(b, ma) end
+			if csm:GetManipulateBonePosition(b) ~= mp then csm:ManipulateBonePosition(b, mp) end
+			if csm:GetManipulateBoneScale(b) ~= ms then csm:ManipulateBoneScale(b, ms) end
+		end
+	end
+	-- TF2 paint and crit glow (Hat Painter & Crit Glow Tools): their material proxies read
+	-- the drawn entity's ProxyentPaintColor / ProxyentCritGlow, and the copy is what is drawn
+	if (csm.SPProxyScan or 0) < RealTime() then
+		csm.SPProxyScan = RealTime() + 0.5
+		local et, ct = e:GetTable(), csm:GetTable()
+		for k, v in pairs(et) do
+			if isstring(k) and string.sub(k, 1, 8) == "Proxyent" and ct[k] ~= v then ct[k] = v end
+		end
+		for k in pairs(ct) do
+			if isstring(k) and string.sub(k, 1, 8) == "Proxyent" and et[k] == nil then ct[k] = nil end
+		end
+	end
 end
 
 hook.Add("Think", "SPeditor.ApplyLook", function()
@@ -476,19 +513,17 @@ local function setup(ent)
 end
 
 function C.GetBoneWorld(ent, bone)
+	-- a worn object is seen as its copy merged into the wearer: its bones are there
+	if IsValid(ent) and IsValid(ent.SPWorn) then ent = ent.SPWorn end
 	setup(ent)
+	if C.ApplyStretch then C.ApplyStretch(ent) end
 	local m = ent:GetBoneMatrix(bone)
 	if not m then return nil end
 	return m:GetTranslation(), m:GetAngles()
 end
 
 function C.PhysIndexOfBone(ent, bone)
-	if not C.IsRagdoll(ent) then return nil end
-	local pi = ent:TranslateBoneToPhysBone(bone)
-	if pi and pi >= 0 and ent:TranslatePhysBoneToBone(pi) == bone then
-		return pi
-	end
-	return nil
+	return SPeditor.PhysOfBone(ent, bone)
 end
 
 function C.GetEntityTransform(ent)

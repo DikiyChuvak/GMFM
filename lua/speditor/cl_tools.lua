@@ -33,20 +33,33 @@ function C.AimCameraAt(camEnt, target)   -- compatibility
 	return C.IsCamera(camEnt) and C.AimAt(camEnt, target)
 end
 
--- Menu for picking the object to aim src at
+-- Menu for picking the object to aim src at: once (C.AimAt), or for good — the look-at
+-- keeps src turned to it while either of them moves (C.SendAim, a0.7)
 function C.OpenAimMenu(src)
-	local menu = SPeditor.UI.Menu()
-	local n = 0
+	local targets = {}
 	for _, obj in ipairs(C.BuildEntityList()) do
-		if IsValid(obj.ent) and obj.ent ~= src and obj.kind ~= "camera" and obj.kind ~= "light" then
-			n = n + 1
-			menu:AddOption(obj.name, function() C.AimAt(src, obj.ent) end)
-		end
+		if IsValid(obj.ent) and obj.ent ~= src and obj.kind ~= "camera" and obj.kind ~= "light" then targets[#targets + 1] = obj end
 	end
-	if n == 0 then
-		menu:Remove()
+	if #targets == 0 then
 		SPeditor.Notify(L("aim_none"), 0)
 		return
+	end
+	local menu = SPeditor.UI.Menu()
+	for _, obj in ipairs(targets) do
+		menu:AddOption(obj.name, function() C.AimAt(src, obj.ent) end)
+	end
+	-- look-at: only a camera or a light can keep turning
+	if IsValid(src) and (C.IsCamera(src) or C.IsLight(src)) then
+		local cur = src:GetNW2Entity("SPeditor_AimAt")
+		menu:AddSpacer()
+		local follow, opt = menu:AddSubMenu(L("aim_follow"))
+		if opt and opt.SetIcon then opt:SetIcon("icon16/eye.png") end
+		for _, obj in ipairs(targets) do
+			follow:AddOption(obj.name, function() C.SendAim(src, obj.ent, -1) end):SetChecked(cur == obj.ent)
+		end
+		if IsValid(cur) then
+			menu:AddOption(L("aim_follow_stop") .. "  (" .. C.DisplayName(cur) .. ")", function() C.SendAim(src, nil) end):SetIcon("icon16/cross.png")
+		end
 	end
 	menu:Open()
 end

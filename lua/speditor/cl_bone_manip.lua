@@ -140,3 +140,107 @@ function C.DeletePose(name)
 		SPeditor.Notify("#pose_deleted|" .. name, 0)
 	end
 end
+
+---------------------------------------------------------------------
+-- Stretch of a ragdoll's physical bones (a0.7). The engine draws a ragdoll's physical
+-- bones from their physics bodies and ignores their manip offset (ManipulateBonePosition) —
+-- measured in game: a head moved 25 units by it stayed in place, and a ragdoll gets no
+-- BuildBonePositions callback. The offset is still kept (networked, saved with poses, keys
+-- and scenes) and applied here, on every client, before the opaque things of a view are
+-- drawn: the bone and everything below it move by the offset, given in the space of the
+-- parent bone as for any other bone, so the limb grows longer or shifts.
+---------------------------------------------------------------------
+local stretchInfo = {}      -- [model] = { { bone, parent, subtree = { bones } }, … } — the physical bones
+
+local function physBonesOf(ent)
+	local mdl = ent:GetModel() or ""
+	local info = stretchInfo[mdl]
+	if info then return info end
+	info = {}
+	local n = ent:GetBoneCount()
+	local children = {}
+	for b = 0, n - 1 do
+		local p = ent:GetBoneParent(b)
+		if p and p >= 0 then
+			children[p] = children[p] or {}
+			table.insert(children[p], b)
+		end
+	end
+	for b = 0, n - 1 do
+		local parent = ent:GetBoneParent(b)
+		-- the root body has no parent to stretch away from: it is moved as the object
+		if parent and parent >= 0 and C.PhysIndexOfBone(ent, b) then
+			local sub, stack = {}, { b }
+			while #stack > 0 do
+				local x = table.remove(stack)
+				sub[#sub + 1] = x
+				for _, c in ipairs(children[x] or {}) do stack[#stack + 1] = c end
+			end
+			info[#info + 1] = { bone = b, parent = parent, subtree = sub }
+		end
+	end
+	stretchInfo[mdl] = info
+	return info
+end
+
+local ragdolls = {}         -- the editor's ragdolls (rescanned twice a second)
+
+timer.Create("SPeditor.Stretch", 0.5, 0, function()
+	local list = {}
+	for _, ent in ipairs(ents.FindByClass("prop_ragdoll")) do
+		if ent:GetNW2Bool("SPeditor_Ent", false) then list[#list + 1] = ent end
+	end
+	ragdolls = list
+end)
+
+-- bones already set up this frame (C.GetBoneWorld, the view before)
+local function applyStretch(ent)
+	local any = false
+	for _, it in ipairs(physBonesOf(ent)) do
+		if not ent:GetManipulateBonePosition(it.bone):IsZero() then any = true break end
+	end
+	if not any then return end
+	-- several views a frame (viewports, the render) share the bones of the frame: an offset
+	-- already put on is not put on again
+	local done = ent.SPeditor_StretchDone
+	if done and done.frame == FrameNumber() then
+		local m = ent:GetBoneMatrix(done.bone)
+		if m and m:GetTranslation():DistToSqr(done.pos) < 1e-4 then return end
+	end
+	local mark
+	for _, it in ipairs(physBonesOf(ent)) do
+		local off = ent:GetManipulateBonePosition(it.bone)
+		if not off:IsZero() then
+			local pm = ent:GetBoneMatrix(it.parent)
+			if pm then
+				local world = LocalToWorld(off, angle_zero, vector_origin, pm:GetAngles())
+				for _, b in ipairs(it.subtree) do
+					local m = ent:GetBoneMatrix(b)
+					if m then
+						m:SetTranslation(m:GetTranslation() + world)
+						ent:SetBoneMatrix(b, m)
+					end
+				end
+				mark = it.bone
+			end
+		end
+	end
+	if mark then
+		local m = ent:GetBoneMatrix(mark)
+		ent.SPeditor_StretchDone = { frame = FrameNumber(), bone = mark, pos = m and m:GetTranslation() or vector_origin }
+	end
+end
+
+hook.Add("PreDrawOpaqueRenderables", "SPeditor.Stretch", function()
+	for _, ent in ipairs(ragdolls) do
+		if IsValid(ent) then
+			ent:SetupBones()
+			applyStretch(ent)
+		end
+	end
+end)
+
+-- the gizmo, the skeleton and the bone picking read the bones where they are drawn
+function C.ApplyStretch(ent)
+	if C.IsRagdoll(ent) then applyStretch(ent) end
+end

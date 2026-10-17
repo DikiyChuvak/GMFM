@@ -1,7 +1,7 @@
 -- Shared SPeditor settings
 SPeditor = SPeditor or {}
-SPeditor.Version = "a0.6"
-SPeditor.API     = 1        -- API version for mods (lua/speditor_mods), grows with incompatible changes
+SPeditor.Version = "a0.7.1"
+SPeditor.VersionBase = "a0.7"   -- the release the patch builds on: About lists its news under the patch's
 SPeditor.GitHub  = "https://github.com/DikiyChuvak/SPeditor"     -- address of the addon page (empty: the About window shows a caption instead of a link)
 SPeditor.Wiki    = "https://dikiychuvak.github.io/SPeditor/"     -- player documentation (EN / RU), the About window links to it
 
@@ -43,6 +43,7 @@ SPeditor.Net = {
 	CameraView    = "SPeditor_CameraView",
 	Scale         = "SPeditor_Scale",
 	Attach        = "SPeditor_Attach",
+	Aim           = "SPeditor_Aim",
 	Look          = "SPeditor_Look",
 	CameraFX      = "SPeditor_CameraFX",
 	ShadowCtl     = "SPeditor_ShadowCtl",
@@ -52,6 +53,8 @@ SPeditor.Net = {
 	AdoptList     = "SPeditor_AdoptList",
 	AdoptListData = "SPeditor_AdoptListData",
 	Adopt         = "SPeditor_Adopt",
+	PAC           = "SPeditor_PAC",        -- PAC3 outfits of scene objects (sv_pac.lua, cl_pac.lua)
+	PACSync       = "SPeditor_PACSync",
 }
 
 -- Extended settings of a spot light (shadows, falloff, beam shape).

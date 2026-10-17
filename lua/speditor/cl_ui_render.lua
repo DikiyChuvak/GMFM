@@ -51,11 +51,13 @@ local PREVIEW_SAMPLES = 12     -- depth-of-field passes in the preview
 local PREVIEW_FAST    = 0.1    -- scene re-shoot period, s
 local PREVIEW_DOF     = 1.5    -- the same with depth of field (many passes)
 local PREVIEW_DOF_MIN = 0.4    -- and no more often than this while settings are being changed
+local PREVIEW_MOVING  = 4      -- passes while the camera moves (shot every PREVIEW_FAST)
 
 local SETTINGS = {
 	"speditor_aspect", "speditor_render_side", "speditor_render_custom", "speditor_render_w", "speditor_render_h",
 	"speditor_render_fullbright", "speditor_render_ss", "speditor_dof", "speditor_dof_aperture", "speditor_exposure",
 	"speditor_render_engine", "speditor_softlight_samples",
+	"speditor_ssao", "speditor_ssao_radius", "speditor_ssao_strength",
 }
 
 local function settingsKey(camera)
@@ -94,6 +96,13 @@ hook.Add("PostRender", "SPeditor.RenderPreview", function()
 	-- the scene: on a timer, and at once when settings change
 	local now = RealTime()
 	local key = settingsKey(camera) .. "|" .. pw .. "|" .. math.Round(wide.fov, 1)
+	-- the camera moves (an animation, flying, look-at): with depth of field the preview was
+	-- shot once in 1.5 s and a turning camera looked as if it stood still. While it moves the
+	-- preview is shot every PREVIEW_FAST with a few passes; at rest — in full.
+	local o, a = wide.origin, wide.angles
+	local place = string.format("%.1f %.1f %.1f %.2f %.2f %.2f", o.x, o.y, o.z, a.p, a.y, a.r)
+	if place ~= pv.place then pv.place, pv.movedAt = place, now end
+	local moving = now - (pv.movedAt or 0) < 0.4 or (C.ScenePlaying and C.ScenePlaying())
 	if R.EngineMode() then
 		-- "engine frame": the engine shoots the scene in the next game frame, here we take the finished one
 		R.FinishEngineFrame()
@@ -113,7 +122,8 @@ hook.Add("PostRender", "SPeditor.RenderPreview", function()
 			pv.next = now + PREVIEW_FAST
 			R.RequestEngineFrame(wide, { fullbright = GetConVar("speditor_render_fullbright"):GetBool(), aspect = aspect, owner = pv })
 		end
-	elseif not pv.base or now >= (pv.next or 0) or (key ~= pv.key and now >= (pv.soon or 0)) then
+	elseif not pv.base or now >= (pv.next or 0) or (key ~= pv.key and now >= (pv.soon or 0))
+		or (moving and now >= (pv.fastNext or 0)) or (not moving and pv.fastShot) then
 		pv.key = key
 		local opts = { fullbright = GetConVar("speditor_render_fullbright"):GetBool(), aspect = aspect,
 			ss = (GetConVar("speditor_render_ss"):GetBool() and pw < 1280) and 2 or 1 }
@@ -134,6 +144,14 @@ hook.Add("PostRender", "SPeditor.RenderPreview", function()
 		local slow = opts.dof or (not opts.fullbright and SPeditor.Lights.SoftSamples() > 0)
 		pv.next = now + (slow and PREVIEW_DOF or PREVIEW_FAST)
 		pv.soon = now + (slow and PREVIEW_DOF_MIN or 0)
+		-- a moving camera: a light frame now, the full one when it stops
+		pv.fastShot = moving and slow or nil
+		if pv.fastShot then
+			if opts.dof then opts.dof.samples = math.min(opts.dof.samples, PREVIEW_MOVING) end
+			opts.softMax = PREVIEW_MOVING
+			pv.samples = opts.dof and opts.dof.samples or pv.samples
+			pv.fastNext = now + PREVIEW_FAST
+		end
 
 		-- as in export: the gizmo and helper graphics are hidden for the render
 		local prevHide, prevExp = C.hideUI, C.exporting
@@ -174,7 +192,7 @@ local function buildPreview(body, getCamera)
 	foot:SetTall(UI.S(22))
 	foot.Paint = function() end
 
-	-- mods add their panels here (SAeditor — the animation playback buttons);
+	-- SAeditor adds its panels here (SAeditor — the animation playback buttons);
 	-- pv.next = 0 makes the preview re-shoot the scene at once
 	hook.Run("SPeditor_RenderPreviewBuilt", side, pv)
 
@@ -606,6 +624,16 @@ function UI.OpenRenderDialog(cam)
 
 	local camera = IsValid(cam) and cam or "primary"    -- "primary" | "work" | Entity
 	local sizeLabel, nameBox
+	-- two tabs (a0.7): "Picture" — a still of the current frame, "Animation" — the video. The
+	-- preview and the look of the frame (size, smoothing, depth of field, SSAO, shaders,
+	-- camera effects) are shared; each tab has only its own settings.
+	local tab, ctx = "still", nil
+	local function inAnim() return tab == "anim" and ctx and ctx.animated ~= nil end
+	-- the camera the preview and the render use: in Animation — the video's camera (the shots)
+	local function shotCamera()
+		if inAnim() and ctx.previewCamera then return ctx.previewCamera() or camera end
+		return camera
+	end
 
 	local btns = vgui.Create("DPanel", body)
 	btns:Dock(BOTTOM)
@@ -620,7 +648,13 @@ function UI.OpenRenderDialog(cam)
 	go:SetIcon("icon16/picture_save.png")
 	UI.StyleButton(go, nil, 3, COL.TAB_ON)
 	go.DoClick = function()
-		SPeditor.Export.Render({ camera = camera, name = IsValid(nameBox) and nameBox:GetValue() or "" })
+		local name = IsValid(nameBox) and nameBox:GetValue() or ""
+		if inAnim() then
+			if not ctx.animated() then SPeditor.Notify("#render_no_anim", 1) return end
+			SPeditor.Export.Render({ camera = ctx.getAnimCamera and ctx.getAnimCamera() or camera, name = name })
+		else
+			SPeditor.Export.Render({ camera = camera, name = name })
+		end
 	end
 
 	local close = vgui.Create("DButton", btns)
@@ -637,8 +671,52 @@ function UI.OpenRenderDialog(cam)
 	body = vgui.Create("DScrollPanel", outer)
 	body:Dock(LEFT)
 	body:SetWide(UI.S(410))
-	buildPreview(outer, function() return camera end)
+	buildPreview(outer, shotCamera)
 	local preview = UI.RenderPreview
+
+	-- a group of rows shown only in one tab: as tall as its rows
+	local function group()
+		local g = vgui.Create("DPanel", body)
+		g:Dock(TOP)
+		g.Paint = function() end
+		g.PerformLayout = function(s2) s2:SizeToChildren(false, true) end
+		return g
+	end
+	local tabBar = vgui.Create("DPanel", body)
+	tabBar:Dock(TOP)
+	tabBar:DockMargin(4, 4, 4, 2)
+	tabBar:SetTall(UI.S(30))
+	tabBar.Paint = function(_, w, h)
+		surface.SetDrawColor(COL.BORDER)
+		surface.DrawRect(0, h - 1, w, 1)
+	end
+	local stillTop = group()
+	local animHost = group()
+	local setTab
+	local tabBtns = {}
+	for _, t in ipairs({ { "still", "render_tab_still", "icon16/picture.png" }, { "anim", "render_tab_anim", "icon16/film.png" } }) do
+		local b = vgui.Create("DButton", tabBar)
+		b:Dock(LEFT)
+		b:DockMargin(0, 0, 4, 0)
+		b:SetWide(UI.S(150))
+		b:SetText("  " .. L(t[2]))
+		b:SetIcon(t[3])
+		b.SPTab = t[1]
+		UI.StyleButton(b, nil, 3, COL.TAB_ON)
+		local basePaint = b.Paint
+		b.Paint = function(s2, w, h)
+			if tab == s2.SPTab then
+				surface.SetDrawColor(COL.TAB_ON or COL.BLUE)
+				surface.DrawRect(0, 0, w, h)
+				surface.SetDrawColor(COL.ORANGE)
+				surface.DrawRect(0, h - 3, w, 3)
+				return
+			end
+			if basePaint then return basePaint(s2, w, h) end
+		end
+		b.DoClick = function() setTab(t[1]) end
+		tabBtns[#tabBtns + 1] = b
+	end
 
 	local function updateSize()
 		if not IsValid(sizeLabel) then return end
@@ -646,11 +724,15 @@ function UI.OpenRenderDialog(cam)
 		sizeLabel:SetText(string.format("%d × %d px", w, h))
 	end
 
-	-- mod settings come first in the column (SAeditor: "the scene is animated — what to render")
-	hook.Run("SPeditor_RenderDialog", { body = body, button = go, win = win, getCamera = function() return camera end })
+	-- the Animation tab is filled by SAeditor; it answers with ctx.animated (is there an
+	-- animation), ctx.getAnimCamera (the video's camera: "cuts" | Entity | "primary"),
+	-- ctx.previewCamera and ctx.setMode
+	ctx = { body = animHost, button = go, win = win, getCamera = function() return camera end }
+	hook.Run("SPeditor_RenderDialog", ctx)
+	if not ctx.animated then tabBar:SetVisible(false) end
 
-	-- Camera
-	local rc = row(body, L("render_camera"))
+	-- Camera (the picture; the video has its own in the Animation tab)
+	local rc = row(stillTop, L("render_camera"))
 	local camBox = vgui.Create("DComboBox", rc)
 	camBox:Dock(FILL)
 	styleCombo(camBox)
@@ -669,10 +751,23 @@ function UI.OpenRenderDialog(cam)
 		camera = e
 		fillCameras()
 	end
-	-- the chosen camera was deleted: fall back to the Primary Viewport source
+	-- the chosen camera was deleted: fall back to the Primary Viewport source; the cameras of
+	-- the scene changed (another scene loaded, a camera added or renamed): the list follows
+	local camSig, sceneSeen = nil, C.sceneSerial
 	rc.Think = function()
-		if not isstring(camera) and not IsValid(camera) then
+		if sceneSeen ~= C.sceneSerial then
+			sceneSeen = C.sceneSerial
 			camera = "primary"
+			preview.next, preview.key = 0, nil
+		end
+		if not isstring(camera) and not IsValid(camera) then camera = "primary" end
+		local sig = { tostring(camera) }
+		for _, obj in ipairs(C.BuildEntityList()) do
+			if obj.kind == "camera" and IsValid(obj.ent) then sig[#sig + 1] = obj.ent:EntIndex() .. obj.name end
+		end
+		sig = table.concat(sig, ",")
+		if sig ~= camSig then
+			camSig = sig
 			fillCameras()
 		end
 	end
@@ -794,6 +889,22 @@ function UI.OpenRenderDialog(cam)
 	for _, n in ipairs({ 8, 16, 24, 48, 96 }) do softBox:AddChoice(tostring(n), n, n == curSoft) end
 	softBox.OnSelect = function(_, _, _, data) SPeditor.Lights.SetSampleCount(data) end
 
+	-- Ambient occlusion: the editor's own SSAO (cl_ssao.lua)
+	local aoBox = vgui.Create("DCheckBoxLabel", body)
+	aoBox:Dock(TOP)
+	aoBox:DockMargin(8, 6, 8, 0)
+	aoBox:SetText(L("render_ssao"))
+	aoBox:SetTextColor(COL.TEXT)
+	aoBox:SetTooltip(L("render_ssao_tip"))
+	aoBox:SetValue(GetConVar("speditor_ssao"):GetBool() and 1 or 0)
+	aoBox.OnChange = function(_, v) RunConsoleCommand("speditor_ssao", v and "1" or "0") end
+	UI.Slider(body, L("render_ssao_radius"), 4, 128, 0, GetConVar("speditor_ssao_radius"):GetFloat(), function(v)
+		RunConsoleCommand("speditor_ssao_radius", tostring(math.Round(v)))
+	end)
+	UI.Slider(body, L("render_ssao_strength"), 0.1, 4, 2, GetConVar("speditor_ssao_strength"):GetFloat(), function(v)
+		RunConsoleCommand("speditor_ssao_strength", tostring(math.Round(v, 2)))
+	end)
+
 	-- Engine frame: shaders of addons and the Workshop (cl_render.lua, cl_shaders.lua)
 	local R = SPeditor.Render
 	local engBox = vgui.Create("DCheckBoxLabel", body)
@@ -850,8 +961,9 @@ function UI.OpenRenderDialog(cam)
 		end
 	end
 
-	-- Format
-	local rf = row(body, L("render_format"))
+	-- Format, quality: the picture only (the video has its own size and quality)
+	local stillBottom = group()
+	local rf = row(stillBottom, L("render_format"))
 	local fmtBox = vgui.Create("DComboBox", rf)
 	fmtBox:Dock(FILL)
 	styleCombo(fmtBox)
@@ -861,7 +973,7 @@ function UI.OpenRenderDialog(cam)
 	fmtBox:AddChoice(L("render_fmt_steam"), "steam", cur == "steam")
 	fmtBox.OnSelect = function(_, _, _, data) RunConsoleCommand("speditor_render_format", data) end
 
-	local q = UI.Slider(body, L("render_quality"), 1, 100, 0, GetConVar("speditor_render_quality"):GetInt(), function(v)
+	local q = UI.Slider(stillBottom, L("render_quality"), 1, 100, 0, GetConVar("speditor_render_quality"):GetInt(), function(v)
 		RunConsoleCommand("speditor_render_quality", tostring(math.floor(v)))
 	end)
 
@@ -871,7 +983,7 @@ function UI.OpenRenderDialog(cam)
 	nameBox:Dock(FILL)
 	nameBox:SetPlaceholderText(L("render_filename_ph"))
 
-	local info = vgui.Create("DLabel", body)
+	local info = vgui.Create("DLabel", stillBottom)
 	info:Dock(TOP)
 	info:DockMargin(8, 8, 8, 0)
 	info:SetWrap(true)
@@ -881,9 +993,27 @@ function UI.OpenRenderDialog(cam)
 
 	-- Camera effects: of the chosen scene camera (or of the one the Primary Viewport looks through)
 	buildEffects(body, function()
-		if isstring(camera) then return camera == "primary" and C.GetViewCamera() or nil end
-		return IsValid(camera) and camera or nil
+		local c = shotCamera()
+		if isstring(c) then return c == "primary" and C.GetViewCamera() or nil end
+		return IsValid(c) and c or nil
 	end)
+
+	setTab = function(t)
+		if t == "anim" and not ctx.animated then t = "still" end
+		tab = t
+		UI.renderTab = t
+		stillTop:SetVisible(t == "still")
+		stillBottom:SetVisible(t == "still")
+		animHost:SetVisible(t == "anim")
+		if ctx.setMode then ctx.setMode(t == "anim" and "anim" or "frame") end
+		go:SetText("  " .. L(t == "anim" and "render_go_anim" or "act_render"))
+		go:SetIcon(t == "anim" and "icon16/film_save.png" or "icon16/picture_save.png")
+		if preview then preview.next = 0 end
+		body:InvalidateLayout(true)
+	end
+	-- an animated scene opens on the Animation tab; afterwards the window keeps the last one
+	setTab(UI.renderTab or ((ctx.animated and ctx.animated()) and "anim" or "still"))
+	win.SPSetTab = setTab
 
 	local baseRemove = win.OnRemove
 	win.OnRemove = function(s)

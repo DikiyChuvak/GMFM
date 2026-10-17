@@ -625,6 +625,7 @@ function PANEL:AddCloseButton()
 	b:SetText("")
 	b.Paint = function(s, w, h) SPeditor.UI.PaintChrome("CloseButton", s, w, h) end
 	b.DoClick = function() self:Close() end
+	b.SPeditorClose = true          -- the interface sound of closing (cl_ui_soundpick.lua)
 	self.HdrBtns[#self.HdrBtns + 1] = b
 	self:InvalidateLayout()
 	return b

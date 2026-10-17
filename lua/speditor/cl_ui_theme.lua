@@ -85,6 +85,10 @@ function UI.IconSize(h) return math.Clamp(math.floor(h) - 4, 8, 16) end
 function UI.CreateFonts()
 	local face = cvFont:GetString()
 	if face == "" then face = "Tahoma" end
+	-- a language pack may name a font that has its letters (Japanese, Chinese…); the
+	-- player's own choice of a font wins
+	local pack = SPeditor.LanguageInfo and SPeditor.LanguageInfo(GetConVarString("speditor_language"))
+	if face == "Tahoma" and pack and pack.font then face = pack.font end
 	-- not below 8 px: at 50 % smaller text cannot be read at all
 	local size = math.max(UI.S(math.Clamp(cvFontSize:GetInt(), 11, 16)), 8)
 	surface.CreateFont("SPeditor.Small", { font = face, size = size, weight = 500, antialias = true, extended = true })
@@ -110,6 +114,9 @@ function UI.ScaleDermaFonts(on)
 end
 hook.Add("SPeditor_StateChanged", "SPeditor.DermaScale", function(on) UI.ScaleDermaFonts(on) end)
 UI.CreateFonts()
+-- the font of a language pack: once the packs are loaded and when the language changes
+hook.Add("SPeditor_LanguagesLoaded", "SPeditor.Fonts", function() UI.CreateFonts() end)
+cvars.AddChangeCallback("speditor_language", function() UI.CreateFonts() end, "SPeditor.Fonts")
 
 function UI.Animated() return cvAnim:GetBool() end
 

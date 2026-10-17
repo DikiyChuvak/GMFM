@@ -39,7 +39,7 @@ function C.PushHistory(label, undoFn, redoFn)
 	undoStack[#undoStack + 1] = { label = label, undo = undoFn, redo = redoFn }
 	if #undoStack > MAX then table.remove(undoStack, 1) end
 	redoStack = {}
-	hook.Run("SPeditor_HistoryPushed", label)     -- for mods: "something in the scene was changed"
+	hook.Run("SPeditor_HistoryPushed", label)     -- for SAeditor: "something in the scene was changed"
 end
 
 function C.Undo()

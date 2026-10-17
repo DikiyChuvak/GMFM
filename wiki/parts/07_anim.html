@@ -31,19 +31,19 @@
     <tr><td>frame</td><td class="wrap"><span class="l-en">Current frame; type a number to jump. Next to it: total frames and time.</span><span class="l-ru">Текущий кадр; введите число, чтобы перейти. Рядом — всего кадров и время.</span></td></tr>
     <tr><td>fps · length, s</td><td class="wrap"><span class="l-en">Frame rate (12, 15, 24, 30, 60) and length in seconds — up to an hour (it was 3600 frames).</span><span class="l-ru">Частота кадров (12, 15, 24, 30, 60) и длина в секундах — до часа (было 3600 кадров).</span></td></tr>
     <tr><td><span class="l-en">Key buttons</span><span class="l-ru">Кнопки ключей</span></td><td class="wrap"><span class="l-en">Set key for the selection (<kbd>K</kbd>), face key (the smile, <kbd>Shift</kbd>+<kbd>K</kbd>), set key for every object, delete key, <strong>Auto key</strong> (the red dot: every edit sets a key at the current frame; the status bar shows AUTO KEY).</span><span class="l-ru">Ключ для выделения (<kbd>K</kbd>), ключ лица (смайлик, <kbd>Shift</kbd>+<kbd>K</kbd>), ключ для всех объектов, удалить ключ, <strong>Auto key</strong> (красная точка: каждое изменение ставит ключ на текущем кадре; в строке состояния — AUTO KEY).</span></td></tr>
-    <tr><td><span class="l-en">Right buttons</span><span class="l-ru">Кнопки справа</span></td><td class="wrap"><span class="l-en">Import model animation, add a sound, render animation; <a href="#sa-curves">curve editor</a>, <a href="#sa-curves">procedural motion</a> (the heart), <a href="#sa-import">Stop Motion Helper</a> (the arrows); <span class="badge new">new</span> <a href="#sa-import">ready motion</a> (the walking figure), <a href="#sa-basics">bone keys</a> (the branch), <a href="#sa-basics">ghosts</a> (the grey figure), <a href="#sa-record">record gameplay</a> (the webcam), <a href="#sa-cuts">the player</a> (the TV) and <a href="#sa-cuts">walking around the scene</a> (the eye).</span><span class="l-ru">Импорт анимации модели, добавить звук, рендер анимации; <a href="#sa-curves">редактор кривых</a>, <a href="#sa-curves">процедурное движение</a> (сердце), <a href="#sa-import">Stop Motion Helper</a> (стрелки); <span class="badge new">new</span> <a href="#sa-import">готовое движение</a> (идущая фигурка), <a href="#sa-basics">ключи костей</a> (ветка), <a href="#sa-basics">призраки</a> (серая фигура), <a href="#sa-record">запись игры</a> (веб-камера), <a href="#sa-cuts">плеер</a> (телевизор) и <a href="#sa-cuts">прогулка по сцене</a> (глаз).</span></td></tr>
+    <tr><td><span class="l-en">Right buttons</span><span class="l-ru">Кнопки справа</span></td><td class="wrap"><span class="l-en">Import model animation, add a sound, render animation; <a href="#sa-curves">curve editor</a>, <a href="#sa-curves">procedural motion</a> (the heart), <a href="#sa-import">Stop Motion Helper</a> (the arrows); <a href="#sa-import">ready motion</a> (the walking figure), <a href="#sa-basics">bone keys</a> (the branch), <a href="#sa-basics">ghosts</a> (the grey figure), <a href="#sa-record">record gameplay</a> (the webcam), <a href="#sa-cuts">the player</a> (the TV) and <a href="#sa-cuts">walking around the scene</a> (the eye).</span><span class="l-ru">Импорт анимации модели, добавить звук, рендер анимации; <a href="#sa-curves">редактор кривых</a>, <a href="#sa-curves">процедурное движение</a> (сердце), <a href="#sa-import">Stop Motion Helper</a> (стрелки); <a href="#sa-import">готовое движение</a> (идущая фигурка), <a href="#sa-basics">ключи костей</a> (ветка), <a href="#sa-basics">призраки</a> (серая фигура), <a href="#sa-record">запись игры</a> (веб-камера), <a href="#sa-cuts">плеер</a> (телевизор) и <a href="#sa-cuts">прогулка по сцене</a> (глаз).</span></td></tr>
   </table></div>
 
   <h2><span class="l-en">Working with keys</span><span class="l-ru">Работа с ключами</span></h2>
   <ul class="l-en">
-    <li><kbd>LMB</kbd> on a key selects it and moves the playhead there; drag to move it; <kbd>Ctrl</kbd> + drag copies it. <span class="badge new">new</span> <kbd>Ctrl</kbd> + click picks several keys, <kbd>Shift</kbd> + drag over empty space picks keys in a box — then they move, change their motion and are deleted together.</li>
-    <li><kbd>RMB</kbd> on a key: <em>Motion to the next key</em> — <span class="badge new">new</span> <strong>Continuous</strong> (a spline through the keys, the kind of every new key), <strong>Smooth</strong> (stops at the key), <strong>Linear</strong>, <strong>Speed up</strong> (ease in), <strong>Slow down</strong> (ease out), <strong>Hold</strong> (jump: the value holds until the next key) and in <em>More…</em> <em>With a swing</em>, <em>Springy</em>, <em>Bouncing</em>, <em>Gentle</em>, <em>Sharp</em> (<a href="#sa-curves">see them move</a>); <em>Copy key</em>; <em>Delete key</em>.</li>
+    <li><kbd>LMB</kbd> on a key selects it and moves the playhead there; drag to move it; <kbd>Ctrl</kbd> + drag copies it. <kbd>Ctrl</kbd> + click picks several keys, <kbd>Shift</kbd> + drag over empty space picks keys in a box — then they move, change their motion and are deleted together.</li>
+    <li><kbd>RMB</kbd> on a key: <em>Motion to the next key</em> — <strong>Continuous</strong> (a spline through the keys, the kind of every new key), <strong>Smooth</strong> (stops at the key), <strong>Linear</strong>, <strong>Speed up</strong> (ease in), <strong>Slow down</strong> (ease out), <strong>Hold</strong> (jump: the value holds until the next key) and in <em>More…</em> <em>With a swing</em>, <em>Springy</em>, <em>Bouncing</em>, <em>Gentle</em>, <em>Sharp</em> (<a href="#sa-curves">see them move</a>); <em>Copy key</em>; <em>Delete key</em>.</li>
     <li><kbd>RMB</kbd> on an empty place of a row: <em>Set key here</em>, <em>Paste key here</em>, <em>Remove animation of this object</em>.</li>
     <li><kbd>LMB</kbd> on the ruler or empty space moves the playhead; drag to scrub. The wheel scrolls the list of objects; <kbd>Ctrl</kbd> + wheel zooms the timeline, <kbd>Shift</kbd> + wheel scrolls it in time.</li>
   </ul>
   <ul class="l-ru">
-    <li><kbd>ЛКМ</kbd> по ключу выделяет его и переносит туда указатель; перетаскивание двигает ключ; <kbd>Ctrl</kbd> + перетаскивание копирует. <span class="badge new">new</span> <kbd>Ctrl</kbd> + клик выбирает несколько ключей, <kbd>Shift</kbd> + перетаскивание по пустому месту — ключи рамкой; тогда они двигаются, меняют движение и удаляются вместе.</li>
-    <li><kbd>ПКМ</kbd> по ключу: <em>Motion to the next key</em> — <span class="badge new">new</span> <strong>Continuous</strong> (сплайн через ключи, вид каждого нового ключа), <strong>Smooth</strong> (останавливается на ключе), <strong>Linear</strong>, <strong>Speed up</strong> (разгон), <strong>Slow down</strong> (торможение), <strong>Hold</strong> (скачок: значение держится до следующего ключа) и в <em>More…</em> — <em>With a swing</em>, <em>Springy</em>, <em>Bouncing</em>, <em>Gentle</em>, <em>Sharp</em> (<a href="#sa-curves">как они движутся</a>); <em>Copy key</em>; <em>Delete key</em>.</li>
+    <li><kbd>ЛКМ</kbd> по ключу выделяет его и переносит туда указатель; перетаскивание двигает ключ; <kbd>Ctrl</kbd> + перетаскивание копирует. <kbd>Ctrl</kbd> + клик выбирает несколько ключей, <kbd>Shift</kbd> + перетаскивание по пустому месту — ключи рамкой; тогда они двигаются, меняют движение и удаляются вместе.</li>
+    <li><kbd>ПКМ</kbd> по ключу: <em>Motion to the next key</em> — <strong>Continuous</strong> (сплайн через ключи, вид каждого нового ключа), <strong>Smooth</strong> (останавливается на ключе), <strong>Linear</strong>, <strong>Speed up</strong> (разгон), <strong>Slow down</strong> (торможение), <strong>Hold</strong> (скачок: значение держится до следующего ключа) и в <em>More…</em> — <em>With a swing</em>, <em>Springy</em>, <em>Bouncing</em>, <em>Gentle</em>, <em>Sharp</em> (<a href="#sa-curves">как они движутся</a>); <em>Copy key</em>; <em>Delete key</em>.</li>
     <li><kbd>ПКМ</kbd> по пустому месту строки: <em>Set key here</em>, <em>Paste key here</em>, <em>Remove animation of this object</em>.</li>
     <li><kbd>ЛКМ</kbd> по линейке или пустому месту двигает указатель; перетаскивание — прокрутка. Колесо прокручивает список объектов; <kbd>Ctrl</kbd> + колесо — масштаб таймлайна, <kbd>Shift</kbd> + колесо — прокрутка по времени.</li>
   </ul>
@@ -69,7 +69,7 @@
   <p class="l-en"><kbd>Shift</kbd>+<kbd>K</kbd> (or the smile button, or the menu of a track → <em>Separate face keys</em>) gives the face a track of its own, right under the object. A blink or a line of speech then has its own rhythm over a slow body motion. With Auto key on, face edits key the face track.</p>
   <p class="l-ru"><kbd>Shift</kbd>+<kbd>K</kbd> (или кнопка-смайлик, или меню строки → <em>Separate face keys</em>) даёт лицу собственную строку прямо под объектом. Моргание или реплика тогда идут в своём ритме поверх медленного движения тела. С Auto key изменения лица ставят ключи в строку лица.</p>
 
-  <h2><span class="l-en">Bone keys and ghosts</span><span class="l-ru">Ключи костей и призраки</span> <span class="badge new">new</span></h2>
+  <h2><span class="l-en">Bone keys and ghosts</span><span class="l-ru">Ключи костей и призраки</span></h2>
   <figure>
     <img src="img/a06_bonekeys.jpg" alt="Bone keys and ghosts">
     <figcaption class="l-en"><b>Ghosts on:</b> the arm at the key before the playhead is drawn see-through in blue, at the key after it in green. Below the character — the row of the selected bone with its own keys.</figcaption>
@@ -79,7 +79,7 @@
   <p class="l-ru">Обычно ключ хранит всего персонажа. С включёнными <strong>ключами костей</strong> (кнопка с веткой на таймлайне, <span class="ui">Edit → Animation → Bone keys</span>) ключ, поставленный при выделенной кости, хранит только её — каждая кость движется между своими ключами, как в SFM: рука может махнуть дважды, пока голова повернётся один раз. С Auto key перетаскивание кости ставит ключи только тем костям, которые сдвинулись. Ключи отдельных костей — маленькие полые ромбы в строке персонажа.</p>
   <p class="l-en"><strong>Ghosts</strong> (the grey figure button) show the selected character at its previous and next keys, so you see where the motion comes from and goes to without scrubbing.</p>
   <p class="l-ru"><strong>Призраки</strong> (кнопка с серой фигурой) показывают выделенного персонажа на предыдущем и следующем ключах — видно, откуда идёт движение и куда, без прокрутки.</p>
-  <h3><span class="l-en">Camera effects in keys</span><span class="l-ru">Эффекты камеры в ключах</span> <span class="badge new">new</span></h3>
+  <h3><span class="l-en">Camera effects in keys</span><span class="l-ru">Эффекты камеры в ключах</span></h3>
   <p class="l-en">A camera key also holds its effects — depth of field, exposure — so the focus can travel from one actor to another. With Auto key on, flying a camera you look through (<kbd>V</kbd>) or changing it keys it.</p>
   <p class="l-ru">Ключ камеры хранит и её эффекты — глубину резкости, экспозицию, — так что фокус может переходить с одного актёра на другого. С Auto key полёт камеры, через которую вы смотрите (<kbd>V</kbd>), или её изменение ставит ключ.</p>
   <div class="note l-en"><p>Changed a pose and it jumped back when the playhead moved? The frame had no key: without Auto key an edit between keys is not kept. Press <kbd>K</kbd> (or turn Auto key on) before moving the playhead — the editor reminds you with a hint.</p></div>
@@ -118,7 +118,7 @@
     <li>Тяните круглую ручку, чтобы самому изогнуть движение между двумя ключами — оно может проскочить и вернуться. Повороты рисуются непрерывно за пределами ±180°, поэтому оборот не прыгает.</li>
   </ul>
 
-  <h3><span class="l-en">Kinds of motion</span><span class="l-ru">Виды движения</span> <span class="badge new">new</span></h3>
+  <h3><span class="l-en">Kinds of motion</span><span class="l-ru">Виды движения</span></h3>
   <figure>
     <img src="img/a06_curves.jpg" alt="Curve editor with continuous keys">
     <figcaption class="l-en"><b>A recorded hand with Continuous keys:</b> the lines pass through the points without breaks. The strip at the bottom shows how the selected key moves — in words and with a moving ball.</figcaption>
@@ -149,9 +149,43 @@
   </div>
 </section>
 
+<!-- ============================================================ MOTION EDITOR -->
+<section class="page" id="pg-sa-motion" data-group="anim" data-en="Motion Editor" data-ru="Motion Editor">
+  <h1><span class="l-en">Motion Editor: an edit over a stretch of time</span><span class="l-ru">Motion Editor: правка целого отрезка</span> <span class="badge new">new</span></h1>
+  <p class="lede l-en">A key changes one moment. The Motion Editor, as in SFM, changes a whole stretch at once: lift an arm a little higher during the whole wave, push a walk a step aside, make a head look down for two seconds — and keep the motion smooth at both ends.</p>
+  <p class="lede l-ru">Ключ меняет один момент. Motion Editor, как в SFM, меняет целый отрезок сразу: поднять руку чуть выше на весь взмах, сдвинуть походку на шаг в сторону, опустить голову на две секунды — и оставить движение плавным с обеих сторон.</p>
+  <figure class="fit"><img src="img/a07_motion_editor.jpg" alt="Motion Editor time selection" style="--w:900px"><figcaption class="l-en"><b>A time selection</b> on the timeline (the tinted stretch at the right) and its menu (the clock button).</figcaption><figcaption class="l-ru"><b>Выделение времени</b> на таймлайне (подсвеченный отрезок справа) и его меню (кнопка с часами).</figcaption></figure>
+  <h2><span class="l-en">The time selection</span><span class="l-ru">Выделение времени</span></h2>
+  <ul class="l-en">
+    <li><kbd>Shift</kbd> + drag on the frame numbers of the timeline makes a time selection. Its middle is tinted; the curve drawn over the numbers shows how much an edit counts at every frame.</li>
+    <li>It has four edges. Between the inner two an edit counts in full; from each inner edge to the outer one it fades out — the <strong>falloff</strong>. Drag the edges on the frame numbers; edges standing together part when dragged (outwards — a falloff, inwards — a narrower middle).</li>
+    <li>The clock button of the timeline (and a right click on the frame numbers) opens its menu: from the selected keys, around the playhead, the whole animation; the falloff in frames (none, ¼, ½, 1 or 2 seconds); its shape — <em>Smooth</em> or <em>Linear</em>; select the keys inside; remove it.</li>
+    <li><kbd>Shift</kbd> + click on the frame numbers removes it. The status bar shows it while it is there.</li>
+  </ul>
+  <ul class="l-ru">
+    <li><kbd>Shift</kbd> + перетаскивание по номерам кадров таймлайна создаёт выделение времени. Его середина подсвечена; кривая над номерами показывает, насколько правка действует на каждом кадре.</li>
+    <li>У него четыре края. Между внутренними правка действует полностью; от каждого внутреннего края к внешнему она сходит на нет — это <strong>затухание</strong>. Края двигаются на номерах кадров; края, стоящие вместе, расходятся при перетаскивании (наружу — затухание, внутрь — середина уже).</li>
+    <li>Кнопка с часами на таймлайне (и ПКМ по номерам кадров) открывает его меню: по выбранным ключам, вокруг курсора, на всю анимацию; затухание в кадрах (нет, ¼, ½, 1 или 2 секунды); его форма — <em>Smooth</em> или <em>Linear</em>; выделить ключи внутри; убрать выделение.</li>
+    <li><kbd>Shift</kbd> + клик по номерам кадров убирает его. Пока оно есть, его видно в строке состояния.</li>
+  </ul>
+  <h2><span class="l-en">Editing</span><span class="l-ru">Правка</span></h2>
+  <ol class="steps l-en">
+    <li>Put the playhead inside the selection.</li>
+    <li>Change the object: move it, pose bones, change the face, a light's colour, a camera's field of view.</li>
+    <li>Press <kbd>K</kbd> (or let <em>Auto key</em> do it). The difference between the object now and what its animation gave at that frame is added to every key in the selection — in full in the middle, less and less over the falloff. Keys are added at the edges first, so nothing outside the selection moves.</li>
+  </ol>
+  <ol class="steps l-ru">
+    <li>Поставьте курсор времени внутрь выделения.</li>
+    <li>Измените объект: сдвиньте, поправьте кости, лицо, цвет света, угол обзора камеры.</li>
+    <li>Нажмите <kbd>K</kbd> (или пусть это сделает <em>Auto key</em>). Разница между объектом сейчас и тем, что давала анимация на этом кадре, добавляется ко всем ключам в выделении — полностью в середине, всё меньше в затухании. Сначала по краям добавляются ключи, поэтому снаружи выделения ничего не сдвигается.</li>
+  </ol>
+  <div class="note l-en"><p>It works for bone keys and the face track too, and one undo takes the whole edit back. A key set with <em>Bone keys</em> on and a bone selected stays an ordinary bone key.</p></div>
+  <div class="note l-ru"><p>Работает и для ключей костей, и для дорожки лица; одна отмена возвращает всю правку. Ключ, поставленный с включёнными <em>Bone keys</em> и выделенной костью, остаётся обычным ключом кости.</p></div>
+</section>
+
 <!-- ============================================================ SA CUTS -->
 <section class="page" id="pg-sa-cuts" data-group="anim" data-en="Camera cuts and the player" data-ru="Смены камер и плеер">
-  <h1><span class="l-en">Camera cuts and the player</span><span class="l-ru">Смены камер и плеер</span> <span class="badge new">new</span></h1>
+  <h1><span class="l-en">Camera cuts and the player</span><span class="l-ru">Смены камер и плеер</span></h1>
   <p class="lede l-en">The <strong>Cameras</strong> row at the top of the timeline says which scene camera the animation is watched through, from which frame on — like shots in a film. The player and the video follow it.</p>
   <p class="lede l-ru">Строка <strong>Cameras</strong> вверху таймлайна говорит, через какую камеру сцены смотреть анимацию и с какого кадра, — как планы в фильме. Плеер и видео следуют ей.</p>
   <figure>
@@ -186,11 +220,11 @@
 
 <!-- ============================================================ SA RECORD -->
 <section class="page" id="pg-sa-record" data-group="anim" data-en="Record gameplay" data-ru="Запись игры">
-  <h1><span class="l-en">Record gameplay (machinima)</span><span class="l-ru">Запись игры (машинима)</span> <span class="badge new">new</span></h1>
+  <h1><span class="l-en">Record gameplay (machinima)</span><span class="l-ru">Запись игры (машинима)</span></h1>
   <p class="lede l-en">Instead of posing every frame you can simply play: walk, run, shoot, let the NPCs around do their thing. The take becomes ordinary keys, sounds and effects that you edit like any animation.</p>
   <p class="lede l-ru">Вместо того чтобы позировать каждый кадр, можно просто играть: ходить, бегать, стрелять, пусть NPC вокруг делают своё. Дубль становится обычными ключами, звуками и эффектами, которые правятся как любая анимация.</p>
   <div class="row">
-    <figure class="fit"><img src="img/a06_rec_window.jpg" alt="Record gameplay window" style="--w:420px"></figure>
+    <figure class="fit"><img src="img/a07_rec_window.jpg" alt="Record gameplay window" style="--w:420px"></figure>
     <div style="flex:1 1 280px;min-width:0">
       <ol class="steps l-en">
         <li>Put the playhead where the take should start. Open <span class="ui">Record gameplay</span> (the webcam button of the timeline or <span class="ui">File → Record gameplay…</span>) and choose what to record: the NPCs within a radius, sounds, effects, how often a key is taken.</li>
@@ -211,6 +245,27 @@
   </figure>
   <p class="l-en">You become a ragdoll of your player model (skin, bodygroups, player colour) with the weapon in your hand, every NPC gets its weapon, rockets and grenades fly as models, sounds go onto the timeline. Then edit it like any animation: delete keys, fix a pose (with bone keys — one arm), add cameras and cuts, record another take on top.</p>
   <p class="l-ru">Вы становитесь рэгдоллом своей модели игрока (скин, бодигруппы, цвет игрока) с оружием в руке, каждый NPC — со своим оружием, ракеты и гранаты летят моделями, звуки ложатся на таймлайн. Дальше правьте как любую анимацию: удаляйте ключи, исправляйте позу (с ключами костей — одну руку), добавляйте камеры и смены, записывайте поверх ещё дубль.</p>
+  <h2><span class="l-en">Your view as a camera</span><span class="l-ru">Ваш вид как камера</span> <span class="badge new">new</span></h2>
+  <p class="l-en"><em>Record my view as a camera (first person)</em>, on by default: what you saw while playing — where you looked, how you turned, the zoom — becomes the scene camera <em>&lt;your name&gt; view (rec)</em>, keyed along the take. If the animation has no camera cuts yet, it becomes the first one, so the player and the video go through your eyes at once. Your own body, what you hold and PAC3 outfits are not drawn in that camera, as in the game; from other cameras they are seen as usual. The first-person weapon (the viewmodel) is not recorded.</p>
+  <p class="l-ru"><em>Record my view as a camera (first person)</em>, включено по умолчанию: то, что вы видели во время игры, — куда смотрели, как поворачивались, зум — становится камерой сцены <em>&lt;ваш ник&gt; view (rec)</em> с ключами по всему дублю. Если смен камер в анимации ещё нет, она становится первой, и плеер и видео сразу идут вашими глазами. Ваше тело, то, что в руках, и наряды PAC3 в этой камере не рисуются, как в игре; с других камер всё видно как обычно. Оружие от первого лица (viewmodel) не записывается.</p>
+
+  <h2><span class="l-en">Doors, lifts and buttons</span><span class="l-ru">Двери, лифты и кнопки</span> <span class="badge new">new</span></h2>
+  <p class="l-en">Doors, lifts, trains, buttons and other moving parts within the radius are recorded too — of the map and, since a0.7.1, those spawned by door tools and addons. A door you opened during the take opens in the animation at the same moment. <em>Remove all animation</em>, a cleanup and loading a scene put them back where the take found them. Map doors are saved with the scene for its map; spawned ones are found again only while they exist.</p>
+  <p class="l-ru">Двери, лифты, поезда, кнопки и другие движущиеся части в радиусе тоже записываются — карты и, с a0.7.1, заспавненные инструментами дверей и аддонами. Дверь, которую вы открыли во время дубля, открывается в анимации в тот же момент. <em>Remove all animation</em>, очистка карты и загрузка сцены возвращают их туда, где их застал дубль. Двери карты сохраняются со сценой для её карты; заспавненные находятся снова, только пока существуют.</p>
+
+  <h2><span class="l-en">Physics of ragdolls and props</span><span class="l-ru">Физика рэгдоллов и пропов</span> <span class="badge new">new</span></h2>
+  <figure class="fit"><img src="img/a07_physics.jpg" alt="Physics recording" style="--w:900px"></figure>
+  <ul class="l-en">
+    <li><strong>Record physics only (stay in the editor):</strong> select ragdolls or props (nothing selected — all of them), put the playhead where the fall starts and press it. They are let go and fall, roll and collide; <em>Stop</em> (or <kbd>Backspace</kbd>) writes their keys from that frame on.</li>
+    <li><strong>In a game take:</strong> <em>Physics of the scene → Selected / All ragdolls and props</em>. They are unfrozen for the take — throw them with the physics gun, shoot them — and get their own keys next to the recorded player and NPCs.</li>
+    <li>The keys go onto the objects themselves (their old keys inside the take are replaced). Locked and attached objects are not moved.</li>
+  </ul>
+  <ul class="l-ru">
+    <li><strong>Record physics only (stay in the editor):</strong> выделите рэгдоллы или пропы (ничего не выделено — все), поставьте указатель туда, где начинается падение, и нажмите кнопку. Они отпускаются и падают, катятся, сталкиваются; <em>Stop</em> (или <kbd>Backspace</kbd>) записывает их ключи начиная с этого кадра.</li>
+    <li><strong>В записи игры:</strong> <em>Physics of the scene → Selected / All ragdolls and props</em>. На время дубля они размораживаются — бросайте их физганом, стреляйте — и получают свои ключи рядом с записанными игроком и NPC.</li>
+    <li>Ключи пишутся на сами объекты (их прежние ключи внутри дубля заменяются). Закреплённые и привязанные объекты не двигаются.</li>
+  </ul>
+
   <div class="warn l-en"><p>Not recorded: fingers (the hands keep their rest grip), the faces of the actors, effects the engine draws by itself (bullet holes, the muzzle flashes of HL2 weapons). An NPC whose body the game removes on death is hidden after its last frame; ragdolls of dead NPCs that stay are followed.</p></div>
   <div class="warn l-ru"><p>Не записываются: пальцы (кисти остаются в спокойном хвате), лица актёров, эффекты, которые движок рисует сам (дырки от пуль, вспышки выстрелов оружия HL2). NPC, чьё тело игра убирает при смерти, скрывается после своего последнего кадра; оставшиеся рэгдоллы погибших NPC отслеживаются.</p></div>
 </section>
@@ -251,7 +306,7 @@
   <div class="warn l-en"><p>“This model has another skeleton” means the source model's bones do not match the character. Choose a source made for the same skeleton (most humans in GMod use ValveBiped).</p></div>
   <div class="warn l-ru"><p>«This model has another skeleton» значит, что кости модели-источника не совпадают с персонажем. Выберите источник под тот же скелет (большинство людей в GMod используют ValveBiped).</p></div>
 
-  <h2><span class="l-en">Ready motions and animation packs</span><span class="l-ru">Готовые движения и паки анимаций</span> <span class="badge new">new</span></h2>
+  <h2><span class="l-en">Ready motions and animation packs</span><span class="l-ru">Готовые движения и паки анимаций</span></h2>
   <ul class="l-en">
     <li><strong>Ready motion</strong> (the walking figure button): a motion for the selected character, or a camera move — dolly, orbit, pan — for a camera, placed at the playhead.</li>
     <li><span class="ui">Source → Animation pack of an addon…</span> in the import window: pick an addon (Workshop or a folder in <code>garrysmod/addons</code>), then a model of it — animation packs are models that hold only animations. Its animations are offered when the skeletons share bone names.</li>
@@ -315,6 +370,7 @@
       </ul>
     </div>
   </div>
+  <figure class="fit"><img src="img/a07_sound_pick.jpg" alt="Choose a sound" style="--w:900px"><figcaption class="l-en"><b>Choose a sound</b> (a0.7): the game's file browser for interface sounds, notification sounds and <em>Replace the sound…</em> — a click plays, a double click chooses.</figcaption><figcaption class="l-ru"><b>Choose a sound</b> (a0.7): файловый браузер игры для звуков интерфейса, уведомлений и <em>Replace the sound…</em> — щелчок прослушивает, двойной щелчок выбирает.</figcaption></figure>
   <h2><span class="l-en">Sounds on the timeline</span><span class="l-ru">Звуки на таймлайне</span></h2>
   <p class="l-en">Every sound is a blue bar under the objects; the same file from the same source shares one row (a burst of shots is one row). Drag a bar to move it in time. Right-click it for:</p>
   <p class="l-ru">Каждый звук — синяя полоса под объектами; один файл от одного источника делит одну строку (очередь выстрелов — одна строка). Перетаскивайте полосу, чтобы сдвинуть её во времени. Правый щелчок открывает:</p>
@@ -323,12 +379,14 @@
     <dt>Volume · Speed and pitch · Distance of full volume</dt><dd>10–200 %, 50–200 %, 50–2400 units.</dd>
     <dt>Fade in · Fade out</dt><dd>0.1–4 s; drawn as a slope at the end of the bar, heard in playback and in the video.</dd>
     <dt>Start at the current frame · Duplicate · Remove the sound</dt><dd>As named.</dd>
+    <dt>Replace the sound… <span class="badge new">new</span></dt><dd>Picks another file in the sound browser; the clip keeps its place, source, volume and fades.</dd>
   </dl>
   <dl class="defs l-ru">
     <dt>Listen · Comes from · Voice</dt><dd>Прослушать; сменить объект-источник или сделать слышимым везде; переключить голос.</dd>
     <dt>Volume · Speed and pitch · Distance of full volume</dt><dd>10–200 %, 50–200 %, 50–2400 единиц.</dd>
     <dt>Fade in · Fade out</dt><dd>0,1–4 с; рисуется наклоном на конце полосы, слышно при воспроизведении и в видео.</dd>
     <dt>Start at the current frame · Duplicate · Remove the sound</dt><dd>Начать с текущего кадра, дублировать, удалить.</dd>
+    <dt>Replace the sound… <span class="badge new">new</span></dt><dd>Выбирает другой файл в браузере звуков; клип сохраняет место, источник, громкость и затухания.</dd>
   </dl>
   <h3><span class="l-en">Cutting and trimming</span><span class="l-ru">Разрезание и обрезка</span></h3>
   <ul class="l-en">
@@ -341,7 +399,7 @@
     <li>Меню: <em>Разрезать по курсору</em>, <em>Обрезать начало до курсора</em>, <em>Обрезать конец от курсора</em>, <em>Вернуть звук целиком</em>.</li>
     <li>Обрезка работает при воспроизведении и в звуковой дорожке видео; несколько миллисекунд затухания на срезе убирают щелчки.</li>
   </ul>
-  <h2><span class="l-en">Lip sync</span><span class="l-ru">Липсинк</span> <span class="badge new">new</span></h2>
+  <h2><span class="l-en">Lip sync</span><span class="l-ru">Липсинк</span></h2>
   <p class="l-en">Right-click a voice sound → <em>Lip sync</em> → the character. The mouth follows the phonemes written in the WAV (as Faceposer and Source Filmmaker write them; voices of Valve games have them), otherwise the loudness of the sound (MP3 and OGG too). The keys go to the character's Face row; the rest of the face is kept. Too strong or too weak: <em>Lip sync → How wide the mouth opens</em>, then run it again.</p>
   <p class="l-ru">ПКМ по звуку голоса → <em>Lip sync</em> → персонаж. Рот двигается по фонемам, записанным в WAV (как их пишут Faceposer и Source Filmmaker; они есть у голосов игр Valve), а если их нет — по громкости звука (MP3 и OGG тоже). Ключи ложатся в строку лица персонажа; остальное лицо не трогается. Слишком сильно или слабо: <em>Lip sync → How wide the mouth opens</em>, затем запустите заново.</p>
   <div class="warn l-en"><p>Only uncompressed WAV gets into the rendered video. MP3 and OGG play in the editor but are left out of the video (the render tells you which ones). Convert them to WAV first.</p></div>
@@ -351,16 +409,23 @@
 <!-- ============================================================ SA RENDER -->
 <section class="page" id="pg-sa-render" data-group="anim" data-en="Video" data-ru="Видео">
   <h1><span class="l-en">Rendering an animation to video</span><span class="l-ru">Рендер анимации в видео</span></h1>
-  <p class="lede l-en">When the scene has an animation, the Render window offers <em>The whole animation</em> or <em>Only the current frame</em>, and a video format.</p>
-  <p class="lede l-ru">Если в сцене есть анимация, окно рендера предлагает <em>The whole animation</em> (всю анимацию) или <em>Only the current frame</em> (текущий кадр), а также формат видео.</p>
-  <p class="l-en">The video is one AVI file <code>renders/&lt;name&gt;.avi.dat</code> with sound (MJPEG). Remove <code>.dat</code> from the name — it is a regular AVI any player opens; a video over 1.9 GB continues in a second file. <span class="badge new">new</span> Since a0.6 only AVI is written: the JPEG / PNG frame sequences and the chosen-frames mode are gone (a single frame is still <em>Only the current frame</em>).</p>
-  <p class="l-ru">Видео — один файл AVI <code>renders/&lt;имя&gt;.avi.dat</code> со звуком (MJPEG). Уберите <code>.dat</code> из имени — это обычный AVI, который откроет любой плеер; видео больше 1,9 ГБ продолжается во втором файле. <span class="badge new">new</span> С a0.6 пишется только AVI: последовательности кадров JPEG / PNG и режим выбранных кадров убраны (один кадр по-прежнему — <em>Only the current frame</em>).</p>
+  <p class="lede l-en">A scene with animation renders on the <em>Animation</em> tab of the Render window; the <em>Picture</em> tab renders one still of the current frame instead.</p>
+  <p class="lede l-ru">Сцена с анимацией рендерится на вкладке <em>Animation</em> окна рендера; вкладка <em>Picture</em> вместо этого снимает один кадр — текущий.</p>
+  <figure class="fit"><img src="img/a07_render_video.jpg" alt="Animation tab of the Render window" style="--w:900px"><figcaption class="l-en"><b>The Animation tab</b> with the four shots of demo_a07.</figcaption><figcaption class="l-ru"><b>Вкладка Animation</b> с четырьмя планами demo_a07.</figcaption></figure>
+  <p class="l-en">The video is one AVI file <code>renders/&lt;name&gt;.avi.dat</code> with sound (MJPEG). Remove <code>.dat</code> from the name — it is a regular AVI any player opens; a video over 1.9 GB continues in a second file.</p>
+  <p class="l-ru">Видео — один файл AVI <code>renders/&lt;имя&gt;.avi.dat</code> со звуком (MJPEG). Уберите <code>.dat</code> из имени — это обычный AVI, который откроет любой плеер; видео больше 1,9 ГБ продолжается во втором файле.</p>
   <dl class="defs l-en">
-    <dt>Camera <span class="badge new">new</span></dt><dd><em>As the animation switches cameras</em> (the <a href="#sa-cuts">Cameras row</a>), the Primary Viewport, or one scene camera.</dd>
+    <dt>Frames <span class="badge new">new</span></dt><dd>The whole animation or a part (from – to). The player under the preview shows any moment of the video before you render it.</dd>
+    <dt>Video file <span class="badge new">new</span></dt><dd>AVI, or on Windows <strong>WebM</strong>: the game's own video writer makes a ready <code>garrysmod/videos/&lt;name&gt;.webm</code> (no renaming, smaller). It is at most the size of the screen, its width rounded down to a multiple of 16; the game writes no sound into it, so the sound goes next to it as <code>data/speditor/renders/&lt;name&gt;.wav</code> — put both into a video editor. On Linux the writer makes no file, so there it is AVI only.</dd>
+    <dt>Cameras of the video <span class="badge new">new</span></dt><dd><em>The shots below</em> — a list of shots right in the window: <em>Add a shot at the current frame</em> takes the camera you look through or have selected; each shot can get another camera or start frame, the arrow jumps to it. The shots are the same as the <a href="#sa-cuts">Cameras row</a> of the timeline. Or shoot the whole video through one camera or the Primary Viewport.</dd>
   </dl>
   <dl class="defs l-ru">
-    <dt>Camera <span class="badge new">new</span></dt><dd><em>As the animation switches cameras</em> (<a href="#sa-cuts">строка Cameras</a>), основной вьюпорт или одна камера сцены.</dd>
+    <dt>Frames <span class="badge new">new</span></dt><dd>Вся анимация или её часть (с – по). Плеер под превью показывает любой момент видео до рендера.</dd>
+    <dt>Video file <span class="badge new">new</span></dt><dd>AVI или на Windows <strong>WebM</strong>: встроенная запись видео игры делает готовый <code>garrysmod/videos/&lt;имя&gt;.webm</code> (без переименования, меньше). Он не больше размера экрана, ширина округляется вниз до кратной 16; звук игра в него не пишет, он ложится рядом в <code>data/speditor/renders/&lt;имя&gt;.wav</code> — соедините их в видеоредакторе. На Linux запись не создаёт файла, там только AVI.</dd>
+    <dt>Cameras of the video <span class="badge new">new</span></dt><dd><em>The shots below</em> — список планов прямо в окне: <em>Add a shot at the current frame</em> берёт камеру, через которую вы смотрите, или выделенную; у каждого плана можно сменить камеру и первый кадр, стрелка переходит к нему. Планы — то же, что <a href="#sa-cuts">строка Cameras</a> на таймлайне. Или снимайте всё видео одной камерой или основным вьюпортом.</dd>
   </dl>
+  <p class="l-en">The window follows the loaded scene: after another scene is loaded the frames, the cameras and the file name (if its field is empty) are that scene's.</p>
+  <p class="l-ru">Окно следует за загруженной сценой: после загрузки другой сцены кадры, камеры и имя файла (если поле пустое) — уже её.</p>
   <dl class="defs l-en">
     <dt>Video size</dt><dd>Five JPEG levels: Largest (100), Normal (90), smaller by 40 % (70), by 65 % (50), by 80 % (30). Frames that did not change are not written twice.</dd>
     <dt>Shadow / DoF passes</dt><dd>All (as in a still), Half or Quarter — fewer passes render several times faster.</dd>
@@ -379,6 +444,9 @@
       <p class="l-ru">Больше кадров — дольше рендер: 60 к/с — в два с половиной раза больше кадров, чем 24.</p>
     </div>
   </div>
+  <h2><span class="l-en">Motion blur</span><span class="l-ru">Размытие движения</span> <span class="badge new">new</span></h2>
+  <p class="l-en">As a film camera sees it: every frame of the video becomes the mean of several moments around it (4, 8 or 16), so fast motion leaves a trail and a pan stays smooth. <em>Shutter</em> says how long the shutter stays open in a frame: <strong>180°</strong> is the usual film look, 360° the longest blur, 90° a sharper, staccato motion. The render takes as many times longer as there are moments.</p>
+  <p class="l-ru">Как видит киноплёнка: каждый кадр видео становится средним из нескольких моментов вокруг него (4, 8 или 16), поэтому быстрое движение оставляет след, а панорама остаётся плавной. <em>Shutter</em> — сколько времени кадра затвор открыт: <strong>180°</strong> — обычный кинематографичный вид, 360° — самое сильное размытие, 90° — резкое, «рваное» движение. Рендер идёт во столько раз дольше, сколько моментов на кадр.</p>
   <p class="l-en">Size, smoothing, depth of field and camera effects come from the same Render window. A progress line appears on the timeline; <em>Stop the animation render</em> cancels it.</p>
   <p class="l-ru">Размер, сглаживание, глубина резкости и эффекты камеры берутся из того же окна рендера. На таймлайне появляется строка прогресса; <em>Stop the animation render</em> отменяет рендер.</p>
   <h2><span class="l-en">Making an MP4</span><span class="l-ru">Как получить MP4</span></h2>

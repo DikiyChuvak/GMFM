@@ -9,6 +9,61 @@ local function restoreCursor()
 	if IsValid(wp) then wp:SetCursor("arrow") end
 end
 
+-- The game HUD (cl_drawhud) is turned off by the editor and by SAeditor's show. Both used to
+-- switch it on their own: the show remembered the HUD as "off" when it started right after
+-- the editor had closed (a console command runs a frame later), a map change or a Lua error
+-- in another hook with the editor open left it off — players lost their HUD. Now one place
+-- counts who wants it hidden and puts back the player's own value when nobody does; the value
+-- is also kept in a file, so a new map (the Lua starts over, the game keeps cl_drawhud) and
+-- the next session get the HUD back.
+local HUD_FILE = "speditor/hud_restore.txt"
+C.hudHide = C.hudHide or {}
+
+local function hudRestoreValue()
+	local v = file.Read(HUD_FILE, "DATA")
+	return (v == "0" or v == "1") and v or nil
+end
+
+function C.HideHUD(reason, hide)
+	local had = next(C.hudHide) ~= nil
+	C.hudHide[reason] = hide and true or nil
+	local has = next(C.hudHide) ~= nil
+	if has and not had then
+		-- the player's own value, unless an earlier hiding is still waiting to be undone; the
+		-- cvar itself lags a frame behind a value just put back (C.hudJustSet)
+		local just = C.hudJustSet
+		local own = hudRestoreValue() or (just and RealTime() - just.t < 1 and just.v) or GetConVar("cl_drawhud"):GetString()
+		file.CreateDir("speditor")
+		file.Write(HUD_FILE, own == "0" and "0" or "1")
+		RunConsoleCommand("cl_drawhud", "0")
+	elseif had and not has then
+		local v = hudRestoreValue() or "1"
+		RunConsoleCommand("cl_drawhud", v)
+		C.hudJustSet = { v = v, t = RealTime() }
+		file.Delete(HUD_FILE)
+	end
+end
+
+-- the Lua has started (a new map, a reload): nothing of ours hides the HUD yet — or the
+-- file was reloaded with the editor open, and the editor's hiding is taken over
+if C.active and not C.hudHide.editor then
+	if not hudRestoreValue() then
+		file.CreateDir("speditor")
+		file.Write(HUD_FILE, "1")
+	end
+	C.hudHide.editor = true
+elseif next(C.hudHide) == nil and hudRestoreValue() then
+	RunConsoleCommand("cl_drawhud", hudRestoreValue())
+	file.Delete(HUD_FILE)
+end
+hook.Add("ShutDown", "SPeditor.RestoreHUD", function()
+	if next(C.hudHide) ~= nil then
+		C.hudHide = {}
+		RunConsoleCommand("cl_drawhud", hudRestoreValue() or "1")
+		file.Delete(HUD_FILE)
+	end
+end)
+
 concommand.Add("speditor_toggle", function()
 	C.SendToggle(not C.active)
 end)
@@ -36,13 +91,13 @@ hook.Add("SPeditor_StateChanged", "SPeditor.Entry", function(on)
 	if on then
 		C.InitCamera()
 		gui.EnableScreenClicker(true)
-		RunConsoleCommand("cl_drawhud", "0")
+		C.HideHUD("editor", true)
 		if SPeditor.UI and SPeditor.UI.Open then SPeditor.UI.Open() end
 	else
 		C.StopViewCamera()
 		C.Select(nil)
 		C.camMode = nil
-		RunConsoleCommand("cl_drawhud", "1")
+		C.HideHUD("editor", false)
 		if SPeditor.UI and SPeditor.UI.Close then SPeditor.UI.Close() end
 		gui.EnableScreenClicker(false)
 		restoreCursor()
@@ -66,9 +121,10 @@ hook.Add("PopulateToolMenu", "SPeditor.QMenu", function()
 		p:ClearControls()
 		local row = vgui.Create("DComboBox")
 		local cur = GetConVarString("speditor_language") or "en"
-		row:SetValue(cur == "ru" and "Русский" or "English")
-		row:AddChoice("English", "en")
-		row:AddChoice("Русский", "ru")
+		local info = SPeditor.LanguageInfo(cur)
+		row:SetValue(info and info.name or cur)
+		-- the built-in languages and the installed language packs
+		for _, l in ipairs(SPeditor.Languages) do row:AddChoice(l.name, l.code) end
 		row.OnSelect = function(_, _, text, data)
 			RunConsoleCommand("speditor_language", data)
 		end
@@ -140,7 +196,7 @@ end)
 -- Editor hotkeys: the keys are set in Interface settings → Keys (cl_keys.lua)
 local PRESS = {
 	"undo", "redo", "redo2", "duplicate", "pose_copy", "pose_paste", "gizmo_move", "gizmo_rotate", "gizmo_scale",
-	"gizmo_space", "focus", "camview", "skeleton", "ik", "delete",
+	"gizmo_space", "focus", "camview", "skeleton", "ik", "stretch", "delete",
 	"list_select_all", "list_copy", "list_paste",
 }
 local ACTIONS = {
@@ -164,8 +220,12 @@ local ACTIONS = {
 	end,
 	skeleton = function() C.showSkeleton = not C.showSkeleton end,
 	ik = function()
-		C.gizmo.ik = not C.gizmo.ik
+		C.SetIK(not C.gizmo.ik)
 		SPeditor.Notify(C.gizmo.ik and L("ik_hint") or L("ik_off"), 0)
+	end,
+	stretch = function()
+		C.SetStretch(not C.gizmo.stretch)
+		SPeditor.Notify(C.gizmo.stretch and L("stretch_hint") or L("stretch_off"), 0)
 	end,
 	delete = function() if IsValid(C.selected) then C.DeleteSelection() end end,
 	list_select_all = function() C.SelectAll() end,
@@ -182,7 +242,7 @@ hook.Add("Think", "SPeditor.Hotkeys", function()
 	end
 	local focus = vgui.GetKeyboardFocus()
 	local blocked = (IsValid(focus) and focus ~= vgui.GetWorldPanel()) or C.camMode ~= nil or C.Keys.capturing ~= nil
-	SPeditor.Mods.RunHotkeys(blocked)
+	SPeditor.Components.RunHotkeys(blocked)
 	if blocked then return end
 	-- one key press, one action: over the object list its own keys win, elsewhere they are
 	-- not used; otherwise the first in the list wins if two actions share a key

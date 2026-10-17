@@ -26,7 +26,22 @@ local COL_VIEWRING = Color(235, 235, 235)
 local COL_BALL     = Color(255, 255, 255, 60)
 
 C.gizmo = C.gizmo or {}
-if C.gizmo.ik == nil then C.gizmo.ik = false end
+-- IK is on from the start (a0.7: people took a limb that would not bend as a bug) and the
+-- choice is remembered
+local cvIK = CreateClientConVar("speditor_ik", "1", true, false)
+if C.gizmo.ik == nil then C.gizmo.ik = cvIK:GetBool() end
+function C.SetIK(on)
+	C.gizmo.ik = on and true or false
+	RunConsoleCommand("speditor_ik", on and "1" or "0")
+end
+-- Stretch (T): Move takes a bone away from its parent — the bone's own offset (a manip
+-- value), as in SFM — instead of moving its physics body; the limb grows longer or shifts
+local cvStretch = CreateClientConVar("speditor_stretch", "0", true, false)
+if C.gizmo.stretch == nil then C.gizmo.stretch = cvStretch:GetBool() end
+function C.SetStretch(on)
+	C.gizmo.stretch = on and true or false
+	RunConsoleCommand("speditor_stretch", on and "1" or "0")
+end
 if C.gizmo.ikFeet == nil then C.gizmo.ikFeet = true end
 
 -- plane handles: index 4 + i is the plane across axis i (spanned by the other two axes)
@@ -89,8 +104,8 @@ local function getTarget()
 	if not p then return nil end
 	local physIdx = C.PhysIndexOfBone(ent, C.selBone)
 	-- a physics object cannot change its size: the scale of any bone (a hand, the head)
-	-- is a bone manip value, like for clavicles and fingers
-	if C.gizmo.mode == "scale" then physIdx = nil end
+	-- is a bone manip value, like for clavicles and fingers; so is a stretch
+	if C.gizmo.mode == "scale" or (C.gizmo.stretch and C.gizmo.mode == "move") then physIdx = nil end
 	return {
 		kind = physIdx and "phys" or "manip",
 		ent = ent, bone = C.selBone, physIdx = physIdx, pos = p, ang = a,
@@ -241,7 +256,7 @@ end
 -- model) is posed by bone offsets. A hand / foot pulls its two parent bones; their new turns
 -- become manip angles (the bone's own turn on top of the animation pose: local = rest * manip).
 local function manipIKChain(tgt)
-	if not C.gizmo.ik or tgt.kind ~= "manip" or C.IsRagdoll(tgt.ent) then return nil end
+	if not C.gizmo.ik or C.gizmo.stretch or tgt.kind ~= "manip" or C.IsRagdoll(tgt.ent) then return nil end
 	if not SPeditor.IK.IsEndEffector(tgt.ent:GetBoneName(tgt.bone)) then return nil end
 	local mid = tgt.ent:GetBoneParent(tgt.bone)
 	local root = mid and mid >= 0 and tgt.ent:GetBoneParent(mid)
@@ -894,6 +909,15 @@ hook.Add("Think", "SPeditor.GizmoInput", function()
 		return
 	end
 	local g = C.gizmo
+	-- the window lost focus (Alt+Tab, minimized): the drag ends where it is (the release may
+	-- never reach the game), and a new press counts only after the button is seen released
+	if not system.HasFocus() then
+		if g.drag then
+			if g.drag.ball and g.drag.total == 0 then g.drag = nil else endDrag() end
+		end
+		lmbPrev = true
+		return
+	end
 	local lmb = input.IsMouseDown(MOUSE_LEFT)
 	local alt = input.IsKeyDown(KEY_LALT) or input.IsKeyDown(KEY_RALT)
 	local hovering = C.MouseInViewport() and not C.camMode

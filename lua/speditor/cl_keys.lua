@@ -3,7 +3,7 @@ SPeditor — key bindings (Interface settings → Keys).
 
 Every editor action that has a key is listed in K.LIST with its default. The player's
 changes are kept in data/speditor/keys.json (only the ones that differ from the default).
-Mod hotkeys (MOD:AddHotkey) can be changed too: their id is "mod:" .. hotkey id.
+Component hotkeys (COMP:AddHotkey, SAeditor) can be changed too: their id is "comp:" .. hotkey id.
 
 A bind = { key = KEY_* / MOUSE_*, ctrl = bool, shift = bool, alt = bool }, or false (no key).
 Kinds of actions:
@@ -49,6 +49,7 @@ K.LIST = {
 	{ id = "gizmo_scale",    kind = "press", group = "keys_g_gizmo",  desc = "keys_gizmo_scale",    key = KEY_4 },
 	{ id = "gizmo_space",    kind = "press", group = "keys_g_gizmo",  desc = "help_space",          key = KEY_3 },
 	{ id = "ik",             kind = "press", group = "keys_g_gizmo",  desc = "help_ik",             key = KEY_I },
+	{ id = "stretch",        kind = "press", group = "keys_g_gizmo",  desc = "help_stretch",        key = KEY_T },
 	{ id = "skeleton",       kind = "press", group = "keys_g_gizmo",  desc = "help_skeleton",       key = KEY_B },
 
 	{ id = "undo",           kind = "press", group = "keys_g_edit",   desc = "edit_undo",           key = KEY_Z, ctrl = true },
@@ -75,13 +76,13 @@ local function copyBind(b)
 	return { key = b.key, ctrl = b.ctrl and true or false, shift = b.shift and true or false, alt = b.alt and true or false }
 end
 
--- the action description of an id (built-in or a mod hotkey)
+-- the action description of an id (built-in or a component hotkey)
 function K.Action(id)
 	local a = K.ById[id]
 	if a then return a end
-	if isstring(id) and string.sub(id, 1, 4) == "mod:" then
-		local hid = string.sub(id, 5)
-		for _, h in ipairs(SPeditor.Mods and SPeditor.Mods.hotkeys or {}) do
+	if isstring(id) and string.sub(id, 1, 5) == "comp:" then
+		local hid = string.sub(id, 6)
+		for _, h in ipairs(SPeditor.Components and SPeditor.Components.hotkeys or {}) do
 			if h.id == hid then return { id = id, kind = "press", key = h.key, ctrl = h.ctrl, shift = h.shift, hotkey = h } end
 		end
 	end
@@ -104,6 +105,8 @@ local function load()
 	if not istable(t) then return end
 	for id, b in pairs(t) do
 		if isstring(id) then
+			-- until a0.6 SAeditor was a mod and its keys were saved as "mod:…"
+			if string.sub(id, 1, 4) == "mod:" then id = "comp:" .. string.sub(id, 5) end
 			if b == false then
 				K.user[id] = false
 			elseif istable(b) and isnumber(b.k) then
@@ -246,7 +249,7 @@ function K.Conflicts(id, bind)
 		if oid ~= id and okind == a.kind and oarea == a.area and K.Same(K.Get(oid), bind) then out[#out + 1] = oid end
 	end
 	for _, o in ipairs(K.LIST) do check(o.id, o.kind, o.area) end
-	for _, h in ipairs(SPeditor.Mods and SPeditor.Mods.hotkeys or {}) do check("mod:" .. h.id, "press", nil) end
+	for _, h in ipairs(SPeditor.Components and SPeditor.Components.hotkeys or {}) do check("comp:" .. h.id, "press", nil) end
 	return out
 end
 
@@ -255,7 +258,7 @@ function K.Caption(id)
 	if not a then return id end
 	if a.hotkey then
 		local h = a.hotkey
-		return (h.desc and L(h.desc) or h.id) .. "   [" .. tostring(h.mod and h.mod.name or "?") .. "]"
+		return (h.desc and L(h.desc) or h.id) .. "   [" .. tostring(h.comp and h.comp.name or "?") .. "]"
 	end
 	return L(a.desc)
 end

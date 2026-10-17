@@ -123,6 +123,12 @@ local function buildViewport(title, key, pass)
 		surface.DrawRect(0, 0, w, h)
 		local src = vp.GetSource and vp.GetSource() or nil
 		draw.SimpleText(src and src.label or L("no_camera"), "SPeditor.Time", 8, h / 2, COL.TIMECODE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		-- a camera that records its own moves: a red REC beside its name
+		if src and C.CameraRecords(src.ent) and math.floor(RealTime() * 2) % 2 == 0 then
+			surface.SetFont("SPeditor.Time")
+			local tw = surface.GetTextSize(src.label or "")
+			draw.SimpleText("● REC", "SPeditor.Time", 8 + tw + 12, h / 2, Color(230, 60, 50), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		end
 		local rw, rh = C.GetRenderSize()
 		local scene = (C.sceneName and C.sceneName ~= "") and C.sceneName or L("untitled")
 		draw.SimpleText(scene, "SPeditor.Small", w / 2, h / 2 - lineH / 2, COL.TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
@@ -155,9 +161,13 @@ local function buildViewport(title, key, pass)
 		C.gizmo.space = (C.gizmo.space == "world") and "local" or "world"
 	end, function() return C.gizmo.space == "world" end)
 	UI.IconButton(bar, "icon16/user_go.png", L("ik_hint") .. " (I)", function()
-		C.gizmo.ik = not C.gizmo.ik
+		C.SetIK(not C.gizmo.ik)
 		if C.gizmo.ik then SPeditor.Notify(L("ik_hint"), 0) end
 	end, function() return C.gizmo.ik end)
+	UI.IconButton(bar, "icon16/arrow_out.png", L("stretch_hint") .. " (" .. C.Keys.Text("stretch") .. ")", function()
+		C.SetStretch(not C.gizmo.stretch)
+		if C.gizmo.stretch then SPeditor.Notify(L("stretch_hint"), 0) end
+	end, function() return C.gizmo.stretch end)
 
 	local sep = vgui.Create("DPanel", bar)
 	sep:Dock(LEFT)
@@ -176,6 +186,24 @@ local function buildViewport(title, key, pass)
 	function() return C.showSkeleton end)
 	UI.IconButton(bar, "icon16/lightbulb.png", L("view_fullbright"), function() C.fullbright = not C.fullbright end,
 	function() return C.fullbright end)
+	if pass == "primary" then
+		-- the frame as the render makes it (cl_render.lua, R.LookOn)
+		UI.IconButton(bar, "icon16/photo.png", L("vp_look"), function()
+			local R = SPeditor.Render
+			local on = not R.LookOn()
+			R.SetLook(on)
+			SPeditor.Notify(on and "#vp_look_on_hint" or "#vp_look_off_hint", 0)
+		end, function() return SPeditor.Render.LookOn() end)
+		-- the camera looked through records its own moves (C.CameraRecords)
+		UI.IconButton(bar, "icon16/bullet_red.png", L("cam_rec"), function()
+			local cam = C.GetViewCamera() or (C.IsCamera(C.selected) and C.selected or nil)
+			if not IsValid(cam) then SPeditor.Notify("#cam_rec_need", 0) return end
+			C.SetCameraRecords(cam, not C.CameraRecords(cam))
+		end, function()
+			local cam = C.GetViewCamera() or (C.IsCamera(C.selected) and C.selected or nil)
+			return C.CameraRecords(cam)
+		end)
+	end
 
 	local gear = UI.IconButton(bar, "icon16/cog.png", L("col_settings"), function()
 		local m = SPeditor.UI.Menu()
@@ -302,7 +330,7 @@ function UI.OpenHotkeys()
 					{ L("key_rmb") .. " + " .. fly .. " / " .. keys("fly_up", "fly_down"), "help_fly" },
 					{ "Alt + " .. L("key_lmb"), "help_orbit" }, { L("key_wheel"), "help_dolly" }, { "Alt + " .. L("key_wheel"), "help_fov" },
 					{ keys("gizmo_move", "gizmo_rotate", "gizmo_scale"), "help_move_rotate" }, { keys("gizmo_space"), "help_space" },
-					{ keys("select_add", "select_add2"), "help_multi" }, { keys("ik"), "help_ik" },
+					{ keys("select_add", "select_add2"), "help_multi" }, { keys("ik"), "help_ik" }, { keys("stretch"), "help_stretch" },
 					{ keys("focus"), "help_focus" }, { keys("camview"), "help_camview" }, { keys("skeleton"), "help_skeleton" }, { keys("delete"), "obj_delete" },
 					{ keys("duplicate"), "obj_duplicate" }, { keys("list_select_all", "list_copy", "list_paste"), "help_list_keys" }, { keys("pose_copy", "pose_paste"), "help_pose_clip" }, { keys("undo", "redo", "redo2"), "help_undo" },
 					{ "Shift + " .. L("key_drag"), "help_fine" },
@@ -311,13 +339,13 @@ function UI.OpenHotkeys()
 			}) do
 			list:AddLine(row[1], L(row[2]))
 		end
-		-- mod keys
-		for _, h in ipairs(SPeditor.Mods.hotkeys) do
+		-- component keys
+		for _, h in ipairs(SPeditor.Components.hotkeys) do
 			if h.desc then
-				local b = K.Get("mod:" .. h.id)
-				-- the mod's own caption of its default key ("Space"), otherwise the key name
-				local text = (h.label and K.Same(b, K.Default("mod:" .. h.id))) and h.label or K.BindText(b)
-				list:AddLine(text ~= "" and text or "—", L(h.desc) .. "   [" .. h.mod.name .. "]")
+				local b = K.Get("comp:" .. h.id)
+				-- the component's own caption of its default key ("Space"), otherwise the key name
+				local text = (h.label and K.Same(b, K.Default("comp:" .. h.id))) and h.label or K.BindText(b)
+				list:AddLine(text ~= "" and text or "—", L(h.desc) .. "")
 			end
 		end
 	end
@@ -405,7 +433,7 @@ function UI.Open()
 		m:AddOption(L("act_clear"), function()
 			Derma_Query(L("clear_confirm"), "SPeditor", L("yes"), function() C.SendCleanup() end, L("cancel"), function() end)
 		end):SetIcon("icon16/bin.png")
-		SPeditor.Mods.RunMenu("file", m)
+		SPeditor.Components.RunMenu("file", m)
 		m:AddSpacer()
 		m:AddOption(L("act_exit"), function() RunConsoleCommand("speditor_toggle") end):SetIcon("icon16/door_out.png")
 	end)
@@ -450,13 +478,13 @@ function UI.Open()
 		UI.LightKindMenu(cr)
 		cr:AddOption(L("eff_add"), function() UI.ToggleEffects() end)
 		cr:AddOption(L("rig_make"), function() C.SpawnLightRig(C.selected) end)
-		SPeditor.Mods.RunMenu("create", cr)
+		SPeditor.Components.RunMenu("create", cr)
 		m:AddSpacer()
 		keyed(m, L("edit_select_all"), K.Text("list_select_all"), function() C.SelectAll() end)
 		keyed(m, L("keys_list_copy"), K.Text("list_copy"), function() C.CopyObjects() end)
 		keyed(m, L("keys_list_paste"), K.Text("list_paste"), function() C.PasteObjects() end)
 		m:AddOption(L("edit_deselect"), function() C.Select(nil) end)
-		SPeditor.Mods.RunMenu("edit", m)
+		SPeditor.Components.RunMenu("edit", m)
 	end)
 
 	mbtn(L("menu_windows"), function(m)
@@ -467,12 +495,11 @@ function UI.Open()
 		m:AddOption(L("win_browser"), function() UI.ToggleBrowser() end)
 		m:AddOption(L("render_title"), function() UI.OpenRenderDialog() end)
 		m:AddOption(L("shaders_title"), function() UI.OpenShaders() end):SetIcon("icon16/wand.png")
-		m:AddOption(L("mods_title"), function() UI.OpenMods() end):SetIcon("icon16/plugin.png")
-		-- mod pages (MOD:AddPage)
-		for _, pg in ipairs(SPeditor.Mods.pages) do
-			m:AddOption(SPeditor.Mods.PageTitle(pg), function() UI.ShowModPage(pg.id) end):SetIcon(pg.icon or "icon16/plugin.png")
+		-- component pages (COMP:AddPage)
+		for _, pg in ipairs(SPeditor.Components.pages) do
+			m:AddOption(SPeditor.Components.PageTitle(pg), function() UI.ShowCompPage(pg.id) end):SetIcon(pg.icon or "icon16/application.png")
 		end
-		SPeditor.Mods.RunMenu("windows", m)
+		SPeditor.Components.RunMenu("windows", m)
 		m:AddSpacer()
 		UI.BuildNotifyMenu(m:AddSubMenu(L("menu_notify")))
 		local lay = m:AddSubMenu(L("menu_layout"))
@@ -505,7 +532,7 @@ function UI.Open()
 				C.SetAspect(a.id)
 			end):SetChecked(C.GetAspectDef().id == a.id and not GetConVar("speditor_render_custom"):GetBool())
 		end
-		SPeditor.Mods.RunMenu("view", m)
+		SPeditor.Components.RunMenu("view", m)
 		m:AddSpacer()
 		UI.BuildThemeMenu(m:AddSubMenu(L("menu_theme")))
 		m:AddOption(L("ui_settings") .. "…", function() UI.OpenSettings() end):SetIcon("icon16/cog.png")
@@ -519,15 +546,8 @@ function UI.Open()
 		-- the interface language: the editor is rebuilt in it at once
 		local lang, lo = m:AddSubMenu(L("qmenu_language"))
 		if lo and lo.SetIcon then lo:SetIcon("icon16/world.png") end
-		local cur = GetConVarString("speditor_language")
-		for _, l in ipairs({ { "en", "English" }, { "ru", "Русский" } }) do
-			lang:AddOption(l[2], function()
-				if cur == l[1] then return end
-				RunConsoleCommand("speditor_language", l[1])
-				timer.Simple(0.1, function() if C.active then UI.Rebuild() end end)
-			end):SetChecked(cur == l[1])
-		end
-		SPeditor.Mods.RunMenu("help", m)
+		UI.LanguageMenu(lang)
+		SPeditor.Components.RunMenu("help", m)
 		m:AddSpacer()
 		m:AddOption(L("about_title"), function() UI.OpenAbout() end):SetIcon("icon16/information.png")
 	end)
@@ -587,10 +607,10 @@ function UI.Open()
 	UI.BuildScenePage(bottom)
 	UI.BuildShadowsPage(bottom)
 	UI.BottomWin = bottom
-	-- mod pages: in the bottom window, next to the ASE, or in a window of their own (on demand)
-	for _, pg in ipairs(SPeditor.Mods.pages) do
+	-- component pages: in the bottom window, next to the ASE, or in a window of their own (on demand)
+	for _, pg in ipairs(SPeditor.Components.pages) do
 		if pg.window == "bottom" or pg.window == "left" then
-			UI.BuildModPage(pg, pg.window == "left" and left or bottom)
+			UI.BuildCompPage(pg, pg.window == "left" and left or bottom)
 		end
 	end
 	left:SelectPage("ase")
@@ -618,7 +638,7 @@ function UI.Open()
 			fpsT = RealTime() + 0.5
 			fps = math.Round(1 / math.max(RealFrameTime(), 0.0001))
 		end
-		local modText = SPeditor.Mods.StatusText()
+		local modText = SPeditor.Components.StatusText()
 		draw.SimpleText(modText ~= "" and modText or L("hint_short"), "SPeditor.Small", 8, h / 2, modText ~= "" and txt or dim,
 			TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 		local rw, rh = C.GetRenderSize()
@@ -626,7 +646,7 @@ function UI.Open()
 		if #C.multi > 0 then sel = sel .. " (+" .. #C.multi .. ")" end
 		draw.SimpleText(string.format("[ %s: %d  |  %s: %s  |  %s  |  fps: %d  |  %d×%d %s ]",
 				L("grp_models"), #C.Objects(), L("st_selected"), sel,
-				string.upper(L("st_" .. C.gizmo.mode)) .. (C.gizmo.ik and " + IK" or ""),
+				string.upper(L("st_" .. C.gizmo.mode)) .. (C.gizmo.ik and " + IK" or "") .. (C.gizmo.stretch and (" + " .. string.upper(L("stretch_on"))) or ""),
 				fps, rw, rh, SPeditor.LN("aspect_", C.GetAspectDef().name)), "SPeditor.Small", w - 8, h / 2, dim, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
 	end
 	UI.HintBar = status
@@ -686,35 +706,35 @@ function UI.Open()
 end
 
 ---------------------------------------------------------------------
--- Mod pages (MOD:AddPage, sh_mods.lua)
+-- Component pages (COMP:AddPage, sh_component.lua)
 ---------------------------------------------------------------------
-function UI.BuildModPage(pg, host)
+function UI.BuildCompPage(pg, host)
 	local page = vgui.Create("DPanel")
 	page.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.BG)
 		surface.DrawRect(0, 0, w, h)
 	end
 	if host then
-		host:AddSheet(SPeditor.Mods.PageTitle(pg), page, pg.icon or "icon16/plugin.png", pg.id)
+		host:AddSheet(SPeditor.Components.PageTitle(pg), page, pg.icon or "icon16/application.png", pg.id)
 	end
 	local ok, err = pcall(pg.build, page, host)
 	if not ok then
-		ErrorNoHalt("[SPeditor mods] " .. pg.mod.id .. ": page " .. pg.id .. ": " .. tostring(err) .. "\n")
+		ErrorNoHalt("[SPeditor] " .. pg.comp.name .. ": page " .. pg.id .. ": " .. tostring(err) .. "\n")
 		UI.Label(page, tostring(err), COL.ORANGE)
 	end
 	return page
 end
 
--- Show a mod page; a floating page is created on first use
-function UI.ShowModPage(id)
+-- Show a component page; a floating page is created on first use
+function UI.ShowCompPage(id)
 	if Dock.ShowPage(id) then return true end
-	for _, pg in ipairs(SPeditor.Mods.pages) do
+	for _, pg in ipairs(SPeditor.Components.pages) do
 		if pg.id == id then
 			local w, h = pg.w or 520, pg.h or 400
-			local win, body = Dock.Create({ key = "mod_" .. id, id = id, title = SPeditor.Mods.PageTitle(pg), w = w, h = h,
-					x = math.floor(ScrW() / 2 - w / 2), y = 120, dockable = true, floating = true, icon = pg.icon or "icon16/plugin.png" })
+			local win, body = Dock.Create({ key = "page_" .. id, id = id, title = SPeditor.Components.PageTitle(pg), w = w, h = h,
+					x = math.floor(ScrW() / 2 - w / 2), y = 120, dockable = true, floating = true, icon = pg.icon or "icon16/application.png" })
 			local ok, err = pcall(pg.build, body, win)
-			if not ok then ErrorNoHalt("[SPeditor mods] " .. pg.mod.id .. ": page " .. id .. ": " .. tostring(err) .. "\n") end
+			if not ok then ErrorNoHalt("[SPeditor] " .. pg.comp.name .. ": page " .. id .. ": " .. tostring(err) .. "\n") end
 			return true
 		end
 	end
@@ -748,7 +768,6 @@ local REOPEN = {
 	hotkeys = function() UI.OpenHotkeys() end,
 	browser = function() UI.BuildBrowser() end,
 	shaders_win = function(arg) UI.OpenShaders(arg) end,
-	mods    = function() UI.OpenMods() end,
 	notifylog = function() UI.OpenNotifyLog() end,
 	uisettings = function(arg) UI.OpenSettings(arg) end,
 	adopt = function() UI.OpenAdopt() end,

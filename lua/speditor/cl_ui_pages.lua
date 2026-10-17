@@ -197,6 +197,8 @@ function UI.BuildShadowsPage(host)
 	-- shadows from spot lights
 	local form = UI.Section(left, L("shadows_sec_lights"))
 	UI.Check(form, L("shadows_master"), Sh.IsEnabled(), function(v) Sh.SetEnabled(v) end)
+	UI.Check(form, L("shadows_onlylights"), Sh.OnlyLights(), function(v) Sh.SetOnlyLights(v) end)
+		:SetTooltip(L("shadows_onlylights_tip"))
 
 	UI.Label(form, L("shadows_quality"))
 	local q = UI.StyleCombo(vgui.Create("DComboBox", form))

@@ -194,8 +194,19 @@ hook.Add("Think", "SPeditor.CameraUpdate", function()
 	if cam.viewEnt ~= nil and not IsValid(cam.viewEnt) then C.StopViewCamera() end
 
 	local m = C.camMode
+	-- The game window lost focus (Alt+Tab, minimized): the release of the button may never
+	-- reach the game (on Windows it stays "down"), and the flight went on with the mouse of
+	-- every editor window switched off — nothing could be clicked. The navigation ends here,
+	-- and a new one starts only after the buttons are seen released.
+	if not system.HasFocus() then
+		if m then endNav() m = nil end
+		C.navWaitUp = true
+	elseif C.navWaitUp and not input.IsMouseDown(MOUSE_LEFT) and not input.IsMouseDown(MOUSE_MIDDLE)
+		and not input.IsMouseDown(MOUSE_RIGHT) then
+		C.navWaitUp = nil
+	end
 	-- FIXED: navigation only inside the Primary Viewport
-	if not m and not C.exporting and C.MouseInViewport() then
+	if not m and not C.exporting and not C.navWaitUp and C.MouseInViewport() then
 		local alt = input.IsKeyDown(KEY_LALT) or input.IsKeyDown(KEY_RALT)
 		local lmb = input.IsMouseDown(MOUSE_LEFT)
 		local mmb = input.IsMouseDown(MOUSE_MIDDLE)
@@ -404,7 +415,7 @@ end)
 -- Where a scene camera looks from: its place and angles with the shake added.
 -- The shake is a function of the scene time, not of the clock: a frame of an animation
 -- shows the same throw however many times it is drawn (depth of field and soft shadows
--- draw it dozens of times). The time comes from a mod that has one (SAeditor: the
+-- draw it dozens of times). The time comes from SAeditor when it has one (SAeditor: the
 -- playhead); without it the camera stands still.
 ---------------------------------------------------------------------
 local TAU = math.pi * 2
@@ -529,7 +540,26 @@ local FRAME_CVARS = {
 	"speditor_exposure", "speditor_aspect", "speditor_render_side", "speditor_render_custom",
 	"speditor_render_w", "speditor_render_h", "speditor_render_fullbright", "speditor_render_ss",
 	"speditor_dof", "speditor_dof_aperture", "speditor_dof_samples",
+	"speditor_ssao", "speditor_ssao_radius", "speditor_ssao_strength",
 }
+
+-- Cameras that record their own moves (a0.7): every move, turn or field of view change of
+-- such a camera sets a key at the current frame, with or without Auto key (SAeditor reads
+-- it). By UID; saved with the scene.
+C.camRecord = C.camRecord or {}
+
+function C.CameraRecords(ent)
+	return IsValid(ent) and C.IsCamera(ent) and C.camRecord[ent:GetNW2Int("SPeditor_UID", 0)] == true
+end
+
+function C.SetCameraRecords(ent, on)
+	if not IsValid(ent) or not C.IsCamera(ent) then return end
+	local uid = ent:GetNW2Int("SPeditor_UID", 0)
+	if uid == 0 then return end
+	C.camRecord[uid] = on and true or nil
+	SPeditor.Notify(on and "#cam_rec_on" or "#cam_rec_off", 0)
+	hook.Run("SPeditor_CameraRecordChanged", ent, on)
+end
 
 function C.GetSceneMeta()
 	local w = C.camera.saved or C.camera
@@ -541,14 +571,19 @@ function C.GetSceneMeta()
 	return util.TableToJSON({
 			camera = { pos = SPeditor.VecToTable(w.pos), ang = SPeditor.AngToTable(w.angles), fov = C.camera.fov },
 			frame = frame,
+			camrec = table.GetKeys(C.camRecord),
 	}) or ""
 end
 
 hook.Add("SPeditor_SceneLoaded", "SPeditor.CameraMeta", function(meta)
 	C.StopViewCamera()
 	C.Select(nil)
+	C.camRecord = {}
 	local data = util.JSONToTable(meta or "")
 	if type(data) ~= "table" then return end
+	for _, uid in ipairs(istable(data.camrec) and data.camrec or {}) do
+		if tonumber(uid) then C.camRecord[math.floor(tonumber(uid))] = true end
+	end
 	local c = data.camera
 	if type(c) == "table" then
 		local pos, ang = SPeditor.TableToVec(c.pos), SPeditor.TableToAng(c.ang)

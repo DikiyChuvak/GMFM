@@ -274,10 +274,14 @@ SKIN.colTextEntryTextCursor    = P.blue
 
 -- click sounds of the original (the GMod main menu sounds); hover sounds are left out —
 -- in the editor the cursor crosses dozens of buttons
+-- (a sound of one's own from Interface settings replaces them: UI.UISound, cl_ui_soundpick.lua)
 local SND = { accept = "garrysmod/ui_click.wav", back = "garrysmod/ui_return.wav" }
+SKIN.SPeditorSounds = true
 
 local function UISound( kind )
-	if ( kind == "focus" or GetConVarNumber( "speditor_ui_sounds" ) == 0 ) then return end
+	if ( kind == "focus" ) then return end
+	if ( SPeditor.UI.UISound ) then return SPeditor.UI.UISound( kind, SND[ kind ] or SND.accept ) end
+	if ( GetConVarNumber( "speditor_ui_sounds" ) == 0 ) then return end
 	surface.PlaySound( SND[ kind ] or SND.accept )
 end
 

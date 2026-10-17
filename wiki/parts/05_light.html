@@ -2,8 +2,8 @@
 <!-- ============================================================ LIGHTS -->
 <section class="page" id="pg-lights" data-group="scene" data-en="Lights" data-ru="Свет">
   <h1><span class="l-en">Lights</span><span class="l-ru">Свет</span></h1>
-  <p class="lede l-en">Light makes a poster. SPeditor has point lights and spot lights; spot lights cast shadows and have a soft edge, penumbra, a glow and a visible beam.</p>
-  <p class="lede l-ru">Постер делает свет. В SPeditor есть точечный свет и прожекторы; прожекторы отбрасывают тени, у них есть мягкий край, полутень, свечение и видимый луч.</p>
+  <p class="lede l-en">Light makes a poster. SPeditor has point lights and spot lights; both cast shadows, and spot lights have a soft edge, penumbra, a glow and a visible beam.</p>
+  <p class="lede l-ru">Постер делает свет. В SPeditor есть точечный свет и прожекторы; оба отбрасывают тени, а у прожекторов есть мягкий край, полутень, свечение и видимый луч.</p>
   <figure>
     <img src="img/40_lights_overview.jpg" alt="Lighting demo">
     <figcaption class="l-en"><b>Six lights:</b> a warm softbox as the key light, a blue rim light, orange “light through blinds” on the wall, a stage spot with a beam, two neon glows. The selected softbox shows its cone and its controls in the Animation Set Editor.</figcaption>
@@ -19,6 +19,15 @@
   </table></div>
   <p class="l-en">Switch a light between the two kinds with its <em>Type</em> control in the Animation Set Editor.</p>
   <p class="l-ru">Тип источника переключается полем <em>Type</em> в Animation Set Editor.</p>
+
+  <h3><span class="l-en">Shadows of a point light</span><span class="l-ru">Тени точечного света</span> <span class="badge new">new</span></h3>
+  <div class="row">
+    <figure class="fit"><img src="img/a07_point_shadows.jpg" alt="A point light casting shadows" style="--w:560px"></figure>
+    <div style="flex:1 1 260px;min-width:0">
+      <p class="l-en">A point light has a <em>Shadows</em> section in its panel. With shadows on it shines as six spot lights looking along the sides of a cube, each with its own shadow map, so it lights and shadows all around. The game has 8 shadow maps for all lights together (a spot light takes one, a point light six), so only the point light nearest to the camera gets shadows; the others shine without them.</p>
+      <p class="l-ru">У точечного света в панели есть раздел <em>Shadows</em>. С тенями он светит шестью прожекторами вдоль граней куба, у каждого своя карта теней, — свет и тени во все стороны. Карт теней в игре 8 на все источники вместе (прожектору нужна одна, точечному свету шесть), поэтому тени получает только ближайший к камере точечный свет, остальные светят без них.</p>
+    </div>
+  </div>
 
   <h2><span class="l-en">Light kinds</span><span class="l-ru">Виды света</span></h2>
   <p class="l-en"><span class="ui plain">+</span> → <span class="ui">Soft light</span> creates a light already set up for a purpose. With a light selected, the <em>Light kinds</em> list at the top of the right column turns that light into another kind.</p>
@@ -87,13 +96,14 @@
 <!-- ============================================================ SHADOWS -->
 <section class="page" id="pg-shadows" data-group="scene" data-en="Shadows" data-ru="Тени">
   <h1><span class="l-en">Shadows</span><span class="l-ru">Тени</span></h1>
-  <p class="lede l-en">The Shadows tab of the bottom window controls two different things: shadows of the editor's spot lights and the simple prop shadows the map's own lighting casts.</p>
-  <p class="lede l-ru">Вкладка Shadows нижнего окна управляет двумя разными вещами: тенями прожекторов редактора и простыми тенями пропов от освещения самой карты.</p>
-  <figure><img src="img/30_shadows.jpg" alt="Shadows tab"></figure>
+  <p class="lede l-en">The Shadows tab of the bottom window controls two different things: shadows of the editor's spot and point lights and the simple prop shadows the map's own lighting casts.</p>
+  <p class="lede l-ru">Вкладка Shadows нижнего окна управляет двумя разными вещами: тенями прожекторов и точечного света редактора и простыми тенями пропов от освещения самой карты.</p>
+  <figure><img src="img/a07_shadows_tab.jpg" alt="Shadows tab"></figure>
 
-  <h2><span class="l-en">Shadows from spot lights</span><span class="l-ru">Тени от прожекторов</span></h2>
+  <h2><span class="l-en">Shadows from spot and point lights</span><span class="l-ru">Тени от прожекторов и точечного света</span></h2>
   <dl class="defs l-en">
-    <dt>Spot lights cast shadows</dt><dd>The master switch.</dd>
+    <dt>Lights cast shadows</dt><dd>The master switch.</dd>
+    <dt>Objects: shadows only from spot and point lights <span class="badge new">new</span></dt><dd>On by default: while the editor is open, props and characters of the scene drop no grey blob from the map's sun, only the real shadows of your lights.</dd>
     <dt>Shadow map quality</dt><dd>Low, Medium, High, Ultra. The engine reads it at start: after a change you may need <code>vid_restart</code> or the launch option <code>+r_flashlightdepthres 2048</code>.</dd>
     <dt>Max shadow-casting lights</dt><dd>Only the N lights nearest to the camera cast shadows. The line below shows how many cast now.</dd>
     <dt>Shadow draw distance</dt><dd>A light whose lit area is farther than this casts no shadow (0 = unlimited). Saves FPS in large scenes.</dd>
@@ -101,7 +111,8 @@
     <dt>Slope bias (global)</dt><dd>Removes stripes on surfaces lit at a shallow angle; each light can override it.</dd>
   </dl>
   <dl class="defs l-ru">
-    <dt>Spot lights cast shadows</dt><dd>Общий выключатель.</dd>
+    <dt>Lights cast shadows</dt><dd>Общий выключатель.</dd>
+    <dt>Objects: shadows only from spot and point lights <span class="badge new">new</span></dt><dd>Включено по умолчанию: пока редактор открыт, пропы и персонажи сцены не бросают серое пятно от солнца карты — только настоящие тени ваших источников.</dd>
     <dt>Shadow map quality</dt><dd>Low, Medium, High, Ultra. Движок читает значение при запуске: после изменения может понадобиться <code>vid_restart</code> или параметр запуска <code>+r_flashlightdepthres 2048</code>.</dd>
     <dt>Max shadow-casting lights</dt><dd>Тени отбрасывают только N ближайших к камере источников. Строка ниже показывает, сколько их сейчас.</dd>
     <dt>Shadow draw distance</dt><dd>Источник, освещённая область которого дальше этого расстояния, теней не даёт (0 — без ограничения). Экономит FPS в больших сценах.</dd>
@@ -125,14 +136,22 @@
     <li><span class="ui plain">+</span> → <span class="ui">Spawn Camera</span> creates a camera exactly at the work camera's position and angle.</li>
     <li><strong>Match camera to work view</strong> (object menu) moves an existing camera to where you look now.</li>
     <li><strong>Aim camera at object…</strong> turns it towards any object.</li>
+    <li><span class="badge new">new</span> <strong>Aim at… → Keep looking at</strong> makes the camera (or a light) keep turning to the object — the head of a character, the middle of a prop — while the animation moves either of them. Its place stays yours (keys, flying, attaching); the object tree shows <em>looks at …</em> next to it. <strong>Stop looking at</strong> in the same menu. It is saved with the scene.</li>
     <li>Move and rotate it with the gizmo like any object.</li>
   </ul>
+  <figure><img src="img/a07_look_at.jpg" alt="A camera keeps looking at the walking hero"></figure>
+  <figure class="fit"><img src="img/a07_aim_menu.jpg" alt="Aim at… → Keep looking at" style="--w:700px"><figcaption class="l-en"><b>Aim at… → Keep looking at → Hero:</b> the Secondary Viewport looks through the camera that follows him.</figcaption><figcaption class="l-ru"><b>Aim at… → Keep looking at → Hero:</b> Secondary Viewport смотрит через камеру, которая следит за ним.</figcaption></figure>
   <ul class="l-ru">
     <li><span class="ui plain">+</span> → <span class="ui">Spawn Camera</span> создаёт камеру точно в позиции и под углом рабочей камеры.</li>
     <li><strong>Match camera to work view</strong> (меню объекта) переносит существующую камеру туда, куда вы сейчас смотрите.</li>
     <li><strong>Aim camera at object…</strong> поворачивает её к любому объекту.</li>
+    <li><span class="badge new">new</span> <strong>Aim at… → Keep looking at</strong>: камера (или свет) всё время поворачивается к объекту — к голове персонажа, к середине пропа, — пока анимация двигает любого из них. Место камеры остаётся вашим (ключи, полёт, прикрепление); в дереве объектов рядом с ней написано <em>looks at …</em>. <strong>Stop looking at</strong> — в том же меню. Сохраняется со сценой.</li>
     <li>Двигайте и вращайте её гизмо, как любой объект.</li>
   </ul>
+
+  <h2><span class="l-en">Recording a camera</span><span class="l-ru">Запись камеры</span> <span class="badge new">new</span></h2>
+  <p class="l-en">A camera can record its own moves into SAeditor keys: right-click it → <em>Record this camera's moves (keys)</em>, or press the red dot on the Primary Viewport bar while you look through it. From then on every move, turn and zoom sets a key at the current frame, even with Auto key off — play the animation and fly the camera, or step through frames and frame each shot. <em>● REC</em> blinks beside its name in the viewport header. The same menu item stops it; the choice is saved with the scene.</p>
+  <p class="l-ru">Камера может записывать свои движения в ключи SAeditor: ПКМ по ней → <em>Record this camera's moves (keys)</em> или красная точка на панели Primary Viewport, пока вы смотрите через неё. Теперь каждый перенос, поворот и зум ставит ключ на текущем кадре даже без Auto key — запустите анимацию и ведите камеру или шагайте по кадрам и выстраивайте каждый план. Рядом с её именем в заголовке вьюпорта мигает <em>● REC</em>. Тот же пункт меню выключает запись; выбор сохраняется со сценой.</p>
 
   <h2><span class="l-en">Looking through a camera</span><span class="l-ru">Взгляд через камеру</span></h2>
   <div class="row">
