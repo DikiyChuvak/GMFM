@@ -137,68 +137,68 @@ hook.Add("SPeditor_ObjectSpawned", "SPeditor.TrackSpawn", function(ent)
 	end
 end)
 
-local down = {}
-local function pressed(key)
-	local d = input.IsKeyDown(key)
-	local fired = d and not down[key]
-	down[key] = d
-	return fired
-end
-
-hook.Add("Think", "SPeditor.Hotkeys", function()
-	if not C.active then return end
-	local k1, k2, k3 = pressed(KEY_1), pressed(KEY_2), pressed(KEY_3)
-	local k4 = pressed(KEY_4)
-	local kF, kV, kB = pressed(KEY_F), pressed(KEY_V), pressed(KEY_B)
-	local kI = pressed(KEY_I)
-	local kDel, kZ    = pressed(KEY_DELETE), pressed(KEY_Z)
-	local kD, kY      = pressed(KEY_D), pressed(KEY_Y)
-	local kC          = pressed(KEY_C)
-	local focus = vgui.GetKeyboardFocus()
-	local blocked = (IsValid(focus) and focus ~= vgui.GetWorldPanel()) or C.camMode ~= nil
-	local ctrl  = input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL)
-	local shift = input.IsKeyDown(KEY_LSHIFT) or input.IsKeyDown(KEY_RSHIFT)
-	-- mod keys (MOD:AddHotkey) are always polled, so that a press made while typing does not fire later
-	SPeditor.Mods.RunHotkeys(blocked, ctrl, shift)
-	if blocked then return end
-	if ctrl then
-		if kZ then
-			if shift then C.Redo() else C.Undo() end
-		elseif kY then
-			C.Redo()
-		elseif kD and IsValid(C.selected) then
-			for _, e in ipairs(C.SelectionList()) do C.SendDuplicate(e) end
-		elseif kC then
-			C.CopyPose(C.selected)
-		elseif kV then
-			C.PastePose(C.selected)
-		end
-		return
-	end
-	if k1 then
-		C.gizmo.mode = "move"
-	elseif k2 then
-		C.gizmo.mode = "rotate"
-	elseif k4 then
-		C.gizmo.mode = "scale"
-	elseif k3 then
-		C.gizmo.space = (C.gizmo.space == "world") and "local" or "world"
-	elseif kF then
-		C.FocusSelected()
-	elseif kV then
+-- Editor hotkeys: the keys are set in Interface settings → Keys (cl_keys.lua)
+local PRESS = {
+	"undo", "redo", "redo2", "duplicate", "pose_copy", "pose_paste", "gizmo_move", "gizmo_rotate", "gizmo_scale",
+	"gizmo_space", "focus", "camview", "skeleton", "ik", "delete",
+	"list_select_all", "list_copy", "list_paste",
+}
+local ACTIONS = {
+	undo = function() C.Undo() end,
+	redo = function() C.Redo() end,
+	redo2 = function() C.Redo() end,
+	duplicate = function() C.DuplicateSelection() end,
+	pose_copy = function() C.CopyPose(C.selected) end,
+	pose_paste = function() C.PastePose(C.selected) end,
+	gizmo_move = function() C.gizmo.mode = "move" end,
+	gizmo_rotate = function() C.gizmo.mode = "rotate" end,
+	gizmo_scale = function() C.gizmo.mode = "scale" end,
+	gizmo_space = function() C.gizmo.space = (C.gizmo.space == "world") and "local" or "world" end,
+	focus = function() C.FocusSelected() end,
+	camview = function()
 		if C.GetViewCamera() then
 			C.StopViewCamera()
 		elseif C.IsCamera(C.selected) then
 			C.StartViewCamera(C.selected)
 		end
-	elseif kB then
-		C.showSkeleton = not C.showSkeleton
-	elseif kI then
+	end,
+	skeleton = function() C.showSkeleton = not C.showSkeleton end,
+	ik = function()
 		C.gizmo.ik = not C.gizmo.ik
 		SPeditor.Notify(C.gizmo.ik and L("ik_hint") or L("ik_off"), 0)
-	elseif kDel and IsValid(C.selected) then
-		C.DeleteSelection()
+	end,
+	delete = function() if IsValid(C.selected) then C.DeleteSelection() end end,
+	list_select_all = function() C.SelectAll() end,
+	list_copy = function() C.CopyObjects() end,
+	list_paste = function() C.PasteObjects() end,
+}
+
+hook.Add("Think", "SPeditor.Hotkeys", function()
+	if not C.active then return end
+	-- every key is polled each frame, so that a press made while typing does not fire later
+	local fired = {}
+	for _, id in ipairs(PRESS) do
+		if C.Keys.Fired(id) then fired[#fired + 1] = id end
 	end
+	local focus = vgui.GetKeyboardFocus()
+	local blocked = (IsValid(focus) and focus ~= vgui.GetWorldPanel()) or C.camMode ~= nil or C.Keys.capturing ~= nil
+	SPeditor.Mods.RunHotkeys(blocked)
+	if blocked then return end
+	-- one key press, one action: over the object list its own keys win, elsewhere they are
+	-- not used; otherwise the first in the list wins if two actions share a key
+	local overList = C.MouseOverObjectList()
+	local pick
+	for _, id in ipairs(fired) do
+		if C.Keys.ById[id].area == "list" then
+			if overList then
+				pick = id
+				break
+			end
+		elseif not pick then
+			pick = id
+		end
+	end
+	if pick then ACTIONS[pick]() end
 end)
 
 -- The status line and the name of the active camera are shown in the status bar and in

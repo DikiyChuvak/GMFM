@@ -306,7 +306,8 @@ end, "sound")
 
 MOD:Hook("Think", function()
 	if next(A.chans) == nil then return end
-	local playing = SA.playing and C.active and not SA.rendering
+	-- outside the editor too, while the animation is shown in the game (cl_saeditor_show.lua)
+	local playing = SA.playing and (C.active or SA.show) and not SA.rendering
 	local pos, ang
 	for _, c in ipairs(SA.sounds) do
 		local e = A.chans[c.id]
@@ -315,10 +316,15 @@ MOD:Hook("Think", function()
 			local rate = c.pitch / 100
 			local t = fileTime(c, SA.frame)                    -- the place inside the file
 			if playing and t >= c.cin and t < ch:GetLength() - c.cout - 0.03 then
-				if not pos then pos, ang = C.GetView() end
+				-- heard from where the picture is seen: outside the editor — the camera of the show
+				if not pos then
+					if SA.show then pos, ang = EyePos(), EyeAngles() else pos, ang = C.GetView() end
+				end
 				local vol, pan = SA.Spatial(c, pos, ang)
 				-- fades: seconds of the clip played and left, at its speed
 				vol = vol * SA.SoundFade(c, (t - c.cin) / rate, (ch:GetLength() - c.cout - t) / rate)
+				-- the volume of the player outside the editor (cl_saeditor_player.lua)
+				if SA.show then vol = vol * (SA.show.mute and 0 or (SA.show.vol or 1)) end
 				ch:SetVolume(vol)
 				ch:SetPan(pan)
 				ch:SetPlaybackRate(rate)
@@ -516,7 +522,7 @@ function SA.OpenSounds()
 	local W = 620
 	local win, body = Dock.Create({ key = "sa_sounds", id = "sa_sounds", title = L("sa_snd_title"), w = W, h = math.min(600, ScrH() - 140),
 			x = math.floor(ScrW() / 2 - W / 2), y = 110, dockable = false, icon = "icon16/sound.png" })
-	win.minW, win.minH = 440, 380
+	win.minW, win.minH = UI.S(440), UI.S(380)
 	local baseRemove = win.OnRemove
 	win.OnRemove = function(s)
 		if baseRemove then baseRemove(s) end
@@ -529,11 +535,11 @@ function SA.OpenSounds()
 	local top = vgui.Create("DPanel", body)
 	top:Dock(TOP)
 	top:DockMargin(6, 6, 6, 2)
-	top:SetTall(22)
+	top:SetTall(UI.S(22))
 	top.Paint = function() end
 	local roots = UI.StyleCombo(vgui.Create("DComboBox", top))
 	roots:Dock(LEFT)
-	roots:SetWide(170)
+	roots:SetWide(UI.S(170))
 	roots:AddChoice(L("sa_snd_root_game"), "sound", root == "sound")
 	roots:AddChoice(L("sa_snd_root_user"), SA.SOUND_DIR, root ~= "sound")
 	local count = vgui.Create("DLabel", top)
@@ -545,14 +551,14 @@ function SA.OpenSounds()
 	local opts = { attach = IsValid(C.selected), voice = false }
 	local foot = vgui.Create("DPanel", body)
 	foot:Dock(BOTTOM)
-	foot:SetTall(176)
+	foot:SetTall(UI.S(176))
 	foot.Paint = function() end
 	local attach = UI.Check(foot, L("sa_snd_attach"), opts.attach, function(v) opts.attach = v end)
 	local voice = UI.Check(foot, L("sa_snd_voice"), opts.voice, function(v) opts.voice = v end)
 	local buttons = vgui.Create("DPanel", foot)
 	buttons:Dock(TOP)
 	buttons:DockMargin(4, 4, 4, 0)
-	buttons:SetTall(28)
+	buttons:SetTall(UI.S(28))
 	buttons.Paint = function() end
 	local hint = UI.Label(foot, L("sa_snd_hint"))
 	hint:SetWrap(true)
@@ -654,7 +660,7 @@ function SA.OpenSounds()
 	local play = vgui.Create("DButton", buttons)
 	play:Dock(LEFT)
 	play:DockMargin(2, 2, 2, 2)
-	play:SetWide(110)
+	play:SetWide(UI.S(110))
 	play:SetText("  " .. L("sa_snd_preview"))
 	play:SetIcon("icon16/control_play_blue.png")
 	UI.StyleButton(play, nil, 3)
@@ -665,7 +671,7 @@ function SA.OpenSounds()
 	local stop = vgui.Create("DButton", buttons)
 	stop:Dock(LEFT)
 	stop:DockMargin(2, 2, 2, 2)
-	stop:SetWide(70)
+	stop:SetWide(UI.S(70))
 	stop:SetText("  " .. L("sa_snd_stop"))
 	stop:SetIcon("icon16/control_stop_blue.png")
 	UI.StyleButton(stop, nil, 3)

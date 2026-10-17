@@ -5,10 +5,14 @@ the timeline), the "Import model animation" and "Render animation" windows, menu
 Timeline: names of animated objects on the left, the frame ruler and keys on the right;
 below the objects — the sounds: one row per file and source, a bar for every time it plays.
   LMB on the ruler or empty space — move the playhead (can be dragged);
-  LMB on a key — select it, drag — move it (with Ctrl — copy it);
+  LMB on a key — select it, drag — move it (with Ctrl — copy it); Ctrl+click — add a key to the
+  selection or take it out; Shift+drag over empty space — select the keys in a box; the selected
+  keys move, copy, change their motion and are deleted together;
   RMB on a key — the key menu, RMB on a row — set or paste a key;
   LMB on a sound bar — drag the sound along the timeline, on its edge — trim it, RMB — the sound menu;
   wheel — scroll the object list.
+The "Cameras" row at the top (camera cuts, cl_saeditor_cuts.lua): RMB — switch to a camera
+here; a cut mark can be dragged, RMB on it — change its camera or delete it.
 ]]
 local MOD  = SPeditor.Mod("saeditor")
 local SA   = MOD.SA
@@ -19,9 +23,31 @@ local L    = SPeditor.L
 local COL  = UI.PAL
 
 local NAME_W, RULER_H, ROW_H, PAD = 170, 20, 18, 10
+-- the timeline follows the interface scale (UI.S)
+local function metrics() NAME_W, RULER_H, ROW_H = UI.S(170), UI.S(20), UI.S(18) end
+metrics()
+MOD:Hook("SPeditor_FontsCreated", metrics, "timeline_metrics")
 local TICKS = { 1, 2, 5, 10, 20, 25, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000 }
 
 local function round(v) return math.floor(v + 0.5) end
+
+-- Selected keys of the timeline: { ["uid:frame:parts"] = { uid, f, parts } } — parts is set for
+-- a key picked on the row of a bone (bone keys): it stands for that bone's part of the key
+SA.selKeys = SA.selKeys or {}
+local function isSel(uid, f, parts) return SA.selKeys[uid .. ":" .. f .. ":" .. (parts or "")] ~= nil end
+local function setSel(uid, f, on, parts)
+	SA.selKeys[uid .. ":" .. f .. ":" .. (parts or "")] = on and { uid = uid, f = f, parts = parts } or nil
+end
+local function clearSel() SA.selKeys = {} end
+-- the selected keys that still exist
+local function selList()
+	local out = {}
+	for id, k in pairs(SA.selKeys) do
+		if SA.HasKey(k.uid, k.f) then out[#out + 1] = k else SA.selKeys[id] = nil end
+	end
+	return out
+end
+SA.SelectedKeys = selList
 
 ---------------------------------------------------------------------
 -- Timeline page
@@ -29,7 +55,7 @@ local function round(v) return math.floor(v + 0.5) end
 local function buildTimeline(page)
 	local bar = vgui.Create("DPanel", page)
 	bar:Dock(TOP)
-	bar:SetTall(28)
+	bar:SetTall(UI.S(28))
 	bar.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.HEADER)
 		surface.DrawRect(0, 0, w, h)
@@ -39,7 +65,7 @@ local function buildTimeline(page)
 		local s = vgui.Create("DPanel", bar)
 		s:Dock(LEFT)
 		s:DockMargin(6, 6, 4, 6)
-		s:SetWide(1)
+		s:SetWide(UI.S(1))
 		s.Paint = function(_, _, h) surface.SetDrawColor(COL.BORDER) surface.DrawRect(0, 0, 1, h) end
 	end
 	local function label(text, wide)
@@ -50,7 +76,7 @@ local function buildTimeline(page)
 		l:SetTextColor(COL.DIM)
 		l:SetText(text)
 		surface.SetFont("SPeditor.Small")
-		l:SetWide(wide or (select(1, surface.GetTextSize(text)) + 2))
+		l:SetWide(wide or (select(1, surface.GetTextSize(text)) + UI.S(2)))
 		return l
 	end
 	local function entry(wide, get, set)
@@ -86,6 +112,7 @@ local function buildTimeline(page)
 		return n > 0 and set or nil
 	end
 
+	UI.GuideButton(bar, "sa_keys")
 	UI.IconButton(bar, "icon16/control_start_blue.png", L("sa_first"), function() SA.Seek(0) end)
 	UI.IconButton(bar, "icon16/control_rewind_blue.png", L("sa_prev_key"), function()
 		local f = SA.NeighbourKey(-1, selectedUIDs())
@@ -121,7 +148,7 @@ local function buildTimeline(page)
 	local fps = UI.StyleCombo(vgui.Create("DComboBox", bar))
 	fps:Dock(LEFT)
 	fps:DockMargin(2, 4, 2, 4)
-	fps:SetWide(52)
+	fps:SetWide(UI.S(52))
 	for _, v in ipairs(SA.FPS_LIST) do fps:AddChoice(tostring(v), v) end
 	fps.OnSelect = function(_, _, _, v)
 		-- the duration in seconds is kept: the number of frames is recalculated
@@ -146,9 +173,10 @@ local function buildTimeline(page)
 	UI.IconButton(bar, "icon16/emoticon_smile.png", L("sa_face_key"), function() SA.SetFaceKey() end)
 	UI.IconButton(bar, "icon16/key_go.png", L("sa_key_all"), function() SA.SetKey(C.Objects()) end)
 	UI.IconButton(bar, "icon16/key_delete.png", L("sa_key_delete"), function()
-		local k = SA.selKey
-		if k and SA.HasKey(k.uid, k.f) then
-			SA.DeleteKey(k.uid, k.f)
+		local list = selList()
+		if #list > 0 then
+			SA.DeleteKeys(list)
+			clearSel()
 			return
 		end
 		-- no key is selected: the key of the selected object at the current frame is deleted
@@ -156,10 +184,17 @@ local function buildTimeline(page)
 		if SA.HasKey(uid, f) then SA.DeleteKey(uid, f) end
 	end)
 	UI.IconButton(bar, "icon16/bullet_red.png", L("sa_autokey"), function() SA.autokey = not SA.autokey end, function() return SA.autokey end)
+	UI.IconButton(bar, "icon16/arrow_branch.png", L("sa_bone_keys"), function() SA.ToggleBoneKeys() end, function() return SA.BoneKeysOn() end)
+	UI.IconButton(bar, "icon16/user_gray.png", L("sa_ghosts"), function() SA.ToggleGhosts() end, function() return SA.GhostsOn() end)
 	sep()
+	UI.IconButton(bar, "icon16/user_go.png", L("sa_easy"), function() SA.EasyMenu() end)
 	UI.IconButton(bar, "icon16/film_add.png", L("sa_import"), function() SA.OpenImport(C.selected) end)
 	UI.IconButton(bar, "icon16/sound_add.png", L("sa_snd_add"), function() SA.OpenSounds() end)
 	UI.IconButton(bar, "icon16/film_save.png", L("sa_render"), function() SA.OpenRender() end)
+	-- the player (through the cameras; the camera is picked in the player) and walking around
+	UI.IconButton(bar, "icon16/television.png", L("sa_show_player_tip"), function() SA.StartShow() end)
+	UI.IconButton(bar, "icon16/eye.png", L("sa_show_eyes_tip"), function() SA.StartShow("eyes") end)
+	UI.IconButton(bar, "icon16/webcam.png", L("sa_rec_title"), function() SA.OpenRecord() end)
 	UI.IconButton(bar, "icon16/chart_curve.png", L("sa_crv_title"), function() SA.OpenCurves() end)
 	UI.IconButton(bar, "icon16/heart.png", L("sa_proc_title"), function() SA.OpenProc(C.selected) end)
 	UI.IconButton(bar, "icon16/arrow_switch.png", L("sa_smh_title"), function() SA.OpenSMH() end)
@@ -172,16 +207,41 @@ local function buildTimeline(page)
 	tl:SetMouseInputEnabled(true)
 	local rows, rowsAt = {}, 0
 	local scroll = 0
-	local drag            -- { kind = "scrub" } | { kind = "key", uid, from, to, moved }
+	local drag            -- { kind = "scrub" } | { kind = "keys", from, to, lo, hi, … } | { kind = "box", x0, y0, x1, y1 } | sound
+
+	-- the row of the selected bone, under its object (bone keys): the keys that hold that bone
+	local function boneRow(ent, uid)
+		if ent ~= C.selected or C.selBone < 0 then return end
+		local parts = SA.BoneParts(ent, C.selBone)
+		if not parts then return end
+		local keys = {}
+		for _, k in ipairs(SA.tracks[uid] or {}) do
+			if SA.KeyHasParts(k, parts) then keys[#keys + 1] = k end
+		end
+		-- shown when the mode is on, or when the track has bone keys at all
+		local any = SA.BoneKeysOn()
+		for _, k in ipairs(SA.tracks[uid] or {}) do
+			if any then break end
+			any = k.only ~= nil or k.skip ~= nil
+		end
+		if not any then return end
+		local name = string.gsub(ent:GetBoneName(C.selBone) or "", "^ValveBiped%.Bip01_", "")
+		rows[#rows + 1] = { uid = uid, ent = ent, parts = parts, bone = true, name = name, keys = keys }
+	end
 
 	local function buildRows()
 		rows = {}
 		local seen = {}
+		-- the camera cuts on top, once the scene has a camera
+		if #SA.cuts > 0 or #SA.SceneCameras() > 0 then
+			rows[1] = { cutsRow = true, uid = -1e9, name = L("sa_cuts_row"), keys = {} }
+		end
 		for _, obj in ipairs(C.BuildEntityList()) do
 			local uid = SA.UID(obj.ent)
 			if SA.tracks[uid] then
 				rows[#rows + 1] = { uid = uid, ent = obj.ent, name = obj.name, keys = SA.tracks[uid] }
 				seen[uid] = true
+				boneRow(obj.ent, uid)
 			end
 			-- the face track goes right under its object
 			local fid = SA.FaceTrack(uid)
@@ -199,6 +259,7 @@ local function buildTimeline(page)
 			if uid ~= 0 and not seen[uid] then
 				rows[#rows + 1] = { uid = uid, ent = e, name = C.DisplayName(e), keys = {} }
 				seen[uid] = true
+				boneRow(e, uid)
 			end
 		end
 		-- sounds: the same file from the same source shares a row (a burst of shots is one row)
@@ -280,6 +341,14 @@ local function buildTimeline(page)
 		return text
 	end
 	local matSound = Material("icon16/sound.png")
+	local matCam = Material("icon16/camera.png")
+	-- the cut mark under the cursor (the "Cameras" row)
+	local function cutAt(mx, w)
+		for _, c in ipairs(SA.cuts) do
+			if math.abs(frameX(c.f, w) - mx) <= 6 then return c end
+		end
+	end
+	local CUT_COLORS = { Color(70, 120, 200), Color(190, 110, 50), Color(80, 160, 90), Color(160, 80, 170), Color(170, 150, 60), Color(60, 150, 160) }
 	local matFace = Material("icon16/emoticon_smile.png")
 
 	local function diamond(x, y, r, col)
@@ -346,13 +415,49 @@ local function buildTimeline(page)
 			if row.face then
 				surface.SetDrawColor(255, 255, 255, 255)
 				surface.SetMaterial(matFace)
-				surface.DrawTexturedRect(8, y + 1, 16, 16)
+				local is = UI.IconSize(ROW_H + 2)
+				surface.DrawTexturedRect(8, y + math.floor((ROW_H - is) / 2), is, is)
 			end
-			if row.sounds then
+			if row.cutsRow then
+				surface.SetDrawColor(255, 255, 255, 255)
+				surface.SetMaterial(matCam)
+				local is = UI.IconSize(ROW_H + 2)
+				surface.DrawTexturedRect(6, y + math.floor((ROW_H - is) / 2), is, is)
+				draw.SimpleText(row.name, "SPeditor.Small", 10 + is, y + ROW_H / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				clip(true)
+				if #SA.cuts == 0 then
+					draw.SimpleText(L("sa_cuts_empty"), "SPeditor.Small", NAME_W + PAD, y + ROW_H / 2, COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				end
+				-- a band for every shot: from its cut to the next one, named after its camera
+				local list = {}
+				for _, c in ipairs(SA.cuts) do
+					local f = (drag and drag.kind == "cut" and drag.from == c.f) and drag.to or c.f
+					list[#list + 1] = { f = f, uid = c.uid }
+				end
+				table.sort(list, function(a, b) return a.f < b.f end)
+				local cams = SA.SceneCameras()
+				for i, c in ipairs(list) do
+					local x0 = (i == 1) and frameX(0, w) or frameX(c.f, w)
+					local x1 = list[i + 1] and frameX(list[i + 1].f, w) or frameX(SA.frames, w)
+					local cam = SA.EntByUID(c.uid)
+					local ci = 1
+					for j, e in ipairs(cams) do if e == cam then ci = j end end
+					local col = CUT_COLORS[(ci - 1) % #CUT_COLORS + 1]
+					surface.SetDrawColor(col.r, col.g, col.b, i == 1 and c.f > 0 and 90 or 170)
+					surface.DrawRect(x0, y + 2, x1 - x0, ROW_H - 4)
+					local mx = frameX(c.f, w)
+					surface.SetDrawColor(COL.TEXT)
+					surface.DrawRect(mx, y, 2, ROW_H)
+					draw.SimpleText(IsValid(cam) and C.DisplayName(cam) or "?", "SPeditor.Small", mx + 5, y + ROW_H / 2, color_white,
+						TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				end
+				clip(false)
+			elseif row.sounds then
 				surface.SetDrawColor(255, 255, 255, 255)
 				surface.SetMaterial(matSound)
-				surface.DrawTexturedRect(6, y + 1, 16, 16)
-				draw.SimpleText(row.name, "SPeditor.Small", 26, y + ROW_H / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				local is = UI.IconSize(ROW_H + 2)
+				surface.DrawTexturedRect(6, y + math.floor((ROW_H - is) / 2), is, is)
+				draw.SimpleText(row.name, "SPeditor.Small", 10 + is, y + ROW_H / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 				clip(true)
 				local right = 0
 				for _, c in ipairs(row.sounds) do
@@ -379,6 +484,12 @@ local function buildTimeline(page)
 				end
 				draw.SimpleText(soundLabel(row.sounds[1]), "SPeditor.Small", right + 6, y + ROW_H / 2, COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 				clip(false)
+			elseif row.bone then
+				-- a bone of the object above
+				surface.SetDrawColor(COL.DIM)
+				surface.DrawRect(12, y + 2, 1, ROW_H / 2 - 2)
+				surface.DrawRect(12, y + ROW_H / 2, 8, 1)
+				draw.SimpleText(row.name, "SPeditor.Small", 24, y + ROW_H / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 			else
 				draw.SimpleText(row.name, "SPeditor.Small", row.face and 28 or 8, y + ROW_H / 2, #row.keys > 0 and COL.TEXT or COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 			end
@@ -404,15 +515,18 @@ local function buildTimeline(page)
 			local lastX = -100
 			for n, k in ipairs(keys) do
 				local f = k.f
-				local dragged = drag and drag.kind == "key" and drag.uid == row.uid and drag.from == k.f
-				if dragged then f = drag.to end
-				local selected = SA.selKey and SA.selKey.uid == row.uid and SA.selKey.f == k.f
+				local selected = isSel(row.uid, k.f, row.parts)
+				local dragged = selected and drag and drag.kind == "keys" and drag.to ~= drag.from
+				if dragged then f = f + drag.to - drag.from end
 				local x = frameX(f, w)
 				local col = (selected or dragged) and COL.ORANGE or (k.e == "linear" and COL.TIMECODE or COL.TEXT)
 				local nxt = keys[n + 1]
 				if selected or dragged or (x - lastX >= 9 and (not nxt or frameX(nxt.f, w) - x >= 9)) then
-					diamond(x, cy, 5, color_black)
-					diamond(x, cy, 4, col)
+					-- a key of some bones only (bone keys): a smaller, hollow diamond on the object's row
+					local part = k.only and not row.bone
+					diamond(x, cy, part and 4 or 5, color_black)
+					diamond(x, cy, part and 3 or 4, col)
+					if part then diamond(x, cy, 1.5, color_black) end
 					lastX = x
 				elseif x - lastX >= 2 then
 					surface.SetDrawColor(col)
@@ -438,6 +552,16 @@ local function buildTimeline(page)
 		surface.DrawPoly({ { x = px - 5, y = 0 }, { x = px + 6, y = 0 }, { x = px + 6, y = 7 }, { x = px + 0.5, y = 13 }, { x = px - 5, y = 7 } })
 		clip(false)
 
+		-- the box of a Shift+drag selection
+		if drag and drag.kind == "box" then
+			local x, y = math.min(drag.x0, drag.x1), math.min(drag.y0, drag.y1)
+			local bw, bh = math.abs(drag.x1 - drag.x0), math.abs(drag.y1 - drag.y0)
+			surface.SetDrawColor(COL.ORANGE.r, COL.ORANGE.g, COL.ORANGE.b, 40)
+			surface.DrawRect(x, y, bw, bh)
+			surface.SetDrawColor(COL.ORANGE)
+			surface.DrawOutlinedRect(x, y, bw, bh)
+		end
+
 		if SA.rendering then
 			local job = SA.rendering
 			draw.SimpleTextOutlined(string.format(L("sa_rnd_progress"), SA.RenderProgress(job)), "SPeditor.Bold",
@@ -445,35 +569,59 @@ local function buildTimeline(page)
 		end
 	end
 
+	-- the menu of a key; a key of a selection of several speaks for all of them
 	local function keyMenu(row, k)
+		local list = isSel(row.uid, k.f, row.parts) and selList() or {}
+		if #list < 2 then list = { { uid = row.uid, f = k.f, parts = row.parts } } end
+		local many = #list > 1
 		local m = UI.Menu()
+		if many then
+			m:AddOption(string.format(L("sa_keys_n"), #list)):SetEnabled(false)
+			m:AddSpacer()
+		end
 		local em = m:AddSubMenu(L("sa_ease"))
 		for _, e in ipairs(SA.EASES) do
-			em:AddOption(L("sa_ease_" .. e), function() SA.SetEase(row.uid, k.f, e) end):SetChecked(k.e == e)
+			em:AddOption(L("sa_ease_" .. e), function() SA.SetEaseMany(list, e) end):SetChecked(not many and k.e == e)
 		end
-		m:AddOption(L("sa_copy_key"), function() SA.keyClip = { uid = row.uid, f = k.f } end):SetIcon("icon16/page_copy.png")
+		m:AddOption(L(many and "sa_copy_keys" or "sa_copy_key"), function() SA.keyClip = list end):SetIcon("icon16/page_copy.png")
 		m:AddSpacer()
-		m:AddOption(L("sa_key_delete"), function() SA.DeleteKey(row.uid, k.f) end):SetIcon("icon16/key_delete.png")
+		m:AddOption(L(row.bone and "sa_bone_key_delete" or (many and "sa_keys_delete" or "sa_key_delete")), function()
+			SA.DeleteKeys(list)
+			clearSel()
+		end):SetIcon("icon16/key_delete.png")
 		m:Open()
 	end
 
 	local function rowMenu(row, frame)
 		local m = UI.Menu()
-		m:AddOption(L("sa_key_here") .. "  (" .. frame .. ")", function()
+		m:AddOption(L(row.bone and "sa_bone_key_here" or "sa_key_here") .. "  (" .. frame .. ")", function()
 			if not IsValid(row.ent) then return end
-			if row.face then SA.SetFaceKey({ row.ent }, frame) else SA.SetKey({ row.ent }, frame) end
+			if row.face then SA.SetFaceKey({ row.ent }, frame) else SA.SetKey({ row.ent }, frame, nil, row.parts) end
 		end):SetIcon("icon16/key_add.png")
 		-- the face of a body row: its own keys
-		if not row.face and IsValid(row.ent) and not C.IsAux(row.ent) and row.ent:GetFlexNum() > 0 and not SA.HasFaceTrack(row.ent) then
+		if not row.face and not row.bone and IsValid(row.ent) and not C.IsAux(row.ent) and row.ent:GetFlexNum() > 0 and not SA.HasFaceTrack(row.ent) then
 			m:AddOption(L("sa_face_start") .. "  (" .. frame .. ")", function() SA.SetFaceKey({ row.ent }, frame) end):SetIcon("icon16/emoticon_smile.png")
 		end
-		local clip = SA.keyClip
-		if clip and clip.uid == row.uid and SA.HasKey(clip.uid, clip.f) then
-			m:AddOption(L("sa_paste_key") .. "  (" .. clip.f .. " → " .. frame .. ")", function()
-				SA.MoveKey(row.uid, clip.f, frame, true)
-			end):SetIcon("icon16/page_paste.png")
+		-- copied keys go back onto their own tracks, the first of them at this frame
+		local clip = {}
+		for _, c in ipairs(SA.keyClip or {}) do
+			if SA.HasKey(c.uid, c.f) then clip[#clip + 1] = c end
 		end
-		if #row.keys > 0 then
+		if #clip > 0 then
+			local first = clip[1].f
+			for _, c in ipairs(clip) do first = math.min(first, c.f) end
+			local text = #clip == 1 and (L("sa_paste_key") .. "  (" .. first .. " → " .. frame .. ")")
+				or (string.format(L("sa_paste_keys"), #clip) .. "  (" .. first .. " → " .. frame .. ")")
+			m:AddOption(text, function() SA.MoveKeys(clip, frame - first, true) end):SetIcon("icon16/page_paste.png")
+		end
+		if #row.keys > 0 and row.bone then
+			m:AddSpacer()
+			m:AddOption(L("sa_bone_clear"), function()
+				local list = {}
+				for _, k in ipairs(row.keys) do list[#list + 1] = { uid = row.uid, f = k.f, parts = row.parts } end
+				SA.DeleteKeys(list)
+			end):SetIcon("icon16/cross.png")
+		elseif #row.keys > 0 then
 			m:AddSpacer()
 			m:AddOption(L(row.face and "sa_face_clear" or "sa_clear_track"), function() SA.ClearTrack(row.uid) end):SetIcon("icon16/cross.png")
 		end
@@ -500,6 +648,36 @@ local function buildTimeline(page)
 		end
 		if c.uid ~= 0 then
 			m:AddOption(L("sa_snd_m_voice"), function() SA.ChangeSound(c.id, { voice = not c.voice }) end):SetChecked(c.voice)
+		end
+		-- lip sync (cl_saeditor_lipsync.lua): the speaker first, then the selected object, then the rest
+		do
+			local who, seen = {}, {}
+			local function add(e, label)
+				local uid = SA.UID(e)
+				if uid == 0 or seen[uid] or not SA.MouthMap(e) then return end
+				seen[uid] = true
+				who[#who + 1] = { e = e, label = label }
+			end
+			local speaker = c.uid ~= 0 and SA.EntByUID(c.uid) or nil
+			if IsValid(speaker) then add(speaker, C.DisplayName(speaker)) end
+			if IsValid(C.selected) then add(C.selected, C.DisplayName(C.selected)) end
+			for _, obj in ipairs(C.BuildEntityList()) do
+				if IsValid(obj.ent) then add(obj.ent, obj.name) end
+			end
+			local lm, lo = m:AddSubMenu(L("sa_lip_menu"))
+			if lo and lo.SetIcon then lo:SetIcon("icon16/comments.png") end
+			if #who == 0 then
+				lm:AddOption(L("sa_lip_nobody")):SetEnabled(false)
+			end
+			for i, t in ipairs(who) do
+				lm:AddOption(string.format(L("sa_lip_for"), t.label), function() SA.LipSync(c, t.e) end):SetIcon(i == 1 and "icon16/user_comment.png" or "icon16/user.png")
+			end
+			lm:AddSpacer()
+			local sm = lm:AddSubMenu(L("sa_lip_strength"))
+			local cur = GetConVar("saeditor_lip_strength"):GetFloat()
+			for _, v in ipairs({ 50, 75, 100, 125, 150, 200 }) do
+				sm:AddOption(v .. "%", function() RunConsoleCommand("saeditor_lip_strength", tostring(v / 100)) end):SetChecked(math.abs(cur - v / 100) < 0.01)
+			end
 		end
 		local function numbers(title, key, list, suffix, scale)
 			local sub = m:AddSubMenu(title)
@@ -540,10 +718,46 @@ local function buildTimeline(page)
 		m:Open()
 	end
 
+	-- the menu of the "Cameras" row: a cut mark, or a new cut at frame
+	local function cutMenu(c, frame)
+		local m = UI.Menu()
+		local cams = SA.SceneCameras()
+		if #cams == 0 then m:AddOption(L("sa_cuts_nocam")):SetEnabled(false) end
+		if c then
+			local sub = m:AddSubMenu(L("sa_cuts_change"))
+			for _, e in ipairs(cams) do
+				sub:AddOption(C.DisplayName(e), function() SA.AddCut(c.f, e) end):SetChecked(SA.UID(e) == c.uid)
+			end
+			m:AddOption(L("sa_cuts_go"), function() SA.Seek(c.f) end):SetIcon("icon16/arrow_right.png")
+			m:AddSpacer()
+			m:AddOption(L("sa_cuts_delete"), function() SA.RemoveCut(c.f) end):SetIcon("icon16/cross.png")
+		else
+			for _, e in ipairs(cams) do
+				m:AddOption(string.format(L("sa_cuts_here"), C.DisplayName(e), frame), function() SA.AddCut(frame, e) end):SetIcon("icon16/camera_go.png")
+			end
+		end
+		m:Open()
+	end
+
 	tl.OnMousePressed = function(s, code)
 		local mx, my = s:CursorPos()
 		local w = s:GetWide()
 		local row = rowAt(my)
+		if row and row.cutsRow and mx >= NAME_W then
+			local c = cutAt(mx, w)
+			if code == MOUSE_RIGHT then
+				cutMenu(c, round(frameAt(mx, w)))
+				return
+			end
+			if code == MOUSE_LEFT and c and not SA.rendering then
+				drag = { kind = "cut", from = c.f, to = c.f }
+				s:MouseCapture(true)
+				return
+			end
+		elseif row and row.cutsRow then
+			if code == MOUSE_RIGHT then cutMenu(nil, round(SA.frame)) end
+			return
+		end
 		if row and row.sounds then
 			local c = soundHit(row, mx, w)
 			if mx < NAME_W then
@@ -558,7 +772,7 @@ local function buildTimeline(page)
 				return
 			end
 			if code == MOUSE_LEFT and not SA.rendering and c then
-				SA.selKey = nil
+				clearSel()
 				local edge = soundEdge(c, mx, w)
 				if edge then
 					drag = { kind = "trim", id = c.id, side = edge, to = round(frameAt(mx, w)) }
@@ -582,13 +796,23 @@ local function buildTimeline(page)
 			return
 		end
 		if code ~= MOUSE_LEFT or SA.rendering then return end
+		local ctrl = input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL)
+		local shift = input.IsKeyDown(KEY_LSHIFT) or input.IsKeyDown(KEY_RSHIFT)
 		if k then
-			SA.selKey = { uid = row.uid, f = k.f }
+			-- a key outside the selection: it alone is selected (with Ctrl it joins the
+			-- selection); a key of the selection drags all of it
+			local was = isSel(row.uid, k.f, row.parts)
+			if not was and not ctrl then clearSel() end
+			setSel(row.uid, k.f, true, row.parts)
 			if IsValid(row.ent) and C.selected ~= row.ent then C.Select(row.ent, -1) end
 			SA.Seek(k.f)
-			drag = { kind = "key", uid = row.uid, from = k.f, to = k.f }
+			local lo, hi = SA.frames, 0
+			for _, sk in ipairs(selList()) do lo, hi = math.min(lo, sk.f), math.max(hi, sk.f) end
+			drag = { kind = "keys", uid = row.uid, parts = row.parts, key = k.f, from = k.f, to = k.f, lo = lo, hi = hi, was = was, ctrl = ctrl }
+		elseif shift then
+			drag = { kind = "box", x0 = mx, y0 = my, x1 = mx, y1 = my, add = ctrl }
 		else
-			SA.selKey = nil
+			clearSel()
 			drag = { kind = "scrub" }
 			SA.Seek(round(frameAt(mx, w)))
 		end
@@ -612,6 +836,11 @@ local function buildTimeline(page)
 			if f ~= round(SA.frame) then SA.Seek(f) end
 		elseif drag.kind == "sound" then
 			drag.to = math.Clamp(round(frameAt(mx, s:GetWide()) - drag.grab), 0, SA.frames)
+		elseif drag.kind == "box" then
+			drag.x1, drag.y1 = mx, my
+		elseif drag.kind == "keys" then
+			-- the whole selection stays inside the animation
+			drag.to = drag.from + math.Clamp(f - drag.from, -drag.lo, SA.frames - drag.hi)
 		else
 			drag.to = f
 		end
@@ -622,16 +851,40 @@ local function buildTimeline(page)
 		s:MouseCapture(false)
 		local d = drag
 		drag = nil
-		if d.kind == "sound" then
+		if d.kind == "cut" then
+			if d.to ~= d.from then SA.MoveCut(d.from, d.to) else SA.Seek(d.from) end
+		elseif d.kind == "sound" then
 			if d.to ~= d.from then SA.ChangeSound(d.id, { f = d.to }) end
 		elseif d.kind == "trim" then
 			-- dragged past the start / end of the file: TrimSound stops at it
 			SA.TrimSound(d.id, d.side, d.to)
-		elseif d.kind == "key" and d.to ~= d.from then
+		elseif d.kind == "keys" then
+			if d.to == d.from then
+				-- a Ctrl+click on a selected key takes it out of the selection
+				if d.ctrl and d.was then setSel(d.uid, d.key, false, d.parts) end
+				return
+			end
 			local copy = input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL)
-			SA.MoveKey(d.uid, d.from, d.to, copy)
-			SA.selKey = { uid = d.uid, f = d.to }
-			SA.Seek(d.to)
+			local list, by = selList(), d.to - d.from
+			SA.MoveKeys(list, by, copy)
+			-- the selection goes with the keys (a copy selects the copies)
+			clearSel()
+			for _, k in ipairs(list) do setSel(k.uid, k.f + by, true, k.parts) end
+			SA.Seek(d.key + by)
+		elseif d.kind == "box" then
+			if not d.add then clearSel() end
+			local w = s:GetWide()
+			local xa, xb = math.min(d.x0, d.x1), math.max(d.x0, d.x1)
+			local ya, yb = math.min(d.y0, d.y1), math.max(d.y0, d.y1)
+			for i, row in ipairs(rows) do
+				local y = RULER_H + (i - 1 - scroll) * ROW_H
+				if not row.sounds and y + ROW_H > ya and y < yb then
+					for _, k in ipairs(row.keys) do
+						local x = frameX(k.f, w)
+						if x >= xa - 4 and x <= xb + 4 then setSel(row.uid, k.f, true, row.parts) end
+					end
+				end
+			end
 		end
 	end
 
@@ -677,7 +930,7 @@ function SA.OpenImport(ent)
 	if IsValid(old) then old:Remove() end
 	local win, body = Dock.Create({ key = "sa_import", id = "sa_import", title = L("sa_imp_title"), w = 400, h = math.min(560, ScrH() - 160),
 			x = math.floor(ScrW() / 2 - 200), y = 120, dockable = false, icon = "icon16/film_add.png" })
-	win.minW, win.minH = 320, 320
+	win.minW, win.minH = UI.S(320), UI.S(320)
 	local baseRemove = win.OnRemove
 	win.OnRemove = function(s)
 		if baseRemove then baseRemove(s) end
@@ -692,7 +945,7 @@ function SA.OpenImport(ent)
 	local opts = { step = 2, loops = 1, speed = 1, root = true }
 	local foot = vgui.Create("DPanel", body)
 	foot:Dock(BOTTOM)
-	foot:SetTall(138)
+	foot:SetTall(UI.S(138))
 	foot.Paint = function() end
 	UI.Slider(foot, L("sa_imp_step"), 1, 6, 0, opts.step, function(v) opts.step = round(v) end)
 	UI.Slider(foot, L("sa_imp_loops"), 1, 8, 0, opts.loops, function(v) opts.loops = round(v) end)
@@ -702,11 +955,13 @@ function SA.OpenImport(ent)
 	local search = vgui.Create("DTextEntry", body)
 	search:Dock(TOP)
 	search:DockMargin(6, 2, 6, 2)
-	search:SetTall(20)
+	search:SetTall(UI.S(20))
 	search:SetFont("SPeditor.Small")
 	search:SetPlaceholderText(L("sa_imp_search"))
 
 	local list = vgui.Create("DListView", body)
+
+	UI.StyleListView(list)
 	list:Dock(FILL)
 	list:DockMargin(6, 0, 6, 2)
 	list:SetMultiSelect(false)
@@ -722,7 +977,7 @@ function SA.OpenImport(ent)
 	local srcRow = vgui.Create("DPanel", body)
 	srcRow:Dock(TOP)
 	srcRow:DockMargin(6, 0, 6, 2)
-	srcRow:SetTall(22)
+	srcRow:SetTall(UI.S(22))
 	srcRow.Paint = function() end
 	local srcCombo = UI.StyleCombo(vgui.Create("DComboBox", srcRow))
 	srcCombo:Dock(FILL)
@@ -738,8 +993,18 @@ function SA.OpenImport(ent)
 	for _, m in ipairs(SA.ANIM_MODELS) do
 		if util.IsValidModel(m[2]) then srcCombo:AddChoice(L(m[1]), m[2]) end
 	end
+	srcCombo:AddChoice(L("sa_imp_src_addon"), "+")
 	srcCombo:AddChoice(L("sa_imp_src_path"), "?")
 	srcCombo.OnSelect = function(s, _, text, data)
+		if data == "+" then
+			-- an animation pack of an installed addon (cl_saeditor_extra.lua)
+			SA.OpenAnimModels(ent, function(path)
+				if not IsValid(s) then return end
+				s:SetText(path)
+				setSource(path)
+			end)
+			return
+		end
 		if data ~= "?" then
 			setSource(data)
 			return
@@ -839,7 +1104,7 @@ function SA.OpenRender()
 	if Dock.ShowPage("sa_render") then return end
 	local win, body = Dock.Create({ key = "sa_render", id = "sa_render", title = L("sa_rnd_title"), w = 400, h = 500,
 			x = math.floor(ScrW() / 2 - 190), y = 140, dockable = false, icon = "icon16/film_save.png" })
-	win.minW, win.minH = 320, 340
+	win.minW, win.minH = UI.S(320), UI.S(340)
 	local baseRemove = win.OnRemove
 	win.OnRemove = function(s)
 		if baseRemove then baseRemove(s) end
@@ -850,11 +1115,11 @@ function SA.OpenRender()
 		local r = vgui.Create("DPanel", body)
 		r:Dock(TOP)
 		r:DockMargin(8, 4, 8, 0)
-		r:SetTall(22)
+		r:SetTall(UI.S(22))
 		r.Paint = function() end
 		local l = vgui.Create("DLabel", r)
 		l:Dock(LEFT)
-		l:SetWide(150)
+		l:SetWide(UI.S(150))
 		l:SetFont("SPeditor.Small")
 		l:SetTextColor(COL.TEXT)
 		l:SetText(text)
@@ -869,10 +1134,11 @@ function SA.OpenRender()
 		return e
 	end
 
-	local camera = nil
+	local camera = #SA.cuts > 0 and "cuts" or nil
 	local cam = UI.StyleCombo(vgui.Create("DComboBox", row(L("sa_rnd_camera"))))
 	cam:Dock(FILL)
-	cam:AddChoice(L("win_primary"), false, true)
+	if #SA.cuts > 0 then cam:AddChoice(L("sa_show_cuts"), "cuts", true) end
+	cam:AddChoice(L("win_primary"), false, #SA.cuts == 0)
 	cam:AddChoice(L("work_camera"), "work")
 	for _, e in ipairs(C.Objects()) do
 		if C.IsCamera(e) then cam:AddChoice(C.DisplayName(e), e, e == C.GetViewCamera()) end
@@ -882,18 +1148,7 @@ function SA.OpenRender()
 
 	local from = entry(row(L("sa_rnd_from")), 0, true)
 	local to   = entry(row(L("sa_rnd_to")), SA.frames, true)
-	local only = entry(row(L("sa_rnd_only")), "")
-	only:SetPlaceholderText(L("sa_rnd_only_tip"))
-	only:SetTooltip(L("sa_rd_which_tip"))
 	local name = entry(row(L("sa_rnd_name")), (C.sceneName and C.sceneName ~= "" and C.sceneName or "anim"))
-	local format = SA.RenderFormat()
-	local fmt = UI.StyleCombo(vgui.Create("DComboBox", row(L("sa_rnd_format"))))
-	fmt:Dock(FILL)
-	for _, f in ipairs(SA.RENDER_FORMATS) do fmt:AddChoice(L("sa_fmt_" .. f), f, f == format) end
-	fmt.OnSelect = function(_, _, _, data)
-		format = data
-		RunConsoleCommand("saeditor_render_format", data)
-	end
 	renderSpeedRows(row)
 	local settle = GetConVar("saeditor_render_settle"):GetFloat()
 	UI.Slider(body, L("sa_rnd_settle"), 0.05, 1.5, 2, settle, function(v)
@@ -901,21 +1156,10 @@ function SA.OpenRender()
 		RunConsoleCommand("saeditor_render_settle", tostring(math.Round(v, 2)))
 	end):SetTooltip(L("sa_rnd_settle_tip"))
 
-	-- the hint follows the format: a video is one file, pictures go into a folder
-	local function hintKey() return format == "avi" and "sa_rd_note_avi" or "sa_rnd_hint" end
-	local hint = UI.Label(body, L(hintKey()))
+	local hint = UI.Label(body, L("sa_rd_note_avi"))
 	hint:SetWrap(true)
 	hint:SetAutoStretchVertical(true)
 	hint:DockMargin(8, 8, 8, 4)
-	hint.SPKey = hintKey()
-	hint.Think = function(s)
-		local key = hintKey()
-		if s.SPKey ~= key then
-			s.SPKey = key
-			s:SetText(L(key))
-		end
-		s:SizeToContentsY()       -- DLabel stretches itself in its own Think, which this one replaces
-	end
 
 	local status = UI.Label(body, "", COL.ORANGE)
 	status:DockMargin(8, 4, 8, 4)
@@ -930,31 +1174,23 @@ function SA.OpenRender()
 
 	local foot = vgui.Create("DPanel", body)
 	foot:Dock(BOTTOM)
-	foot:SetTall(34)
+	foot:SetTall(UI.S(34))
 	foot.Paint = function() end
 	local go = vgui.Create("DButton", foot)
 	go:Dock(LEFT)
 	go:DockMargin(8, 4, 4, 4)
-	go:SetWide(170)
+	go:SetWide(UI.S(170))
 	go:SetText("  " .. L("sa_rnd_go"))
 	go:SetIcon("icon16/film_save.png")
 	UI.StyleButton(go, nil, 3)
 	go.DoClick = function()
-		local frames
-		if string.Trim(only:GetValue()) ~= "" then
-			frames = SA.ParseFrames(only:GetValue())
-			if #frames == 0 then
-				SPeditor.Notify("#sa_rnd_frames_none", 1)
-				return
-			end
-		end
 		SA.RenderSequence({ camera = camera, from = tonumber(from:GetValue()) or 0, to = tonumber(to:GetValue()) or SA.frames,
-				frames = frames, name = name:GetValue(), format = format, settle = settle })
+				name = name:GetValue(), settle = settle })
 	end
 	local cancel = vgui.Create("DButton", foot)
 	cancel:Dock(RIGHT)
 	cancel:DockMargin(4, 4, 8, 4)
-	cancel:SetWide(120)
+	cancel:SetWide(UI.S(120))
 	cancel:SetText(L("sa_rnd_cancel"))
 	UI.StyleButton(cancel, nil, 3)
 	cancel.DoClick = function()
@@ -991,11 +1227,11 @@ MOD:Hook("SPeditor_RenderDialog", function(ctx)
 		local r = vgui.Create("DPanel", sec)
 		r:Dock(TOP)
 		r:DockMargin(6, 4, 6, 0)
-		r:SetTall(22)
+		r:SetTall(UI.S(22))
 		r.Paint = function() end
 		local l = vgui.Create("DLabel", r)
 		l:Dock(LEFT)
-		l:SetWide(140)
+		l:SetWide(UI.S(140))
 		l:SetFont("SPeditor.Small")
 		l:SetTextColor(COL.TEXT)
 		l:SetText(text)
@@ -1006,46 +1242,8 @@ MOD:Hook("SPeditor_RenderDialog", function(ctx)
 	mode:Dock(FILL)
 	mode:AddChoice(L("sa_rd_anim"), "anim", SA.RenderMode() == "anim")
 	mode:AddChoice(L("sa_rd_frame"), "frame", SA.RenderMode() == "frame")
-	mode:AddChoice(L("sa_rd_frames"), "frames", SA.RenderMode() == "frames")
 	mode.OnSelect = function(_, _, _, data) RunConsoleCommand("saeditor_render_mode", data) end
 
-	-- which frames: keys / every N / a list; the menu button fills in the usual choices
-	local framesRow = row(L("sa_rd_which"))
-	local framesBox = vgui.Create("DTextEntry", framesRow)
-	framesBox:Dock(FILL)
-	framesBox:SetFont("SPeditor.Small")
-	framesBox:SetValue(SA.RenderFramesSpec())
-	framesBox:SetTooltip(L("sa_rd_which_tip"))
-	local function setSpec(v)
-		framesBox:SetValue(v)
-		RunConsoleCommand("saeditor_render_frames", v)
-	end
-	framesBox.OnChange = function(s2) RunConsoleCommand("saeditor_render_frames", s2:GetValue()) end
-	local pick = vgui.Create("DButton", framesRow)
-	pick:Dock(RIGHT)
-	pick:DockMargin(4, 0, 0, 0)
-	pick:SetWide(24)
-	pick:SetText("…")
-	UI.StyleButton(pick, nil, 3)
-	pick.DoClick = function()
-		local m = UI.Menu()
-		m:AddOption(L("sa_rd_which_keys"), function() setSpec("keys") end)
-		for _, n in ipairs({ 2, 4, 6, 12, 24 }) do
-			m:AddOption(string.format(L("sa_rd_which_every"), n), function() setSpec("every " .. n) end)
-		end
-		m:AddOption(string.format(L("sa_rd_which_cur"), math.floor(SA.frame + 0.5)), function()
-			local cur = string.Trim(framesBox:GetValue())
-			local f = tostring(math.floor(SA.frame + 0.5))
-			setSpec((cur == "" or cur == "keys" or string.find(cur, "every", 1, true)) and f or (cur .. ", " .. f))
-		end)
-		m:Open()
-	end
-
-	local fmtRow = row(L("sa_rd_format"))
-	local fmt = UI.StyleCombo(vgui.Create("DComboBox", fmtRow))
-	fmt:Dock(FILL)
-	for _, f in ipairs(SA.RENDER_FORMATS) do fmt:AddChoice(L("sa_fmt_" .. f), f, f == SA.RenderFormat()) end
-	fmt.OnSelect = function(_, _, _, data) RunConsoleCommand("saeditor_render_format", data) end
 	local qRow, sRow, fRow = renderSpeedRows(row)
 
 	local note = vgui.Create("DLabel", sec)
@@ -1068,22 +1266,17 @@ MOD:Hook("SPeditor_RenderDialog", function(ctx)
 		local text
 		if job then
 			text = string.format(L("sa_rnd_progress"), SA.RenderProgress(job))
-		elseif SA.RenderMode() == "frames" then
-			local n = #SA.ParseFrames(SA.RenderFramesSpec())
-			text = n > 0 and string.format(L("sa_rd_note_frames"), n) or L("sa_rnd_frames_none")
 		else
-			text = L(anim and ("sa_rd_note_" .. SA.RenderFormat()) or "sa_rd_note_frame")
+			text = L(anim and "sa_rd_note_avi" or "sa_rd_note_frame")
 		end
 		local key = tostring(animated) .. tostring(anim) .. tostring(job ~= nil) .. text
 		if key == state then return end
 		state = key
 		s:SetVisible(animated)
-		fmtRow:SetVisible(anim)
-		qRow:SetVisible(anim and SA.RenderFormat() ~= "png")
+		qRow:SetVisible(anim)
 		sRow:SetVisible(anim)
-		fRow:SetVisible(anim and SA.RenderMode() ~= "frames")
+		fRow:SetVisible(anim)
 		stop:SetVisible(job ~= nil)
-		framesRow:SetVisible(animated and SA.RenderMode() == "frames")
 		note:SetText(text)
 		note:SetTextColor(job and COL.ORANGE or COL.DIM)
 		-- the window button says what exactly will be rendered
@@ -1107,7 +1300,7 @@ MOD:Hook("SPeditor_RenderPreviewBuilt", function(side, pv)
 	local bar = vgui.Create("DPanel", side)
 	bar:Dock(BOTTOM)
 	bar:DockMargin(0, 4, 0, 0)
-	bar:SetTall(26)
+	bar:SetTall(UI.S(26))
 	bar.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.HEADER)
 		surface.DrawRect(0, 0, w, h)
@@ -1134,7 +1327,7 @@ MOD:Hook("SPeditor_RenderPreviewBuilt", function(side, pv)
 	local label = vgui.Create("DLabel", bar)
 	label:Dock(RIGHT)
 	label:DockMargin(6, 0, 8, 0)
-	label:SetWide(150)
+	label:SetWide(UI.S(150))
 	label:SetFont("SPeditor.Small")
 	label:SetTextColor(COL.TEXT)
 	label:SetContentAlignment(6)
@@ -1228,6 +1421,10 @@ end)
 
 MOD:AddMenu("file", function(m)
 	m:AddOption(L("sa_render"), function() SA.OpenRender() end):SetIcon("icon16/film_save.png")
+	local sm, so = m:AddSubMenu(L("sa_show_menu"))
+	if so and so.SetIcon then so:SetIcon("icon16/television.png") end
+	SA.ShowMenu(sm)
+	m:AddOption(L("sa_rec_title") .. "…", function() SA.OpenRecord() end):SetIcon("icon16/webcam.png")
 	m:AddOption(L("sa_smh_title") .. "…", function() SA.OpenSMH() end):SetIcon("icon16/arrow_switch.png")
 end)
 
@@ -1236,6 +1433,8 @@ MOD:AddMenu("edit", function(m)
 	sub:AddOption(L("sa_key") , function() SA.SetKey() end):SetIcon("icon16/key_add.png")
 	sub:AddOption(L("sa_key_all"), function() SA.SetKey(C.Objects()) end):SetIcon("icon16/key_go.png")
 	sub:AddOption(L("sa_autokey"), function() SA.autokey = not SA.autokey end):SetChecked(SA.autokey)
+	sub:AddOption(L("sa_bone_keys"), function() SA.ToggleBoneKeys() end):SetChecked(SA.BoneKeysOn())
+	sub:AddOption(L("sa_ghosts"), function() SA.ToggleGhosts() end):SetChecked(SA.GhostsOn())
 	sub:AddOption(L("sa_snd_add"), function() SA.OpenSounds() end):SetIcon("icon16/sound_add.png")
 	sub:AddOption(L("sa_crv_title") .. "…", function() SA.OpenCurves() end):SetIcon("icon16/chart_curve.png")
 	sub:AddSpacer()

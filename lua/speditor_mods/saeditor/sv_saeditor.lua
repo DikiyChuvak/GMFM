@@ -6,7 +6,11 @@ The animation is stored on the server, next to the objects it moves:
   track  = { keys = { [frame] = key }, order = { frames in ascending order } }
   key    = { e = "ease" | "linear" | "ease_in" | "ease_out" | "hold", st = object snapshot }
 A key is a full snapshot of an object (position, pose, face, light, camera angle, the moment
-of an effect) at a frame. A face track (id = UID + SA.FACE, sh_saeditor.lua) keys only the
+of an effect) at a frame. Bone keys (a0.6): a key of a model may instead hold only some of its
+parts — st.only = { [part] = true } — and a full key may leave some out — st.skip; a part is
+"p<i>" (physics body i of a ragdoll, "p0" — the object itself / the root body) or "b<i>" (the
+offset of bone i). Every part keyed that way moves between its own keys, the rest of the object
+between the full keys, so each bone can have keys of its own, as in SFM. A face track (id = UID + SA.FACE, sh_saeditor.lua) keys only the
 flexes of its object; while it exists, the face part of the body keys is left out; between keys the state is interpolated. A key never changes after it is created
 (an edit replaces it with a new one), so a copy of a track for undo is just a new
 table with references to the same keys.
@@ -17,7 +21,10 @@ from the client would be both slow and uneven. The client only gets a "table of 
 (which frames have keys) for the timeline.
 
 Sound clips (SA.CleanSound in sh_saeditor.lua) are played and mixed by the client; the
-server only keeps the list, so that it is saved with the scene.
+server only keeps the list, so that it is saved with the scene. Camera cuts (a0.6) — which
+scene camera the animation is watched through from which frame — are kept the same way:
+a.cuts = { { f = frame, uid = camera }, … } (the player outside the editor and the video
+render follow them).
 ]]
 local MOD = SPeditor.Mod("saeditor")
 local SA  = MOD.SA
@@ -34,7 +41,7 @@ local MAX_OPS = 60
 local function anim(ply)
 	local a = A[ply]
 	if not a then
-		a = { fps = 24, frames = 96, loop = true, cur = 0, playing = false, tracks = {}, sounds = {} }
+		a = { fps = 24, frames = 96, loop = true, cur = 0, playing = false, tracks = {}, sounds = {}, cuts = {} }
 		A[ply] = a
 	end
 	return a
@@ -58,8 +65,11 @@ local function capture(ent)
 	if S.IsCamera(ent) then
 		-- the shake is keyed (a jolt at an explosion); the smoothness is a property of the
 		-- whole path and is not
+		-- camera effects (depth of field, exposure, vignette…) are keyed too: the focus can be
+		-- pulled from one actor to another
 		return { kind = "camera", pos = ent:GetPos(), ang = ent:GetAngles(), fov = ent:GetCameraFOV(),
-			shake = ent:GetShakeAmp(), shakerot = ent:GetShakeRot(), shakefreq = ent:GetShakeFreq() }
+			shake = ent:GetShakeAmp(), shakerot = ent:GetShakeRot(), shakefreq = ent:GetShakeFreq(),
+			fx = ent.SPeditor_FX and table.Copy(ent.SPeditor_FX) or nil }
 	end
 	if S.IsEffect(ent) then
 		-- the moment of the effect is its only animated property besides the place: two keys
@@ -203,10 +213,13 @@ local function applyProp(ent, a, b, u, noFace)
 	if not noFace then applyFlex(ent, a, b, u) end
 
 	-- colour and opacity (fading in and out)
-	local ca, cb = a.col, b.col
-	if ca and cb and (ca[1] ~= cb[1] or ca[2] ~= cb[2] or ca[3] ~= cb[3] or ca[4] ~= cb[4]) then
-		local col = Color(math.Round(lerpN(ca[1], cb[1], u)), math.Round(lerpN(ca[2], cb[2], u)),
-			math.Round(lerpN(ca[3], cb[3], u)), math.Round(lerpN(ca[4], cb[4], u)))
+	-- the keyed colour is applied whenever the object has another one: two hidden keys in a row
+	-- keep a weapon hidden even when it was shown in the segment before (the recorder's weapons)
+	local ca, cb = a.col, b.col or a.col
+	local col = ca and Color(math.Round(lerpN(ca[1], cb[1], u)), math.Round(lerpN(ca[2], cb[2], u)),
+		math.Round(lerpN(ca[3], cb[3], u)), math.Round(lerpN(ca[4], cb[4], u)))
+	local now = col and ent:GetColor()
+	if col and (now.r ~= col.r or now.g ~= col.g or now.b ~= col.b or now.a ~= col.a) then
 		ent:SetColor(col)
 		ent:SetRenderMode(col.a < 255 and RENDERMODE_TRANSCOLOR or RENDERMODE_NORMAL)
 		-- the same value goes into the object properties so that it gets into the scene file
@@ -232,6 +245,27 @@ local function applyLight(ent, a, b, u)
 	end
 end
 
+-- Camera effects between two keys: numbers are blended, switches and materials are taken
+-- from the key before. A key made before effects were keyed has none: the camera keeps its own.
+local function applyCameraFX(ent, fa, fb, u)
+	if not istable(fa) then return end
+	fb = istable(fb) and fb or fa
+	local fx = {}
+	for id, pa in pairs(fa) do
+		if istable(pa) then
+			local pb = istable(fb[id]) and fb[id] or pa
+			local p = {}
+			for k, v in pairs(pa) do
+				if isnumber(v) and isnumber(pb[k]) then p[k] = lerpN(v, pb[k], u) else p[k] = v end
+			end
+			fx[id] = p
+		end
+	end
+	-- the effects travel as networked strings: they are sent only when they change
+	if util.TableToJSON(fx) == util.TableToJSON(ent.SPeditor_FX or {}) then return end
+	S.SetCameraFX(ent, fx)
+end
+
 local function applyCamera(ent, a, b, u)
 	if not ent.SPeditor_Attach then
 		ent:SetPos(lerpV(a.pos, b.pos, u))
@@ -242,6 +276,7 @@ local function applyCamera(ent, a, b, u)
 	if a.shake and b.shake then ent:SetShakeAmp(lerpN(a.shake, b.shake, u)) end
 	if a.shakerot and b.shakerot then ent:SetShakeRot(lerpN(a.shakerot, b.shakerot, u)) end
 	if a.shakefreq and b.shakefreq then ent:SetShakeFreq(lerpN(a.shakefreq, b.shakefreq, u)) end
+	applyCameraFX(ent, a.fx, b.fx, u)
 end
 
 local function applyEffect(ent, a, b, u)
@@ -269,10 +304,136 @@ local function applyState(ent, a, b, u, noFace)
 	end
 end
 
--- The two snapshots a track gives at the frame frame and the share of the way between them
-local function segment(tr, frame)
-	local order = tr.order
+---------------------------------------------------------------------
+-- Bone keys: which keys define which part
+---------------------------------------------------------------------
+local function defines(st, part)
+	if st.only then return st.only[part] == true end
+	return not (st.skip and st.skip[part])
+end
+
+local function partIndex(part) return string.sub(part, 1, 1), tonumber(string.sub(part, 2)) end
+
+-- The frames of the full keys, and for every part named by some bone key the frames of the
+-- keys that define it. Worked out again when the track changes (its order, its size or its
+-- stamp, which setKey and the part operations bump).
+local function cacheOf(tr)
+	local c = tr.cache
+	if c and c.order == tr.order and c.n == #tr.order and c.stamp == tr.stamp then return c end
+	c = { order = tr.order, n = #tr.order, stamp = tr.stamp, full = {}, parts = {} }
+	local special = {}
+	for _, f in ipairs(tr.order) do
+		local st = tr.keys[f].st
+		if st.only then
+			for p in pairs(st.only) do special[p] = true end
+		else
+			c.full[#c.full + 1] = f
+			for p in pairs(st.skip or {}) do special[p] = true end
+		end
+	end
+	c.has = next(special) ~= nil
+	for p in pairs(special) do
+		local list = {}
+		for _, f in ipairs(tr.order) do
+			if defines(tr.keys[f].st, p) then list[#list + 1] = f end
+		end
+		c.parts[p] = list
+	end
+	tr.cache = c
+	return c
+end
+SA.TrackParts = cacheOf
+
+---------------------------------------------------------------------
+-- Spline (a0.6): a key of the kind "spline" makes the stretch to the next key a curve through
+-- the keys around it, so the object passes a key without stopping. The state is a weighted sum
+-- of four snapshots (SA.SplineWeights): numbers and vectors are added, turns are added as
+-- quaternions (SA.BlendAngles). A value one of the snapshots lacks is taken from its neighbour
+-- (a bone offset or a flex it lacks is zero, as everywhere).
+---------------------------------------------------------------------
+local COPY_FIELDS = { kind = true, only = true, skip = true, bg = true, skin = true, on = true }
+local ZERO_DEFAULT = { bones = ZERO_BONE, flex = 0 }
+
+local function mix(vals, ws, def)
+	local base = vals[2]
+	if base == nil then base = vals[3] end
+	if base == nil then return nil end
+	local v = {}
+	for i = 1, 4 do
+		local x = vals[i]
+		if x == nil or type(x) ~= type(base) then
+			x = def
+			if x == nil or type(x) ~= type(base) then x = (i <= 2) and (vals[2] or vals[3]) or (vals[3] or vals[2]) end
+		end
+		v[i] = x
+	end
+	if isnumber(base) then
+		return v[1] * ws[1] + v[2] * ws[2] + v[3] * ws[3] + v[4] * ws[4]
+	elseif isvector(base) then
+		return v[1] * ws[1] + v[2] * ws[2] + v[3] * ws[3] + v[4] * ws[4]
+	elseif isangle(base) then
+		return SA.BlendAngles(v, ws, vals[2] ~= nil and 2 or 3)
+	elseif istable(base) then
+		local out, seen = {}, {}
+		for _, t in ipairs({ v[2], v[3] }) do
+			for k in pairs(t) do
+				if not seen[k] then
+					seen[k] = true
+					if COPY_FIELDS[k] then
+						out[k] = v[2][k]
+						if out[k] == nil then out[k] = v[3][k] end
+					else
+						out[k] = mix({ v[1][k], v[2][k], v[3][k], v[4][k] }, ws, ZERO_DEFAULT[k])
+					end
+				end
+			end
+		end
+		return out
+	end
+	return vals[2] ~= nil and vals[2] or vals[3]
+end
+
+-- children of "bones" / "flex" default to zero: mix passes the field's own default down one level
+local function mixState(sts, ws)
+	local out = {}
+	local seen = {}
+	for _, st in ipairs({ sts[2], sts[3] }) do
+		for k in pairs(st) do
+			if not seen[k] then
+				seen[k] = true
+				if COPY_FIELDS[k] then
+					out[k] = sts[2][k]
+					if out[k] == nil then out[k] = sts[3][k] end
+				elseif ZERO_DEFAULT[k] ~= nil then
+					local sub, ks = {}, {}
+					for i = 1, 4 do
+						for id in pairs(istable(sts[i][k]) and sts[i][k] or {}) do ks[id] = true end
+					end
+					for id in pairs(ks) do
+						local vals = {}
+						for i = 1, 4 do vals[i] = istable(sts[i][k]) and sts[i][k][id] or nil end
+						-- a value missing from every key of the stretch keeps the old meaning: zero
+						for i = 1, 4 do if vals[i] == nil then vals[i] = ZERO_DEFAULT[k] end end
+						sub[id] = mix(vals, ws)
+					end
+					out[k] = sub
+				else
+					out[k] = mix({ sts[1][k], sts[2][k], sts[3][k], sts[4][k] }, ws)
+				end
+			end
+		end
+	end
+	out.resolved = true
+	return out
+end
+
+-- The two snapshots a track gives at the frame frame and the share of the way between them.
+-- order — the frames to look at: the full keys by default (bone keys are left to the parts
+-- they hold); nil when there are none. A spline stretch gives one worked-out snapshot twice.
+local function segment(tr, frame, order)
+	order = order or cacheOf(tr).full
 	local n = #order
+	if n == 0 then return nil end
 	if frame <= order[1] then
 		local st = tr.keys[order[1]].st
 		return st, st, 0
@@ -289,6 +450,16 @@ local function segment(tr, frame)
 	end
 	local fa, fb = order[lo], order[hi]
 	local ka, kb = tr.keys[fa], tr.keys[fb]
+	if ka.e == "spline" and ka.st.kind == kb.st.kind then
+		local f0, f3 = order[lo - 1], order[hi + 1]
+		local s0 = f0 and tr.keys[f0].st or ka.st
+		local s3 = f3 and tr.keys[f3].st or kb.st
+		if s0.kind ~= ka.st.kind then s0, f0 = ka.st, nil end
+		if s3.kind ~= kb.st.kind then s3, f3 = kb.st, nil end
+		local w0, w1, w2, w3 = SA.SplineWeights(f0 or (2 * fa - fb), fa, fb, f3 or (2 * fb - fa), (frame - fa) / (fb - fa))
+		local st = mixState({ s0, ka.st, kb.st, s3 }, { w0, w1, w2, w3 })
+		return st, st, 0
+	end
 	return ka.st, kb.st, SA.EaseValue(ka.e, (frame - fa) / (fb - fa), ka.bz)
 end
 
@@ -328,10 +499,108 @@ local function smoothCamera(ent, tr, frame, half)
 	ent:SetCameraFOV(fov / sum)
 end
 
+-- one bone offset between two keys
+local function lerpBone(ka, kb, u)
+	return { p = lerpV(ka.p, kb.p, u), a = LerpAngle(u, ka.a, kb.a), s = lerpV(ka.s, kb.s, u) }
+end
+
+-- the state of a model between two snapshots, as one snapshot (what applyProp would set)
+local function blendProp(a, b, u)
+	local st = { kind = "prop", pos = lerpV(a.pos, b.pos, u), ang = slerp(a.ang, b.ang, u), bones = {}, flex = {},
+		skin = a.skin, bg = a.bg }
+	if a.phys or b.phys then
+		st.phys = {}
+		local pa, pb = a.phys or {}, b.phys or {}
+		for i, ka in pairs(pa) do
+			local kb = pb[i] or ka
+			st.phys[i] = { p = lerpV(ka.p, kb.p, u), a = slerp(ka.a, kb.a, u) }
+		end
+		for i, kb in pairs(pb) do
+			if not pa[i] then st.phys[i] = kb end
+		end
+	end
+	local ba, bb = a.bones or {}, b.bones or {}
+	for id, ka in pairs(ba) do st.bones[id] = lerpBone(ka, bb[id] or ZERO_BONE, u) end
+	for id, kb in pairs(bb) do
+		if not ba[id] then st.bones[id] = lerpBone(ZERO_BONE, kb, u) end
+	end
+	local fa, fb = a.flex or {}, b.flex or {}
+	for id, w in pairs(fa) do st.flex[id] = lerpN(w, fb[id] or 0, u) end
+	for id, w in pairs(fb) do
+		if not fa[id] then st.flex[id] = lerpN(0, w, u) end
+	end
+	if a.scale or b.scale then st.scale = lerpN(a.scale or 1, b.scale or 1, u) end
+	local ca, cb = a.col, b.col or a.col
+	if ca then
+		st.col = { math.Round(lerpN(ca[1], cb[1], u)), math.Round(lerpN(ca[2], cb[2], u)),
+			math.Round(lerpN(ca[3], cb[3], u)), math.Round(lerpN(ca[4], cb[4], u)) }
+	end
+	return st
+end
+
+-- the value of a part in a snapshot that defines it
+local function partValue(st, part)
+	local kind, idx = partIndex(part)
+	if idx == 0 and kind == "p" then return { p = st.pos, a = st.ang } end
+	if kind == "p" then return st.phys and st.phys[idx] end
+	if kind == "b" then return (st.bones or {})[idx] or ZERO_BONE end
+end
+
+-- A model whose track has bone keys, at a frame: the full keys give the base (or the object as
+-- it is, when there are none), and every keyed part is worked out between its own keys.
+local function resolveProp(ent, tr, frame)
+	local c = cacheOf(tr)
+	local a, b, u = segment(tr, frame, c.full)
+	local st
+	if a and a.kind == "prop" then
+		st = blendProp(a, b, u)
+	elseif not a then
+		st = capture(ent)
+		if st.kind ~= "prop" then return nil end
+	else
+		return nil
+	end
+	for part, list in pairs(c.parts) do
+		local pa, pb, pu = segment(tr, frame, list)
+		local va = pa and partValue(pa, part)
+		local vb = pb and partValue(pb, part) or va
+		va = va or vb
+		if va then
+			local kind, idx = partIndex(part)
+			if kind == "p" and idx == 0 then
+				st.pos, st.ang = lerpV(va.p, vb.p, pu), slerp(va.a, vb.a, pu)
+			elseif kind == "p" then
+				st.phys = st.phys or {}
+				st.phys[idx] = { p = lerpV(va.p, vb.p, pu), a = slerp(va.a, vb.a, pu) }
+			elseif kind == "b" then
+				st.bones[idx] = lerpBone(va, vb, pu)
+			end
+		end
+	end
+	st.resolved = true
+	return st
+end
+
+-- The state of a track at a frame as a single snapshot (the ghosts of the timeline)
+function SA.StateAt(ent, tr, frame)
+	if #tr.order == 0 then return nil end
+	if cacheOf(tr).has and not S.IsAux(ent) then return resolveProp(ent, tr, frame) end
+	local a, b, u = segment(tr, frame)
+	if not a then return nil end
+	if a.kind == "prop" and b.kind == "prop" then return blendProp(a, b, u) end
+	return a
+end
+
 -- A track at the frame frame -> object
 local function applyTrack(ent, tr, frame, noFace)
 	if #tr.order == 0 then return end
+	if cacheOf(tr).has and not S.IsAux(ent) then
+		local st = resolveProp(ent, tr, frame)
+		if st then applyProp(ent, st, st, 0, noFace) end
+		return
+	end
 	local a, b, u = segment(tr, frame)
+	if not a then return end
 	applyState(ent, a, b, u, noFace)
 	if a.kind == "camera" and S.IsCamera(ent) and #tr.order > 1 then
 		local smooth = ent:GetCamSmooth()
@@ -411,13 +680,17 @@ function SA.SendSummary(ply)
 		for i, f in ipairs(tr.order) do
 			local k = tr.keys[f]
 			local p = k.st.pos
-			list[i] = { f, k.e, math.Round(p.x, 1), math.Round(p.y, 1), math.Round(p.z, 1) }
+			-- bone keys: the parts a key holds ("p3,b17"), or those a full key leaves out
+			local only = k.st.only and table.concat(table.GetKeys(k.st.only), ",") or ""
+			local skip = k.st.skip and table.concat(table.GetKeys(k.st.skip), ",") or ""
+			list[i] = { f, k.e, math.Round(p.x, 1), math.Round(p.y, 1), math.Round(p.z, 1), only, skip }
 		end
 		tracks[tostring(uid)] = SA.ToPages(list)
 	end
 	local proc = {}
 	for uid, pr in pairs(a.proc or {}) do proc[tostring(uid)] = pr end
-	SA.SendParts(ply, "Summary", { fps = a.fps, frames = a.frames, loop = a.loop, tracks = tracks, sounds = a.sounds or {}, proc = proc })
+	SA.SendParts(ply, "Summary", { fps = a.fps, frames = a.frames, loop = a.loop, tracks = tracks, sounds = a.sounds or {}, proc = proc,
+		cuts = a.cuts or {} })
 end
 
 local function sendFrame(ply, serial)
@@ -451,8 +724,66 @@ local function opAfter(ply, op, uid)
 	op.after[uid] = copyTrack(anim(ply).tracks[uid])
 end
 
--- face = true: a key of the object's face track
-local function setKey(ply, ent, frame, ease, face)
+-- a part takes the value v (partValue of another snapshot) in the snapshot st (a copy being built)
+local function putPart(st, part, v)
+	local kind, idx = partIndex(part)
+	if not v then return end
+	if kind == "p" and idx == 0 then
+		st.pos, st.ang = v.p, v.a
+	elseif kind == "p" then
+		st.phys = st.phys or {}
+		st.phys[idx] = v
+	elseif kind == "b" then
+		st.bones[idx] = (v ~= ZERO_BONE) and v or nil
+	end
+	if st.only then
+		st.only[part] = true
+	elseif st.skip then
+		st.skip[part] = nil
+		if next(st.skip) == nil then st.skip = nil end
+	end
+end
+
+-- the part leaves the snapshot st (a copy); false — a bone key has nothing left
+local function dropPart(st, part)
+	if st.only then
+		local kind, idx = partIndex(part)
+		st.only[part] = nil
+		if kind == "p" and idx > 0 and st.phys then st.phys[idx] = nil end
+		if kind == "b" then st.bones[idx] = nil end
+		return next(st.only) ~= nil
+	end
+	st.skip = st.skip or {}
+	st.skip[part] = true
+	return true
+end
+
+-- "p3,b17" -> { p3 = true, b17 = true } (only parts the object has); nil — none
+local function parseParts(ent, list)
+	if not IsValid(ent) or S.IsAux(ent) then return nil end
+	local out, nb = {}, ent:GetBoneCount()
+	local np = S.IsRagdoll(ent) and ent:GetPhysicsObjectCount() or 1
+	for kind, idx in string.gmatch(list or "", "([pb])(%d+)") do
+		idx = tonumber(idx)
+		if (kind == "p" and idx < np) or (kind == "b" and idx < nb) then out[kind .. idx] = true end
+	end
+	return next(out) and out or nil
+end
+-- "parts:p3,b17|rest" -> parts list, rest; anything else -> nil, the string itself
+local function splitParts(str)
+	local list, rest = string.match(str, "^parts:([^|]*)|?(.*)$")
+	if list then return list, rest end
+	return nil, str
+end
+
+-- a bone key: an empty snapshot that names parts only (its place is kept for the path line)
+local function emptyPart(pos, ang)
+	return { kind = "prop", pos = pos, ang = ang, bones = {}, flex = {}, only = {} }
+end
+
+-- face = true: a key of the object's face track; parts — a bone key: only these parts of the
+-- object are keyed (a key already at the frame gets them, the rest of it stays)
+local function setKey(ply, ent, frame, ease, face, parts)
 	local a = anim(ply)
 	local uid = ent.SPeditor_UID
 	if not uid then return false end
@@ -468,8 +799,19 @@ local function setKey(ply, ent, frame, ease, face)
 	end
 	if not tr.keys[frame] and #tr.order >= SA.MAX_KEYS then return false end
 	local old = tr.keys[frame]
-	local e = ease or (old and old.e) or "ease"
-	tr.keys[frame] = { e = e, bz = old and old.e == e and old.bz or nil, st = face and captureFace(ent) or capture(ent) }
+	local e = ease or (old and old.e) or "spline"
+	local st
+	if face then
+		st = captureFace(ent)
+	elseif parts and not S.IsAux(ent) then
+		local now = capture(ent)
+		st = (old and old.st.kind == "prop") and table.Copy(old.st) or emptyPart(now.pos, now.ang)
+		for part in pairs(parts) do putPart(st, part, partValue(now, part)) end
+	else
+		st = capture(ent)
+	end
+	tr.keys[frame] = { e = e, bz = old and old.e == e and old.bz or nil, st = st }
+	tr.stamp = (tr.stamp or 0) + 1
 	if not old then
 		-- a new frame goes into its place in the sorted order (binary search)
 		local order = tr.order
@@ -483,6 +825,7 @@ local function setKey(ply, ent, frame, ease, face)
 	return true
 end
 SA.SetKey = setKey
+SA.SetPhys = setPhys       -- for the recorder (sv_saeditor_record.lua)
 
 local function dropEmpty(a, uid)
 	local tr = a.tracks[uid]
@@ -554,8 +897,33 @@ local function cleanSounds(list)
 	return out
 end
 
+SA.CleanSounds = cleanSounds
+
 MOD:NetReceive("Sounds", function(ply)
 	anim(ply).sounds = cleanSounds(SPeditor.ReadTable())
+	SA.SendSummary(ply)
+end)
+
+-- Camera cuts, as a whole list (the client edits it and sends the result)
+local function cleanCuts(list, frames)
+	local out, seen = {}, {}
+	for _, c in ipairs(istable(list) and list or {}) do
+		local f, uid = tonumber(istable(c) and c.f), tonumber(istable(c) and c.uid)
+		if f and uid and #out < 1000 then
+			f = math.Clamp(math.floor(f + 0.5), 0, frames or SA.MAX_FRAMES)
+			if not seen[f] then
+				seen[f] = true
+				out[#out + 1] = { f = f, uid = math.floor(uid) }
+			end
+		end
+	end
+	table.sort(out, function(x, y) return x.f < y.f end)
+	return out
+end
+
+MOD:NetReceive("Cuts", function(ply)
+	local a = anim(ply)
+	a.cuts = cleanCuts(SPeditor.ReadTable(), a.frames)
 	SA.SendSummary(ply)
 end)
 
@@ -584,26 +952,83 @@ MOD:NetReceive("Key", function(ply)
 	local a = anim(ply)
 
 	if action == OP.CLEAR_ALL then
+		-- "Remove all animation" takes the sounds and the camera cuts too: else the player and
+		-- the render go on playing the sounds of an animation that is not there any more
+		local op = opBefore(ply, id, 0)
 		for u in pairs(a.tracks) do opBefore(ply, id, u) end
-		local op = SA.Ops[ply] and SA.Ops[ply].items[id]
 		a.tracks = {}
-		if op then
-			for u in pairs(op.before) do op.after[u] = false end
-		end
+		for u in pairs(op.before) do op.after[u] = false end
+		op.sounds = { before = table.Copy(a.sounds or {}), after = {} }
+		op.cuts = { before = table.Copy(a.cuts or {}), after = {} }
+		a.sounds, a.cuts = {}, {}
 		SA.SendSummary(ply)
 		return
 	end
 
 	local op = opBefore(ply, id, uid)
 	local tr = a.tracks[uid]
+	-- "parts:p3,b17|…": the operation is about these parts of the keys only (bone keys)
+	local partList
+	partList, str = splitParts(str)
+	local owner = not SA.IsFaceTrack(uid) and S.FindUID(ply, uid) or nil
+	local parts = partList and parseParts(owner, partList)
+	if partList and not parts then
+		opAfter(ply, op, uid)
+		return
+	end
+
 	if action == OP.SET then
 		local face = SA.IsFaceTrack(uid)
 		local ent = S.FindUID(ply, face and (uid - SA.FACE) or uid)
 		-- str — the easing of the new key (the client asks for "linear" when it plays an effect)
 		local ease = (str ~= "bezier" and SA.ValidEase(str)) and str or nil
-		if IsValid(ent) and not setKey(ply, ent, frame, ease, face) then S.Notice(ply, "#sa_keys_limit", 1) end
+		if IsValid(ent) and not setKey(ply, ent, frame, ease, face, parts) then S.Notice(ply, "#sa_keys_limit", 1) end
+	elseif parts and (action == OP.DELETE or action == OP.SHIFT) then
+		-- bone keys of the listed frames: deleted, or moved / copied by arg frames
+		if tr then
+			local frames = {}
+			for f in string.gmatch(str, "%d+") do frames[#frames + 1] = tonumber(f) end
+			if #frames == 0 then frames[1] = frame end
+			local moving = {}
+			for _, f in ipairs(frames) do
+				local k = tr.keys[f]
+				if k and k.st.kind == "prop" then
+					local vals = {}
+					for part in pairs(parts) do
+						if defines(k.st, part) then vals[part] = partValue(k.st, part) end
+					end
+					if next(vals) then
+						moving[#moving + 1] = { f = f, k = k, vals = vals }
+						if action == OP.DELETE or frame ~= 1 then
+							local st, left = table.Copy(k.st), true
+							for part in pairs(vals) do left = dropPart(st, part) end
+							tr.keys[f] = left and { e = k.e, bz = k.bz, st = st } or nil
+						end
+					end
+				end
+			end
+			if action == OP.SHIFT then
+				for _, m in ipairs(moving) do
+					local to = m.f + arg
+					if to >= 0 and to <= a.frames then
+						local dest = tr.keys[to]
+						local st = (dest and dest.st.kind == "prop") and table.Copy(dest.st) or emptyPart(m.k.st.pos, m.k.st.ang)
+						for part, v in pairs(m.vals) do putPart(st, part, v) end
+						tr.keys[to] = { e = dest and dest.e or m.k.e, bz = dest and dest.bz or m.k.bz, st = st }
+					end
+				end
+			end
+			tr.stamp = (tr.stamp or 0) + 1
+			reorder(tr)
+			dropEmpty(a, uid)
+		end
 	elseif action == OP.DELETE then
-		if tr and tr.keys[frame] then
+		-- str = "f1,f2,…": several keys of the track at once
+		if tr and str ~= "" then
+			for f in string.gmatch(str, "%d+") do tr.keys[tonumber(f)] = nil end
+			reorder(tr)
+			dropEmpty(a, uid)
+		elseif tr and tr.keys[frame] then
 			tr.keys[frame] = nil
 			reorder(tr)
 			dropEmpty(a, uid)
@@ -616,14 +1041,41 @@ MOD:NetReceive("Key", function(ply)
 			if action == OP.MOVE then tr.keys[frame] = nil end
 			reorder(tr)
 		end
+	elseif action == OP.SHIFT then
+		if tr then
+			local moving = {}
+			for f in string.gmatch(str, "%d+") do
+				f = tonumber(f)
+				if tr.keys[f] then moving[f] = tr.keys[f] end
+			end
+			if frame ~= 1 then
+				for f in pairs(moving) do tr.keys[f] = nil end
+			end
+			for f, k in pairs(moving) do
+				local to = f + arg
+				if to >= 0 and to <= a.frames then tr.keys[to] = k end
+			end
+			reorder(tr)
+			dropEmpty(a, uid)
+		end
 	elseif action == OP.EASE then
-		local k = tr and tr.keys[frame]
+		-- "ease|f1,f2,…": one kind for several keys of the track
+		local list = string.match(str, "|(.*)$")
+		local frames = { frame }
+		if list then
+			str = string.match(str, "^[^|]*")
+			frames = {}
+			for f in string.gmatch(list, "%d+") do frames[#frames + 1] = tonumber(f) end
+		end
 		-- "bezier:x1,y1,x2,y2" — a curve of its own (the curve editor)
 		local bz = string.sub(str, 1, 7) == "bezier:" and SA.ParseBezier(string.sub(str, 8)) or nil
-		if k and bz then
-			tr.keys[frame] = { e = "bezier", bz = bz, st = k.st }
-		elseif k and table.HasValue(SA.EASES, str) then
-			tr.keys[frame] = { e = str, st = k.st }
+		for _, f in ipairs(frames) do
+			local k = tr and tr.keys[f]
+			if k and bz then
+				tr.keys[f] = { e = "bezier", bz = bz, st = k.st }
+			elseif k and table.HasValue(SA.EASES, str) then
+				tr.keys[f] = { e = str, st = k.st }
+			end
 		end
 	elseif action == OP.CLEAR then
 		a.tracks[uid] = nil
@@ -645,6 +1097,8 @@ MOD:NetReceive("Restore", function(ply)
 	for uid, tr in pairs(after and op.after or op.before) do
 		a.tracks[uid] = copyTrack(tr) or nil
 	end
+	if op.sounds then a.sounds = table.Copy(after and op.sounds.after or op.sounds.before) end
+	if op.cuts then a.cuts = table.Copy(after and op.cuts.after or op.cuts.before) end
 	SA.SendSummary(ply)
 	SA.ApplyAll(ply, a.cur)
 end)
@@ -703,6 +1157,171 @@ MOD:NetReceive("Bake", function(ply)
 end)
 
 ---------------------------------------------------------------------
+-- Lip sync (a0.6): the client works out how the mouth moves in a voice clip (phonemes written
+-- into the WAV as Faceposer / SFM write them, or the loudness) and sends mouth shapes by frame
+-- (SA.LIP_CH channels, 0..1); here they become keys of the object's face track. Only the mouth
+-- flexes (SA.MouthMap) change: the rest of the face keeps what the animation gives it there.
+---------------------------------------------------------------------
+-- flexes of a track at a frame: { [flex id] = weight } (body and face keys both carry them)
+local function flexAt(tr, frame)
+	local a, b, u = segment(tr, frame)
+	if not a then return {} end
+	local fa, fb, out = a.flex or {}, b.flex or {}, {}
+	for id, w in pairs(fa) do out[id] = lerpN(w, fb[id] or 0, u) end
+	for id, w in pairs(fb) do
+		if not fa[id] then out[id] = lerpN(0, w, u) end
+	end
+	return out
+end
+
+MOD:NetReceive("Lip", function(ply)
+	local id  = net.ReadUInt(32)
+	local uid = net.ReadUInt(32)
+	local n   = net.ReadUInt(16)
+	local nch = #SA.LIP_CH
+	local shapes = {}
+	for i = 1, math.min(n, 20000) do
+		local sh = { f = net.ReadUInt(32), c = {} }
+		for j = 1, nch do sh.c[j] = net.ReadUInt(8) / 255 end
+		shapes[i] = sh
+	end
+	local ent = S.FindUID(ply, uid)
+	if not IsValid(ent) or S.IsAux(ent) or #shapes == 0 then return end
+	local map = SA.MouthMap(ent)
+	if not map then S.Notice(ply, "#sa_lip_noface", 1) return end
+	local a = anim(ply)
+	local fid = SA.FaceTrack(uid)
+	local op = opBefore(ply, id, fid)
+	local old, body = a.tracks[fid], a.tracks[uid]
+	local face = ent:GetFlexNum() > 0 and captureFace(ent)
+	if not face then return end
+
+	-- the track the face comes from until now: the face track, or the face part of the body keys
+	-- (a new face track takes the face of every body key, or the body keys would stop moving it)
+	local tr = { keys = {}, order = {} }
+	if old then
+		for f, k in pairs(old.keys) do tr.keys[f] = k end
+	elseif body and #body.order > 0 then
+		for _, f in ipairs(body.order) do
+			local st = body.keys[f].st
+			if st.kind == "prop" and not st.only then
+				tr.keys[f] = { e = body.keys[f].e, bz = body.keys[f].bz, st = { kind = "face", pos = st.pos, ang = st.ang, flex = table.Copy(st.flex or {}) } }
+			end
+		end
+	end
+	reorder(tr)
+	local src = #tr.order > 0 and copyTrack(tr) or nil
+
+	table.sort(shapes, function(x, y) return x.f < y.f end)
+	-- the mouth of the lip sync at any frame of its span (between two shapes: in a straight line)
+	local function mouthAt(frame)
+		local lo, hi = shapes[1], shapes[#shapes]
+		for i = 1, #shapes - 1 do
+			if shapes[i].f <= frame and shapes[i + 1].f >= frame then lo, hi = shapes[i], shapes[i + 1] break end
+		end
+		local u = hi.f > lo.f and math.Clamp((frame - lo.f) / (hi.f - lo.f), 0, 1) or 0
+		local out = {}
+		for j = 1, nch do out[j] = lerpN(lo.c[j], hi.c[j], u) end
+		return out
+	end
+	local function stateAt(frame, ch)
+		local flex = src and flexAt(src, frame) or table.Copy(face.flex)
+		for fl, wts in pairs(map) do
+			local w = 0
+			for j = 1, nch do w = w + (ch[j] or 0) * (wts[j] or 0) end
+			local mn, mx = ent:GetFlexBounds(fl)
+			w = math.Clamp(w, math.max(mn or 0, 0), mx or 1)
+			flex[fl] = math.abs(w) > 0.001 and w or nil
+		end
+		return { kind = "face", pos = face.pos, ang = face.ang, flex = flex }
+	end
+
+	local f0, f1 = shapes[1].f, shapes[#shapes].f
+	-- keys already inside the span keep the rest of their face, the mouth is that of the lip sync
+	for f, k in pairs(tr.keys) do
+		if f > f0 and f < f1 then tr.keys[f] = { e = k.e, bz = k.bz, st = stateAt(f, mouthAt(f)) } end
+	end
+	for _, sh in ipairs(shapes) do
+		local f = sh.f
+		-- the part of the sound past the end of the animation is not heard: no keys there
+		if f > a.frames then break end
+		if not tr.keys[f] and #tr.order >= SA.MAX_KEYS then break end
+		tr.keys[f] = { e = "ease", st = stateAt(f, sh.c) }
+		tr.order[#tr.order + 1] = f
+	end
+	reorder(tr)
+	a.tracks[fid] = tr
+	opAfter(ply, op, fid)
+	SA.SendSummary(ply)
+	SA.ApplyAll(ply, a.cur)
+	S.Notice(ply, "#sa_lip_done|" .. #shapes, 2)
+end)
+
+---------------------------------------------------------------------
+-- Ready camera moves (a0.6, cl_saeditor_easy.lua): the client works out the path (a dolly,
+-- an orbit, a pan…) and sends its points; each becomes a key of the camera, with the rest of
+-- the camera (its field of view, shake) as it is now unless the point sets it.
+---------------------------------------------------------------------
+MOD:NetReceive("Cam", function(ply)
+	local id   = net.ReadUInt(32)
+	local ent  = S.ReadOwned(ply)
+	local ease = net.ReadString()
+	local n    = math.min(net.ReadUInt(8), 64)
+	local pts = {}
+	for i = 1, n do
+		pts[i] = { f = net.ReadUInt(32), pos = SPeditor.ReadVecF(), ang = SPeditor.ReadAngF(), shake = net.ReadFloat() }
+	end
+	if not IsValid(ent) or not S.IsCamera(ent) or n == 0 or not SA.ValidEase(ease) or ease == "bezier" then return end
+	local a = anim(ply)
+	local uid = ent.SPeditor_UID
+	local op = opBefore(ply, id, uid)
+	local tr = a.tracks[uid]
+	if not tr then
+		tr = { keys = {}, order = {} }
+		a.tracks[uid] = tr
+	end
+	local base = capture(ent)
+	for _, p in ipairs(pts) do
+		if p.f <= a.frames and SPeditor.ValidVec(p.pos) and SPeditor.ValidAng(p.ang) and (tr.keys[p.f] or #tr.order < SA.MAX_KEYS) then
+			local st = table.Copy(base)
+			st.pos, st.ang = p.pos, p.ang
+			-- a negative shake: the camera keeps its own
+			if p.shake >= 0 then st.shake = p.shake end
+			tr.keys[p.f] = { e = ease, st = st }
+			reorder(tr)
+		end
+	end
+	opAfter(ply, op, uid)
+	SA.SendSummary(ply)
+	SA.ApplyAll(ply, a.cur)
+end)
+
+---------------------------------------------------------------------
+-- Ghosts (a0.6, cl_saeditor_ghost.lua): the client asks for the pose of an object at a few
+-- frames (the keys around the playhead) and draws it see-through, as onion skin.
+---------------------------------------------------------------------
+MOD:NetReceive("Ghost", function(ply)
+	local uid = net.ReadUInt(32)
+	local n   = math.min(net.ReadUInt(4), 4)
+	local frames = {}
+	for i = 1, n do frames[i] = net.ReadUInt(32) end
+	local ent = S.FindUID(ply, uid)
+	local tr = anim(ply).tracks[uid]
+	local out = { uid = uid, states = {} }
+	if IsValid(ent) and tr and not S.IsAux(ent) then
+		for _, f in ipairs(frames) do
+			local ok, st = pcall(SA.StateAt, ent, tr, f)
+			if ok and st and st.kind == "prop" then
+				out.states[#out.states + 1] = { f = f, pos = st.pos, ang = st.ang, phys = st.phys, scale = st.scale }
+			end
+		end
+	end
+	MOD:NetStart("Ghost")
+	SPeditor.WriteTable(out)
+	net.Send(ply)
+end)
+
+---------------------------------------------------------------------
 -- Playback
 ---------------------------------------------------------------------
 MOD:Hook("Think", function()
@@ -712,7 +1331,10 @@ MOD:Hook("Think", function()
 		elseif a.playing then
 			local f = a.f0 + (CurTime() - a.t0) * a.fps
 			if f >= a.frames then
-				if a.loop then
+				-- outside the editor the show has its own loop setting
+				local loop = a.loop
+				if a.show then loop = a.showLoop end
+				if loop then
 					a.t0, a.f0 = CurTime(), 0
 					f = 0
 				else
@@ -721,25 +1343,72 @@ MOD:Hook("Think", function()
 				end
 			end
 			SA.ApplyAll(ply, f, a.playing)
+			-- the end: the player outside the editor stays open at the last frame
 			if not a.playing then sendFrame(ply) end
 		end
 	end
 end, "play")
 
--- the editor is closed — playback stops
+-- the editor is closed — playback stops; opened — a show outside the editor stops
 MOD:Hook("SPeditor_PlayerState", function(ply, on)
 	local a = A[ply]
-	if a and not on then
-		a.playing = false
+	if a then
+		a.playing, a.show = false, nil
 		if a.procOn then SA.ApplyAll(ply, a.cur, false) end
 	end
 end)
+
+-- Playing the animation outside the editor (a0.6, cl_saeditor_show.lua): the scene stays
+-- on the map when the editor is closed, and the player watches it play in the game itself.
+-- Works with the editor closed (noActive). on = false stops it.
+-- action: 0 — stop the show, 1 — play from the start, 2 — pause, 3 — play on from frame,
+-- 4 — go to frame (the player's seek bar and buttons)
+MOD:NetReceive("Show", function(ply)
+	local action = net.ReadUInt(3)
+	local loop   = net.ReadBool()
+	local frame  = net.ReadFloat()
+	local a = A[ply]
+	if not a or frame ~= frame then return end
+	frame = math.Clamp(frame, 0, a.frames)
+	a.showLoop = loop
+	if action == 1 then
+		if next(a.tracks) == nil and #(a.sounds or {}) == 0 then
+			S.Notice(ply, "#sa_show_empty", 1)
+			return
+		end
+		a.show = true
+		a.playing = true
+		a.cur = 0
+		a.t0, a.f0 = CurTime(), 0
+		SA.SendSummary(ply)
+		SA.ApplyAll(ply, 0, true)
+	elseif action == 0 then
+		if not a.show then return end
+		a.show, a.playing = nil, false
+		SA.ApplyAll(ply, a.cur, false)
+	elseif not a.show then
+		return
+	elseif action == 2 then
+		a.playing = false
+		SA.ApplyAll(ply, a.cur, false)
+	elseif action == 3 then
+		if frame >= a.frames then frame = 0 end
+		a.playing, a.cur = true, frame
+		a.t0, a.f0 = CurTime(), frame
+		SA.ApplyAll(ply, frame, true)
+	elseif action == 4 then
+		a.cur = frame
+		if a.playing then a.t0, a.f0 = CurTime(), frame end
+		SA.ApplyAll(ply, frame, a.playing)
+	end
+	sendFrame(ply)
+end, true)
 
 -- "Clear scene" and loading another scene
 MOD:Hook("SPeditor_PlayerCleanup", function(ply)
 	if not A[ply] then return end
 	local a = anim(ply)
-	a.tracks, a.sounds, a.playing, a.cur, a.proc, a.procOn = {}, {}, false, 0, {}, nil
+	a.tracks, a.sounds, a.playing, a.cur, a.proc, a.procOn, a.cuts = {}, {}, false, 0, {}, nil, {}
 	SA.Ops[ply] = nil
 	if IsValid(ply) then SA.SendSummary(ply) end
 end)
@@ -784,6 +1453,19 @@ local function validState(st)
 		end
 		return true
 	elseif st.kind == "prop" then
+		-- bone keys: the sets of parts a key holds / leaves out
+		local hadOnly = st.only ~= nil
+		for _, field in ipairs({ "only", "skip" }) do
+			if st[field] ~= nil then
+				local set = {}
+				for part, on in pairs(istable(st[field]) and st[field] or {}) do
+					if on == true and isstring(part) and string.match(part, "^[pb]%d+$") then set[part] = true end
+				end
+				st[field] = next(set) and set or nil
+			end
+		end
+		-- a bone key with nothing left in it would turn into a full key of nothing
+		if hadOnly and not st.only then return false end
 		st.bones = istable(st.bones) and st.bones or {}
 		st.flex = istable(st.flex) and st.flex or {}
 		for id, b in pairs(st.bones) do
@@ -818,7 +1500,7 @@ end
 
 MOD:SceneData(function(ply, ctx)
 	local a = A[ply]
-	if not a or (next(a.tracks) == nil and #(a.sounds or {}) == 0) then return nil end
+	if not a or (next(a.tracks) == nil and #(a.sounds or {}) == 0 and #(a.cuts or {}) == 0) then return nil end
 	local tracks, faces = {}, {}
 	for id, tr in pairs(a.tracks) do
 		local face = SA.IsFaceTrack(id)
@@ -844,11 +1526,18 @@ MOD:SceneData(function(ply, ctx)
 		local index = ent and ctx.indexOf[ent]
 		if index then proc[tostring(index)] = pr end
 	end
-	return { version = 1, fps = a.fps, frames = a.frames, loop = a.loop, tracks = tracks, faces = next(faces) and faces or nil,
+	-- camera cuts refer to their camera by its number in the scene
+	local cuts = {}
+	for _, c in ipairs(a.cuts or {}) do
+		local ent = S.FindUID(ply, c.uid)
+		local index = ent and ctx.indexOf[ent]
+		if index then cuts[#cuts + 1] = { f = c.f, obj = index } end
+	end
+	return { version = 1, cuts = next(cuts) and cuts or nil, fps = a.fps, frames = a.frames, loop = a.loop, tracks = tracks, faces = next(faces) and faces or nil,
 		sounds = sounds, proc = next(proc) and proc or nil }
 end, function(ply, data, ctx)
 	local a = anim(ply)
-	a.tracks, a.sounds, a.playing, a.cur, a.proc, a.procOn = {}, {}, false, 0, {}, nil
+	a.tracks, a.sounds, a.playing, a.cur, a.proc, a.procOn, a.cuts = {}, {}, false, 0, {}, nil, {}
 	SA.Ops[ply] = nil
 	if data then
 		for index, pr in pairs(istable(data.proc) and data.proc or {}) do
@@ -894,6 +1583,12 @@ end, function(ply, data, ctx)
 			end
 		end
 		a.sounds = cleanSounds(sounds)
+		local cuts = {}
+		for _, c in ipairs(istable(data.cuts) and data.cuts or {}) do
+			local ent = istable(c) and ctx.ents[tonumber(c.obj) or 0]
+			if IsValid(ent) and ent.SPeditor_UID then cuts[#cuts + 1] = { f = c.f, uid = ent.SPeditor_UID } end
+		end
+		a.cuts = cleanCuts(cuts, a.frames)
 	end
 	SA.SendSummary(ply)
 end)
@@ -1149,12 +1844,16 @@ local function sendCurve(ply, uid, part)
 	local out = { uid = uid, part = part, keys = {} }
 	if tr and IsValid(ent) and #tr.order > 0 then
 		local kind, idx = partOf(ent, part)
-		out.chans = channels(tr.keys[tr.order[1]].st, kind)
-		for i, f in ipairs(tr.order) do
+		-- bone keys: only the keys that hold this part are its keys
+		local pid = (kind == "root") and "p0" or ((kind == "phys") and ("p" .. idx) or ("b" .. idx))
+		for _, f in ipairs(tr.order) do
 			local k = tr.keys[f]
-			local vals = {}
-			for c, ch in ipairs(out.chans) do vals[c] = chanGet(k.st, kind, idx, ch) or 0 end
-			out.keys[i] = { f = f, e = k.e, bz = k.bz, v = vals }
+			if defines(k.st, pid) then
+				out.chans = out.chans or channels(k.st, kind)
+				local vals = {}
+				for c, ch in ipairs(out.chans) do vals[c] = chanGet(k.st, kind, idx, ch) or 0 end
+				out.keys[#out.keys + 1] = { f = f, e = k.e, bz = k.bz, v = vals }
+			end
 		end
 	end
 	out.keys = SA.ToPages(out.keys)
@@ -1196,11 +1895,35 @@ end)
 ---------------------------------------------------------------------
 local SMH_DIR = "smh/"
 
+-- Where SMH saves are found: the game's own data/smh, the data_static/smh of addons (any
+-- installed addon may ship saves there) and data/smh inside legacy addons (folders in
+-- garrysmod/addons, whose data/ the game does not mount). Returns { { file = the name shown,
+-- read = path, pathId } }; saves of addons are shown as "folder/name" or "[static] name".
+local function smhSources()
+	local out, seen = {}, {}
+	local function add(shown, read, pathId)
+		if #out >= 400 or seen[shown] then return end
+		seen[shown] = true
+		out[#out + 1] = { file = shown, read = read, pathId = pathId }
+	end
+	for _, f in ipairs(file.Find(SMH_DIR .. "*.txt", "DATA") or {}) do add(string.StripExtension(f), SMH_DIR .. f, "DATA") end
+	for _, f in ipairs(file.Find("data_static/smh/*.txt", "GAME") or {}) do
+		add("[static] " .. string.StripExtension(f), "data_static/smh/" .. f, "GAME")
+	end
+	local _, dirs = file.Find("addons/*", "MOD")
+	for _, d in ipairs(dirs or {}) do
+		for _, f in ipairs(file.Find("addons/" .. d .. "/data/smh/*.txt", "MOD") or {}) do
+			add(d .. "/" .. string.StripExtension(f), "addons/" .. d .. "/data/smh/" .. f, "MOD")
+		end
+	end
+	return out
+end
+
 local function smhFiles()
 	local out = {}
-	for _, f in ipairs(file.Find(SMH_DIR .. "*.txt", "DATA") or {}) do
+	for _, src in ipairs(smhSources()) do
 		if #out >= 200 then break end
-		local data = util.JSONToTable(file.Read(SMH_DIR .. f, "DATA") or "")
+		local data = util.JSONToTable(file.Read(src.read, src.pathId) or "")
 		if istable(data) and istable(data.Entities) then
 			local list = {}
 			for _, e in pairs(data.Entities) do
@@ -1210,7 +1933,7 @@ local function smhFiles()
 						world = istable(e.Properties) and e.Properties.IsWorld or nil }
 				end
 			end
-			out[#out + 1] = { file = string.StripExtension(f), map = tostring(data.Map or ""), ents = list }
+			out[#out + 1] = { file = src.file, map = tostring(data.Map or ""), ents = list }
 		end
 	end
 	return out
@@ -1277,8 +2000,8 @@ end
 
 -- opts = { start = first frame, fps = SMH frames a second (0 — frame numbers as they are),
 --          world = keep the places of the save (false — move it to where the object stands) }
-local function smhImport(ply, id, fileName, entName, ent, opts)
-	local data = util.JSONToTable(file.Read(SMH_DIR .. fileName .. ".txt", "DATA") or "")
+local function smhImport(ply, id, src, entName, ent, opts)
+	local data = util.JSONToTable(file.Read(src.read, src.pathId) or "")
 	if not istable(data) or not istable(data.Entities) then return "#sa_smh_bad" end
 	local src
 	for _, e in pairs(data.Entities) do
@@ -1509,15 +2232,15 @@ MOD:NetReceive("SMH", function(ply)
 	local t = SPeditor.ReadTable() or {}
 	local fileName = tostring(t.file or "")
 	if action == 1 then
-		-- an existing save only (its name as the folder lists it)
-		local ok = false
-		for _, f in ipairs(file.Find(SMH_DIR .. "*.txt", "DATA") or {}) do
-			if string.StripExtension(f) == fileName then ok = true break end
+		-- an existing save only (its name as the list shows it)
+		local src
+		for _, f in ipairs(smhSources()) do
+			if f.file == fileName then src = f break end
 		end
-		if not ok then return end
+		if not src then return end
 		local ent = S.FindUID(ply, math.floor(tonumber(t.uid) or 0))
 		if not IsValid(ent) then return end
-		local err, n = smhImport(ply, math.floor(tonumber(t.op) or 0), fileName, tostring(t.ent or ""), ent,
+		local err, n = smhImport(ply, math.floor(tonumber(t.op) or 0), src, tostring(t.ent or ""), ent,
 			{ start = tonumber(t.start) or 0, fps = tonumber(t.fps) or 0, world = t.world and true or false })
 		S.Notice(ply, err or ("#sa_smh_imported|" .. n), err and 1 or 2)
 	elseif action == 2 then

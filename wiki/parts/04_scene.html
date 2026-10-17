@@ -26,6 +26,23 @@
     </dl>
   </div>
 
+  <h2><span class="l-en">Several objects at once</span><span class="l-ru">Несколько объектов сразу</span> <span class="badge new">new</span></h2>
+  <figure>
+    <img src="img/a06_multiselect.jpg" alt="Two characters selected">
+    <figcaption class="l-en"><b>Two characters selected.</b> The first one has the gizmo, the other a frame; both are highlighted in the object list, and the status bar says <em>selected: alyx 1 (+1)</em>.</figcaption>
+    <figcaption class="l-ru"><b>Выделены два персонажа.</b> У первого гизмо, у второго рамка; в списке объектов подсвечены оба, а строка состояния пишет <em>selected: alyx 1 (+1)</em>.</figcaption>
+  </figure>
+  <ul class="l-en">
+    <li><kbd>Shift</kbd> + click (or <kbd>Ctrl</kbd> + click) adds an object to the selection in the viewport or in the object list; the same on a selected one takes it out. The gizmo then moves, turns and scales them together; <kbd>Del</kbd> and <kbd>Ctrl</kbd> + <kbd>D</kbd> work on all of them.</li>
+    <li>With the cursor over the object list: <kbd>Ctrl</kbd> + <kbd>A</kbd> selects everything except locked and hidden objects; <kbd>Ctrl</kbd> + <kbd>C</kbd> copies the selected objects, <kbd>Ctrl</kbd> + <kbd>V</kbd> pastes copies a little aside. Paste again and the next copies go one more step further; one <kbd>Ctrl</kbd> + <kbd>Z</kbd> takes a whole paste back. The same commands are in the <span class="ui">Edit</span> menu.</li>
+    <li>A duplicate (<kbd>Ctrl</kbd> + <kbd>D</kbd>) of several objects is one undo step too, and the copies become the new selection.</li>
+  </ul>
+  <ul class="l-ru">
+    <li><kbd>Shift</kbd> + клик (или <kbd>Ctrl</kbd> + клик) добавляет объект к выделению во вьюпорте или в списке объектов; то же по выделенному убирает его. Гизмо тогда переносит, поворачивает и масштабирует их вместе; <kbd>Del</kbd> и <kbd>Ctrl</kbd> + <kbd>D</kbd> действуют на все.</li>
+    <li>С курсором над списком объектов: <kbd>Ctrl</kbd> + <kbd>A</kbd> выделяет всё, кроме закреплённых и скрытых объектов; <kbd>Ctrl</kbd> + <kbd>C</kbd> копирует выделенные объекты, <kbd>Ctrl</kbd> + <kbd>V</kbd> вставляет копии чуть в стороне. Вставьте ещё раз — следующие копии встанут ещё на шаг дальше; одно <kbd>Ctrl</kbd> + <kbd>Z</kbd> убирает всю вставку. Те же команды есть в меню <span class="ui">Edit</span>.</li>
+    <li>Дубликат (<kbd>Ctrl</kbd> + <kbd>D</kbd>) нескольких объектов — тоже один шаг отмены, и копии становятся новым выделением.</li>
+  </ul>
+
   <h2><span class="l-en">The Model Browser</span><span class="l-ru">Браузер моделей</span></h2>
   <figure>
     <img src="img/16_model_browser.jpg" alt="Model Browser">
@@ -37,14 +54,16 @@
     <li><strong>Spawn by path</strong>: type a full path such as <code>models/player/group01/male_07.mdl</code> and press <kbd>Enter</kbd> — handy for models from addons that are not in any spawnlist.</li>
     <li>Any model works: props, ragdolls, player models and NPC models from the game and from the Workshop. Models with a physics skeleton become posable <strong>ragdolls</strong>; the others are <strong>props</strong> that can still have bones.</li>
     <li>The status line shows how many models are indexed; the list of <em>All models</em> grows while indexing runs in the background.</li>
+    <li><span class="badge new">new</span> Legacy addons — folders in <code>garrysmod/addons</code>, not from the Workshop — are listed with the Workshop ones.</li>
   </ul>
   <ul class="l-ru">
     <li><strong>Поиск</strong> по части имени или пути, например <code>alyx</code>, <code>combine</code>, <code>props_c17</code>.</li>
     <li><strong>Создание по пути</strong>: введите полный путь, например <code>models/player/group01/male_07.mdl</code>, и нажмите <kbd>Enter</kbd> — удобно для моделей из аддонов, которых нет в списках.</li>
     <li>Подходит любая модель: пропы, рэгдоллы, модели игроков и NPC из игры и из Workshop. Модели с физическим скелетом становятся позируемыми <strong>рэгдоллами</strong>, остальные — <strong>пропами</strong>, у которых тоже могут быть кости.</li>
     <li>В строке состояния — сколько моделей проиндексировано; список <em>All models</em> растёт, пока индексация идёт в фоне.</li>
+    <li><span class="badge new">new</span> Legacy-аддоны — папки в <code>garrysmod/addons</code>, не из Workshop, — показываются вместе с аддонами Workshop.</li>
   </ul>
-  <h3><span class="l-en">Addons and Games</span><span class="l-ru">Аддоны и игры</span> <span class="badge new">new</span></h3>
+  <h3><span class="l-en">Addons and Games</span><span class="l-ru">Аддоны и игры</span></h3>
   <div class="row">
     <figure class="fit"><img src="img/a05_browser_addons.jpg" alt="Model Browser, Addons" style="--w:560px"></figure>
     <div style="flex:1 1 260px;min-width:0">
@@ -55,7 +74,7 @@
     </div>
   </div>
 
-  <h2><span class="l-en">Taking objects from the map</span><span class="l-ru">Объекты с карты</span> <span class="badge new">new</span></h2>
+  <h2><span class="l-en">Taking objects from the map</span><span class="l-ru">Объекты с карты</span></h2>
   <div class="row">
     <figure class="fit"><img src="img/a05_adopt.jpg" alt="Take objects from the map" style="--w:560px"></figure>
     <div style="flex:1 1 260px;min-width:0">
@@ -90,7 +109,7 @@
       <p class="l-ru">Поле поиска фильтрует дерево. Кнопка-шестерёнка — настройки дерева (развернуть / свернуть всё).</p>
     </div>
   </div>
-  <h3><span class="l-en">The skeleton view</span><span class="l-ru">Вид «скелет»</span> <span class="badge new">new</span></h3>
+  <h3><span class="l-en">The skeleton view</span><span class="l-ru">Вид «скелет»</span></h3>
   <div class="row">
     <figure class="fit"><img src="img/a05_ase_skeleton.jpg" alt="Skeleton tree" style="--w:300px"></figure>
     <div style="flex:1 1 300px;min-width:0">
@@ -191,12 +210,12 @@
   <div class="tbl"><table>
     <tr><th><span class="l-en">Key</span><span class="l-ru">Клавиша</span></th><th><span class="l-en">Tool</span><span class="l-ru">Инструмент</span></th></tr>
     <tr><td><kbd>1</kbd></td><td class="wrap"><span class="l-en"><strong>Move.</strong> Drag an arrow to move along an axis, the centre to move in the screen plane.</span><span class="l-ru"><strong>Перемещение.</strong> Тяните стрелку для движения по оси, центр — для движения в плоскости экрана.</span></td></tr>
-    <tr><td><kbd>2</kbd></td><td class="wrap"><span class="l-en"><strong>Rotate.</strong> Drag a ring to turn around its axis.</span><span class="l-ru"><strong>Вращение.</strong> Тяните кольцо, чтобы повернуть вокруг его оси.</span></td></tr>
+    <tr><td><kbd>2</kbd></td><td class="wrap"><span class="l-en"><strong>Rotate.</strong> Drag a coloured ring to turn around its axis. <span class="badge new">new</span> The white outer ring turns around the line of sight (as you see it on the screen); drag anywhere inside the rings for a <strong>trackball</strong> — the bone rolls after the mouse in every direction at once. A click there without dragging still selects the bone under the cursor.</span><span class="l-ru"><strong>Вращение.</strong> Тяните цветное кольцо, чтобы повернуть вокруг его оси. <span class="badge new">new</span> Белое внешнее кольцо поворачивает вокруг линии взгляда (так, как вы видите на экране); тяните где угодно внутри колец — <strong>трекбол</strong>: кость катится за мышью во все стороны сразу. Простой щелчок там по-прежнему выделяет кость под курсором.</span></td></tr>
     <tr><td><kbd>4</kbd></td><td class="wrap"><span class="l-en"><strong>Scale.</strong> The centre scales evenly, an axis stretches along it. Works on props and on bones of any model.</span><span class="l-ru"><strong>Масштаб.</strong> Центр — равномерно, ось — растяжение по ней. Работает на пропах и на костях любой модели.</span></td></tr>
     <tr><td><kbd>3</kbd></td><td class="wrap"><span class="l-en"><strong>World / local axes.</strong> Local axes follow the object's own rotation.</span><span class="l-ru"><strong>Мировые / локальные оси.</strong> Локальные оси следуют повороту самого объекта.</span></td></tr>
     <tr><td><kbd>I</kbd></td><td class="wrap"><span class="l-en"><strong>Inverse kinematics.</strong> Move a hand or a foot and the whole arm or leg follows.</span><span class="l-ru"><strong>Инверсная кинематика.</strong> Двигайте кисть или стопу — рука или нога следует за ней.</span></td></tr>
   </table></div>
-  <h3><span class="l-en">Plane handles</span><span class="l-ru">Ручки плоскостей</span> <span class="badge new">new</span></h3>
+  <h3><span class="l-en">Plane handles</span><span class="l-ru">Ручки плоскостей</span></h3>
   <div class="row">
     <figure class="fit"><img src="img/a05_gizmo_planes.jpg" alt="Move gizmo with plane handles" style="--w:520px"></figure>
     <div style="flex:1 1 260px;min-width:0">
@@ -217,17 +236,17 @@
       <p class="l-ru"><span class="ui">View → Toggle Skeleton (B)</span> прячет маркеры; <span class="ui">View → Bone size</span> делает их больше или меньше.</p>
     </div>
   </div>
-  <p class="l-en"><span class="badge new">new</span> A click on the body of the <em>selected</em> character picks the body part under the cursor — no need to hit the small markers.</p>
-  <p class="l-ru"><span class="badge new">new</span> Щелчок по телу <em>выделенного</em> персонажа выбирает часть тела под курсором — не нужно попадать в маленькие маркеры.</p>
+  <p class="l-en">A click on the body of the <em>selected</em> character picks the body part under the cursor — no need to hit the small markers.</p>
+  <p class="l-ru">Щелчок по телу <em>выделенного</em> персонажа выбирает часть тела под курсором — не нужно попадать в маленькие маркеры.</p>
   <h3><span class="l-en">Scaling bones</span><span class="l-ru">Масштаб костей</span></h3>
   <p class="l-en">Select any bone and press <kbd>4</kbd> (or click its <em>- scale</em> row): a big head, long arms, a giant hand. In a0.3 the Scale tool worked only on bones without physics (fingers) and silently acted as Move on a hand or the head; a0.4 scales every bone.</p>
   <p class="l-ru">Выделите любую кость и нажмите <kbd>4</kbd> (или строку <em>- scale</em>): большая голова, длинные руки, огромная кисть. В a0.3 масштаб работал только на костях без физики (пальцах), а на кисти или голове молча превращался в перемещение; в a0.4 масштабируется любая кость.</p>
 
-  <h3><span class="l-en">IK keeps the feet planted</span><span class="l-ru">IK держит стопы на месте</span> <span class="badge new">new</span></h3>
+  <h3><span class="l-en">IK keeps the feet planted</span><span class="l-ru">IK держит стопы на месте</span></h3>
   <p class="l-en">With IK on, moving or turning the pelvis keeps both feet where they stand and bends the knees: a character crouches, leans or shifts its weight in one drag. Switch it off with <span class="ui">View → IK: keep the feet planted when the body moves</span>.</p>
   <p class="l-ru">С включённым IK движение или поворот таза оставляет обе стопы на месте и сгибает колени: персонаж приседает, наклоняется или переносит вес одним движением. Выключается через <span class="ui">View → IK: keep the feet planted when the body moves</span>.</p>
 
-  <h3><span class="l-en">Locking a bone to another bone</span><span class="l-ru">Прикрепление кости к кости</span> <span class="badge new">new</span></h3>
+  <h3><span class="l-en">Locking a bone to another bone</span><span class="l-ru">Прикрепление кости к кости</span></h3>
   <div class="row">
     <figure class="fit"><img src="img/a05_lock_menu.jpg" alt="Lock R_Hand to bone menu" style="--w:380px"></figure>
     <figure class="fit"><img src="img/a05_bone_lock.jpg" alt="Right hand locked to the left hand" style="--w:520px"><figcaption class="l-en"><b>The right hand locked to the left one:</b> move the left hand and both go together.</figcaption><figcaption class="l-ru"><b>Правая кисть прикреплена к левой:</b> двигаете левую — идут обе.</figcaption></figure>
@@ -235,7 +254,7 @@
   <p class="l-en">Select a physical bone, for example the right hand, right-click → <em>Lock R_Hand to bone</em> and pick the bone it should hold on to — the left hand. From then on it follows that bone; with IK on it pulls its whole arm. Two hands on a rifle, a sword or a steering wheel stay together while you pose. <em>Unlock</em> and <em>Remove all bone locks of this model</em> are in the same menu (in the skeleton tree: right-click a bone). Locks are saved with the scene.</p>
   <p class="l-ru">Выделите физическую кость, например правую кисть, правый щелчок → <em>Lock R_Hand to bone</em> и выберите кость, за которую ей держаться, — левую кисть. Теперь она следует за ней; с IK тянет за собой всю руку. Две руки на винтовке, мече или руле остаются вместе, пока вы ставите позу. <em>Unlock</em> и <em>Remove all bone locks of this model</em> — в том же меню (в дереве-скелете — правый щелчок по кости). Крепления сохраняются со сценой.</p>
 
-  <h2><span class="l-en">Models without physics</span><span class="l-ru">Модели без физики</span> <span class="badge new">new</span></h2>
+  <h2><span class="l-en">Models without physics</span><span class="l-ru">Модели без физики</span></h2>
   <div class="row">
     <figure class="fit"><img src="img/a05_base_pose.jpg" alt="Base pose window" style="--w:420px"><figcaption class="l-en"><b>Base pose:</b> the animation and the moment of it under your bone turns.</figcaption><figcaption class="l-ru"><b>Base pose:</b> анимация и её момент под вашими поворотами костей.</figcaption></figure>
     <figure class="fit"><img src="img/a05_static_ik.jpg" alt="IK on a model without physics" style="--w:520px"><figcaption class="l-en"><b>IK on a model without physics:</b> the hand pulls the arm.</figcaption><figcaption class="l-ru"><b>IK на модели без физики:</b> кисть тянет руку.</figcaption></figure>

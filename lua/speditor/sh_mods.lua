@@ -250,13 +250,11 @@ if CLIENT then
 	end
 
 	-- Mod hotkeys: called from the shared handler (cl_speditor.lua)
-	local down = {}
-	function Mods.RunHotkeys(blocked, ctrl, shift)
+	-- (the player may give them other keys in Interface settings → Keys: id "mod:" .. h.id)
+	function Mods.RunHotkeys(blocked)
+		local K = SPeditor.Client.Keys
 		for _, h in ipairs(Mods.hotkeys) do
-			local d = input.IsKeyDown(h.key)
-			local fired = d and not down[h.id]
-			down[h.id] = d
-			if fired and not blocked and (h.ctrl and true or false) == ctrl and (h.shift and true or false) == shift then
+			if K.Fired("mod:" .. h.id) and not blocked then
 				local ok, err = pcall(h.fn)
 				if not ok then warn(h.mod.id, ": hotkey: ", tostring(err)) end
 			end

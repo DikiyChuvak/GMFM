@@ -43,7 +43,10 @@ function C.BuildEntityList()
 	end
 	table.sort(objs, function(a, b) return a:EntIndex() < b:EntIndex() end)
 	local list, counters = {}, {}
-	for _, e in ipairs(objs) do
+	-- an object whose fields are not readable yet (its networked values still on the way) is
+	-- named by its class instead of breaking the whole list (the Animation Set Editor tree,
+	-- the timeline, the menus are all built from it)
+	local function describe(e)
 		local kind, base
 		if C.IsLight(e) then
 			-- the name depends on the light type: Spot Light N / Point Light N
@@ -57,6 +60,15 @@ function C.BuildEntityList()
 		else
 			kind = C.IsRagdoll(e) and "ragdoll" or "prop"
 			base = string.StripExtension(string.GetFileFromFilename(e:GetModel() or "prop") or "prop")
+		end
+		return kind, base
+	end
+	for _, e in ipairs(objs) do
+		local ok, kind, base = pcall(describe, e)
+		if not ok or not isstring(base) or base == "" then
+			kind = (C.IsLight(e) and "light") or (C.IsCamera(e) and "camera") or (C.IsEffect(e) and "effect")
+				or (C.IsRagdoll(e) and "ragdoll") or "prop"
+			base = e:GetClass()
 		end
 		counters[base] = (counters[base] or 0) + 1
 		local custom = e:GetNW2String("SPeditor_Name", "")
@@ -226,7 +238,7 @@ end
 
 ---------------------------------------------------------------------
 -- Selection. C.selected — the main object (it has the gizmo, bones, properties);
--- C.multi — additionally selected ones (Ctrl+click): they are moved, rotated,
+-- C.multi — additionally selected ones (Shift / Ctrl + click): they are moved, rotated,
 -- scaled, duplicated and deleted together with the main one.
 ---------------------------------------------------------------------
 C.multi = C.multi or {}
@@ -264,7 +276,10 @@ function C.Select(ent, bone, keepMulti)
 	hook.Run("SPeditor_Selected", C.selected, C.selBone)
 end
 
--- Ctrl+click: add an object to the selection or remove it
+-- the click binds that add to the selection (cl_keys.lua)
+C.MULTI_CLICK = { "select_add", "select_add2" }
+
+-- Shift / Ctrl + click: add an object to the selection or remove it
 function C.ToggleMulti(ent)
 	if not C.IsMine(ent) then return end
 	if not IsValid(C.selected) then
@@ -316,7 +331,115 @@ function C.DeleteSelection()
 	end
 end
 
+-- Duplicate everything selected (or the given objects): the copies come back one by one
+-- (Net.Spawned, cl_net.lua); together they are one history step and become the new selection.
+-- onDone(uids) is called with the UIDs of the copies.
+function C.DuplicateSelection(list, onDone)
+	list = list or C.SelectionList()
+	if #list == 0 then return false end
+	-- copies of the previous command are still on the way: they would be counted in this one
+	if C.dupBatch then return false end
+	C.dupBatch = { n = #list, uids = {}, idx = {}, untilT = RealTime() + 3, onDone = onDone }
+	for _, e in ipairs(list) do C.SendDuplicate(e) end
+	return true
+end
+
+-- all copies arrived (or the time is up: some could not be made, a limit)
+function C.FinishDuplicate()
+	local b = C.dupBatch
+	C.dupBatch = nil
+	if not b or #b.uids == 0 then return end
+	local uids = b.uids
+	C.PushHistory("spawn",
+		function() for _, uid in ipairs(uids) do C.SendObjRemove(uid) end end,
+	function() for _, uid in ipairs(uids) do C.SendObjRestore(uid) end end)
+	C.pendingMulti = { idx = b.idx, untilT = RealTime() + 3 }
+	if b.onDone then b.onDone(uids) end
+end
+
+-- the objects "select all" takes: everything in the object list but locked and hidden ones
+-- (they cannot be clicked in the viewport either, and would be moved unseen)
+function C.SelectAll()
+	local list = {}
+	for _, obj in ipairs(C.BuildEntityList()) do
+		local e = obj.ent
+		if IsValid(e) and not C.IsLocked(e) and not C.IsHidden(e) then list[#list + 1] = e end
+	end
+	if #list == 0 then return end
+	C.Select(list[1], -1)
+	for i = 2, #list do C.multi[#C.multi + 1] = list[i] end
+	if #list > 1 then hook.Run("SPeditor_MultiChanged") end
+	SPeditor.Notify(string.format(SPeditor.L("obj_selected_all"), #list), 0)
+end
+
+-- The object clipboard (Ctrl + C / Ctrl + V over the object list). It keeps references by UID:
+-- an object deleted and brought back by undo is still found. A paste duplicates them, and the
+-- clipboard moves to the copies, so the next paste puts the next copies a step further.
+C.objClip = C.objClip or nil
+
+function C.CopyObjects()
+	local list = C.SelectionList()
+	if #list == 0 then
+		SPeditor.Notify(SPeditor.L("obj_clip_empty"), 0)
+		return
+	end
+	C.objClip = {}
+	for _, e in ipairs(list) do C.objClip[#C.objClip + 1] = C.Ref(e) end
+	SPeditor.Notify(string.format(SPeditor.L("obj_copied"), #list), 2)
+end
+
+function C.PasteObjects()
+	if not C.objClip then
+		SPeditor.Notify(SPeditor.L("obj_clip_empty"), 0)
+		return
+	end
+	local list = {}
+	for _, ref in ipairs(C.objClip) do
+		local e = C.Deref(ref)
+		if IsValid(e) then list[#list + 1] = e end
+	end
+	if #list == 0 then
+		SPeditor.Notify(SPeditor.L("obj_clip_gone"), 1)
+		return
+	end
+	C.DuplicateSelection(list, function(uids)
+		C.objClip = {}
+		for _, uid in ipairs(uids) do C.objClip[#C.objClip + 1] = { uid = uid } end
+	end)
+end
+
+-- the cursor is over the object list (the Animation Set Editor tree)
+function C.MouseOverObjectList()
+	local tree = SPeditor.UI and SPeditor.UI.ObjectTree
+	if not IsValid(tree) or not tree:IsVisible() then return false end
+	local p = vgui.GetHoveredPanel()
+	while IsValid(p) do
+		if p == tree then return true end
+		p = p:GetParent()
+	end
+	return false
+end
+
+-- the copies are selected once the client has them all
+local function resolvePendingMulti()
+	local pm = C.pendingMulti
+	local found, all = {}, true
+	for _, i in ipairs(pm.idx) do
+		local e = Entity(i)
+		if IsValid(e) and C.IsMine(e) then found[#found + 1] = e else all = false end
+	end
+	if not all and RealTime() < pm.untilT then return end
+	C.pendingMulti = nil
+	if #found == 0 then return end
+	for _, e in ipairs(found) do hook.Run("SPeditor_ObjectSpawned", e) end
+	C.Select(found[1], -1)
+	for i = 2, #found do C.multi[#C.multi + 1] = found[i] end
+	if #found > 1 then hook.Run("SPeditor_MultiChanged") end
+end
+
 hook.Add("Think", "SPeditor.SelectionWatch", function()
+	if C.dupBatch and RealTime() >= C.dupBatch.untilT then C.FinishDuplicate() end
+	if C.pendingMulti then resolvePendingMulti() end
 	if C.selected ~= nil and not IsValid(C.selected) then
 		C.Select(nil, -1, true)
 	end

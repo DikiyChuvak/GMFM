@@ -15,6 +15,11 @@ selection. Channels: x y z — place, p y r — turn (pitch, yaw, roll), the res
   wheel — zoom time, Ctrl+wheel — zoom values, RMB drag — pan, the Fit button — show all.
 "Normalized" scales every channel to its own range, so that degrees and units fit together.
 
+Under the graph (a0.6) the motion of the selected key — or of the stretch the playhead is in —
+is shown as it looks: a ball goes from this key to the next one with the key's easing, and
+grey dots mark equal steps of time (close dots — slow, far apart — fast), with the easing
+said in plain words. The "?" button opens the guide (Help → How to use).
+
 The values come from the server (sv_saeditor.lua, the Curve / CurveData messages); the
 curves between keys are worked out here with the same easing as playback.
 ]]
@@ -35,6 +40,65 @@ local CH_COLORS = {
 local ANGLE_CH = { pitch = 1, yaw = 2, roll = 3 }
 local PAD_L, PAD_B, PAD_T = 46, 18, 8
 local HIT = 6
+
+---------------------------------------------------------------------
+-- How an easing moves (also used by the guides, cl_saeditor_guides.lua)
+---------------------------------------------------------------------
+local MOTION_RUN, MOTION_REST = 1.6, 0.7       -- seconds the ball moves, and stands at the end
+
+-- the easing in words: a dictionary string
+function SA.EaseWords(ease, bz)
+	if ease ~= "bezier" or not bz then return L("sa_ew_" .. (table.HasValue(SA.EASES, ease) and ease or "ease")) end
+	local function slope(u0, u1) return (SA.BezierEase(u1, bz) - SA.BezierEase(u0, bz)) / (u1 - u0) end
+	local s0, s1 = slope(0, 0.08), slope(0.92, 1)
+	local lo, hi = 0, 1
+	for i = 1, 39 do
+		local v = SA.BezierEase(i / 40, bz)
+		lo, hi = math.min(lo, v), math.max(hi, v)
+	end
+	local parts = { L(s0 < 0.6 and "sa_ew_b_start_slow" or (s0 > 1.6 and "sa_ew_b_start_fast" or "sa_ew_b_start_even")),
+		L(s1 < 0.6 and "sa_ew_b_end_slow" or (s1 > 1.6 and "sa_ew_b_end_fast" or "sa_ew_b_end_even")) }
+	if hi > 1.02 then parts[#parts + 1] = L("sa_ew_b_over") end
+	if lo < -0.02 then parts[#parts + 1] = L("sa_ew_b_back") end
+	return table.concat(parts, ", ")
+end
+
+-- The motion of an easing inside x, y, w, h at the moment t (seconds, it repeats): a track
+-- from "A" to "B", grey dots at equal steps of time and the ball. col — the ball's colour.
+function SA.DrawMotion(x, y, w, h, ease, bz, t, col)
+	local pad = math.min(28, w * 0.12)
+	local x0, x1 = x + pad, x + w - pad
+	local cy = y + h / 2
+	local function at(u)
+		local v = SA.EaseValue(ease, u, bz)
+		if ease == "hold" and u >= 1 then v = 1 end
+		return x0 + (x1 - x0) * v
+	end
+	surface.SetDrawColor(COL.BORDER)
+	surface.DrawRect(x0, cy, x1 - x0, 1)
+	draw.SimpleText("A", "SPeditor.Small", x0, cy - 9, COL.DIM, TEXT_ALIGN_CENTER, TEXT_ALIGN_BOTTOM)
+	draw.SimpleText("B", "SPeditor.Small", x1, cy - 9, COL.DIM, TEXT_ALIGN_CENTER, TEXT_ALIGN_BOTTOM)
+	surface.DrawRect(x0, cy - 6, 1, 13)
+	surface.DrawRect(x1, cy - 6, 1, 13)
+	draw.NoTexture()
+	for i = 0, 12 do
+		local px = at(i / 12)
+		surface.SetDrawColor(COL.DIM.r, COL.DIM.g, COL.DIM.b, 160)
+		surface.DrawRect(px - 1, cy + 6, 3, 3)
+	end
+	local cyc = t % (MOTION_RUN + MOTION_REST)
+	local u = math.min(cyc / MOTION_RUN, 1)
+	local bx = at(u)
+	local r = math.min(7, h / 4)
+	col = col or COL.ORANGE
+	surface.SetDrawColor(col)
+	local poly = {}
+	for i = 0, 15 do
+		local a = i / 16 * math.pi * 2
+		poly[#poly + 1] = { x = bx + math.cos(a) * r, y = cy + math.sin(a) * r }
+	end
+	surface.DrawPoly(poly)
+end
 
 local CV = SA.curves or { visible = {}, normalized = true }
 SA.curves = CV
@@ -107,9 +171,25 @@ local function valueAt(keys, c, f, chName)
 	end
 	local a, b = keys[lo], keys[lo + 1]
 	local u = (f - a.f) / math.max(b.f - a.f, 1e-6)
-	local w = SA.EaseValue(a.e, u, a.bz)
 	local va, vb = a.v[c] or 0, b.v[c] or 0
 	local ai = ANGLE_CH[chName]
+	-- a spline stretch: through the keys around it (the server blends turns as quaternions;
+	-- here each angle channel is unwrapped around this key, close enough for the drawing)
+	if a.e == "spline" then
+		local k0, k3 = keys[lo - 1], keys[lo + 2]
+		local function val(k, near)
+			local v = k.v[c] or 0
+			if ai then v = near + math.NormalizeAngle(v - near) end
+			return v
+		end
+		local v1 = va
+		local v2 = val(b, v1)
+		local v0 = k0 and val(k0, v1) or v1
+		local v3 = k3 and val(k3, v2) or v2
+		local w0, w1, w2, w3 = SA.SplineWeights(k0 and k0.f or (2 * a.f - b.f), a.f, b.f, k3 and k3.f or (2 * b.f - a.f), u)
+		return v0 * w0 + v1 * w1 + v2 * w2 + v3 * w3
+	end
+	local w = SA.EaseValue(a.e, u, a.bz)
 	if ai then
 		local lin = va + math.NormalizeAngle(vb - va) * w
 		-- a turn of the object itself or a physical bone goes along the shortest arc (slerp)
@@ -138,11 +218,11 @@ function SA.OpenCurves()
 	local W, H = math.min(900, ScrW() - 80), 430
 	local win, body = Dock.Create({ key = "sa_curves", id = "sa_curves", title = L("sa_crv_title"), w = W, h = H,
 			x = math.floor(ScrW() / 2 - W / 2), y = ScrH() - H - 260, dockable = true, floating = true, icon = "icon16/chart_curve.png" })
-	win.minW, win.minH = 480, 260
+	win.minW, win.minH = UI.S(480), UI.S(260)
 
 	local top = vgui.Create("DPanel", body)
 	top:Dock(TOP)
-	top:SetTall(28)
+	top:SetTall(UI.S(28))
 	top.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.HEADER)
 		surface.DrawRect(0, 0, w, h)
@@ -152,12 +232,12 @@ function SA.OpenCurves()
 	title:DockMargin(8, 0, 8, 0)
 	title:SetFont("SPeditor.Small")
 	title:SetTextColor(COL.TEXT)
-	title:SetWide(220)
+	title:SetWide(UI.S(220))
 
 	-- second row: the channels on the left, the view on the right
 	local row2 = vgui.Create("DPanel", body)
 	row2:Dock(TOP)
-	row2:SetTall(28)
+	row2:SetTall(UI.S(28))
 	row2.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.HEADER)
 		surface.DrawRect(0, 0, w, h)
@@ -167,7 +247,7 @@ function SA.OpenCurves()
 	local chanBar = vgui.Create("DPanel", row2)
 	chanBar:Dock(LEFT)
 	chanBar:DockMargin(6, 0, 0, 0)
-	chanBar:SetWide(10)
+	chanBar:SetWide(UI.S(10))
 	chanBar.Paint = function() end
 
 	local function btn(text, tip, fn, parent)
@@ -175,7 +255,7 @@ function SA.OpenCurves()
 		b:Dock(RIGHT)
 		b:DockMargin(2, 4, 2, 4)
 		surface.SetFont("SPeditor.Small")
-		b:SetWide(select(1, surface.GetTextSize(text)) + 16)
+		b:SetWide(select(1, surface.GetTextSize(text)) + UI.S(16))
 		b:SetText(text)
 		b:SetTooltip(tip)
 		UI.StyleButton(b, nil, 3)
@@ -288,7 +368,7 @@ function SA.OpenCurves()
 		for _, name in ipairs(chans()) do
 			local b = vgui.Create("DButton", chanBar)
 			b:SetPos(x, 4)
-			b:SetSize(46, 20)
+			b:SetSize(UI.S(46), UI.S(20))
 			b:SetText("")
 			b:SetTooltip(L("sa_crv_ch_" .. name))
 			b.Paint = function(s, w, h)
@@ -343,6 +423,39 @@ function SA.OpenCurves()
 		for i, k in ipairs(keys()) do
 			if k.f == sel.f then return i end
 		end
+	end
+
+	-- the motion strip under the graph: the selected key, or the stretch the playhead is in
+	local strip = vgui.Create("DPanel", body)
+	strip:Dock(BOTTOM)
+	strip:SetTall(UI.S(46))
+	local t0 = RealTime()
+	strip.Paint = function(s, w, h)
+		surface.SetDrawColor(COL.HEADER)
+		surface.DrawRect(0, 0, w, h)
+		surface.SetDrawColor(COL.BORDER)
+		surface.DrawRect(0, 0, w, 1)
+		local ks = keys()
+		local i = selKeyIndex()
+		if not i then
+			for j = 1, #ks - 1 do
+				if SA.frame >= ks[j].f and SA.frame < ks[j + 1].f then i = j break end
+			end
+		end
+		local a, b = i and ks[i], i and ks[i + 1]
+		if not a or not b then
+			draw.SimpleText(L("sa_ew_none"), "SPeditor.Small", 10, h / 2, COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+			return
+		end
+		local words = SA.EaseWords(a.e, a.bz)
+		surface.SetFont("SPeditor.Small")
+		-- the ball's track starts after the words (but always keeps some room)
+		local tw = math.Clamp(select(1, surface.GetTextSize(words)) + 30, math.floor(w * 0.3), w - 180)
+		draw.SimpleText(string.format(L("sa_ew_from_to"), a.f, b.f, (b.f - a.f) / SA.fps), "SPeditor.Bold", 10, 13, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		draw.SimpleText(words, "SPeditor.Small", 10, 31, COL.ORANGE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		-- the real duration of the stretch, but at least half a second so that it can be seen
+		local dur = math.Clamp((b.f - a.f) / SA.fps, 0.5, 3)
+		SA.DrawMotion(tw, 2, w - tw - 8, h - 4, a.e, a.bz, (RealTime() - t0) * MOTION_RUN / dur)
 	end
 	local function handlesOf(k)
 		if k.e == "bezier" and k.bz then return k.bz end
@@ -643,6 +756,7 @@ function SA.OpenCurves()
 			if k then SA.SetEase(CV.uid, k.f, e) else SPeditor.Notify(L("sa_crv_need_key"), 0) end
 		end
 	end
+	UI.GuideButton(top, "sa_curves")
 	btn(L("sa_crv_fit"), L("sa_crv_fit_tip"), fit, row2)
 	local norm = btn(L("sa_crv_norm"), L("sa_crv_norm_tip"), function()
 		CV.normalized = not CV.normalized
@@ -654,11 +768,18 @@ function SA.OpenCurves()
 			surface.DrawOutlinedRect(0, 0, w, h, 1)
 		end
 	end
-	btn(L("sa_ease_hold"), L("sa_crv_ease_tip"), ease("hold"))
-	btn(L("sa_ease_ease_out"), L("sa_crv_ease_tip"), ease("ease_out"))
-	btn(L("sa_ease_ease_in"), L("sa_crv_ease_tip"), ease("ease_in"))
-	btn(L("sa_ease_linear"), L("sa_crv_ease_tip"), ease("linear"))
-	btn(L("sa_ease_ease"), L("sa_crv_ease_tip"), ease("ease"))
+	-- the other kinds (elastic, bounce…) in a menu
+	btn(L("sa_ease_more") .. "…", L("sa_crv_ease_tip"), function()
+		local m = UI.Menu()
+		for _, e in ipairs(SA.EASES) do
+			if not table.HasValue(SA.EASE_MAIN, e) then m:AddOption(L("sa_ease_" .. e), ease(e)) end
+		end
+		m:Open()
+	end)
+	for i = #SA.EASE_MAIN, 1, -1 do
+		local e = SA.EASE_MAIN[i]
+		btn(L("sa_ease_" .. e), L("sa_crv_ease_tip"), ease(e))
+	end
 
 	CV.uid, CV.part, CV.data = nil, nil, nil
 	retarget()

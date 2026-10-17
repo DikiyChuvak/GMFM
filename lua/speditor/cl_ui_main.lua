@@ -15,11 +15,15 @@ SPeditor = SPeditor or {}
 SPeditor.UI = SPeditor.UI or {}
 local UI   = SPeditor.UI
 local C    = SPeditor.Client
+local K    = C.Keys
 local L    = SPeditor.L
 local Dock = SPeditor.Dock
 local COL  = UI.PAL
 
 local MENU_H, STATUS_H = 24, 20
+local function metrics() MENU_H, STATUS_H = UI.S(24), UI.S(20) end
+metrics()
+hook.Add("SPeditor_FontsCreated", "SPeditor.MainMetrics", metrics)
 
 ---------------------------------------------------------------------
 -- Keyboard: windows receive input only while a text field is active
@@ -102,7 +106,7 @@ end)
 local function buildViewport(title, key, pass)
 	local win, body = Dock.Create({ key = key, id = key, title = title, w = 600, h = 450, dockable = true,
 			icon = "icon16/monitor.png" })
-	win.minW, win.minH = 220, 160
+	win.minW, win.minH = UI.S(220), UI.S(160)
 	-- the viewport state is kept on the page: the tab can be moved to another window
 	local vp = body
 	vp.pass = pass
@@ -110,7 +114,10 @@ local function buildViewport(title, key, pass)
 	-- header: camera on the left, scene and frame in the centre, FOV on the right (where SFM has timecodes)
 	local head = vgui.Create("DPanel", body)
 	head:Dock(TOP)
-	head:SetTall(34)
+	-- two lines of text in the centre: the strip is not lower than they are (fonts stop at 8 px)
+	surface.SetFont("SPeditor.Small")
+	local lineH = select(2, surface.GetTextSize("Ay"))
+	head:SetTall(math.max(UI.S(34), lineH * 2 + 4))
 	head.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.BG)
 		surface.DrawRect(0, 0, w, h)
@@ -118,8 +125,8 @@ local function buildViewport(title, key, pass)
 		draw.SimpleText(src and src.label or L("no_camera"), "SPeditor.Time", 8, h / 2, COL.TIMECODE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 		local rw, rh = C.GetRenderSize()
 		local scene = (C.sceneName and C.sceneName ~= "") and C.sceneName or L("untitled")
-		draw.SimpleText(scene, "SPeditor.Small", w / 2, h / 2 - 7, COL.TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-		draw.SimpleText(string.format("%s  ·  %d×%d", SPeditor.LN("aspect_", C.GetAspectDef().name), rw, rh), "SPeditor.Small", w / 2, h / 2 + 7,
+		draw.SimpleText(scene, "SPeditor.Small", w / 2, h / 2 - lineH / 2, COL.TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+		draw.SimpleText(string.format("%s  ·  %d×%d", SPeditor.LN("aspect_", C.GetAspectDef().name), rw, rh), "SPeditor.Small", w / 2, h / 2 + lineH / 2,
 			COL.DIM, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 		if src then
 			draw.SimpleText(string.format("FOV %d°", math.Round(src.fov or 75)), "SPeditor.Time", w - 8, h / 2,
@@ -130,7 +137,7 @@ local function buildViewport(title, key, pass)
 	-- toolbar at the bottom
 	local bar = vgui.Create("DPanel", body)
 	bar:Dock(BOTTOM)
-	bar:SetTall(28)
+	bar:SetTall(UI.S(28))
 	bar.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.HEADER)
 		surface.DrawRect(0, 0, w, h)
@@ -155,7 +162,7 @@ local function buildViewport(title, key, pass)
 	local sep = vgui.Create("DPanel", bar)
 	sep:Dock(LEFT)
 	sep:DockMargin(6, 6, 4, 6)
-	sep:SetWide(1)
+	sep:SetWide(UI.S(1))
 	sep.Paint = function(_, w, h) surface.SetDrawColor(COL.BORDER) surface.DrawRect(0, 0, 1, h) end
 
 	UI.IconButton(bar, "icon16/table.png", L("view_guides"), function()
@@ -192,7 +199,7 @@ local function buildViewport(title, key, pass)
 	local combo = UI.StyleCombo(vgui.Create("DComboBox", bar))
 	combo:Dock(RIGHT)
 	combo:DockMargin(2, 4, 2, 4)
-	combo:SetWide(140)
+	combo:SetWide(UI.S(140))
 	vp.combo = combo
 
 	-- the frame itself (black bars outside the frame, as in SFM)
@@ -274,28 +281,65 @@ function UI.OpenHotkeys()
 	local win, body = Dock.Create({ key = "hotkeys", id = "hotkeys", title = L("help_hotkeys"), w = 560, h = 440,
 			x = math.floor(ScrW() / 2 - 280), y = 120, dockable = false, icon = "icon16/keyboard.png" })
 	local list = vgui.Create("DListView", body)
+	UI.StyleListView(list)
 	list:Dock(FILL)
 	list:AddColumn(L("help_key")):SetFixedWidth(230)
 	list:AddColumn(L("help_action"))
 	if list.SetBackgroundColor then list:SetBackgroundColor(COL.LIST_BG) end
-	for _, row in ipairs({
-				{ L("key_lmb"), "help_select" }, { L("key_rmb"), "help_rmb" }, { L("key_rmb") .. " + WASD / Q E", "help_fly" },
-				{ "Alt + " .. L("key_lmb"), "help_orbit" }, { L("key_wheel"), "help_dolly" }, { "Alt + " .. L("key_wheel"), "help_fov" },
-				{ "1 / 2 / 4", "help_move_rotate" }, { "3", "help_space" }, { "Ctrl + " .. L("key_lmb"), "help_multi" }, { "I", "help_ik" },
-				{ "F", "help_focus" }, { "V", "help_camview" }, { "B", "help_skeleton" }, { "Del", "obj_delete" },
-				{ "Ctrl + D", "obj_duplicate" }, { "Ctrl + C / Ctrl + V", "help_pose_clip" }, { "Ctrl + Z / Ctrl + Y", "help_undo" },
-				{ "Shift + " .. L("key_drag"), "help_fine" },
-				{ L("help_dock_key"), "help_dock" }, { L("help_max_key"), "dock_maximize" },
-				{ L("help_props_key"), "dock_props" },
-		}) do
-		list:AddLine(row[1], L(row[2]))
-	end
-	-- mod keys
-	for _, h in ipairs(SPeditor.Mods.hotkeys) do
-		if h.desc then
-			local key = h.label or string.upper(input.GetKeyName(h.key) or "?")
-			list:AddLine((h.ctrl and "Ctrl + " or "") .. (h.shift and "Shift + " or "") .. key, L(h.desc) .. "   [" .. h.mod.name .. "]")
+	local function keys(...)
+		local out = {}
+		for _, id in ipairs({ ... }) do
+			local t = K.Text(id)
+			if t ~= "" then out[#out + 1] = t end
 		end
+		return #out > 0 and table.concat(out, " / ") or "—"
+	end
+	local function fill()
+		list:Clear()
+		local fly = keys("fly_forward", "fly_left", "fly_back", "fly_right")
+		for _, row in ipairs({
+					{ L("key_lmb"), "help_select" }, { L("key_rmb"), "help_rmb" },
+					{ L("key_rmb") .. " + " .. fly .. " / " .. keys("fly_up", "fly_down"), "help_fly" },
+					{ "Alt + " .. L("key_lmb"), "help_orbit" }, { L("key_wheel"), "help_dolly" }, { "Alt + " .. L("key_wheel"), "help_fov" },
+					{ keys("gizmo_move", "gizmo_rotate", "gizmo_scale"), "help_move_rotate" }, { keys("gizmo_space"), "help_space" },
+					{ keys("select_add", "select_add2"), "help_multi" }, { keys("ik"), "help_ik" },
+					{ keys("focus"), "help_focus" }, { keys("camview"), "help_camview" }, { keys("skeleton"), "help_skeleton" }, { keys("delete"), "obj_delete" },
+					{ keys("duplicate"), "obj_duplicate" }, { keys("list_select_all", "list_copy", "list_paste"), "help_list_keys" }, { keys("pose_copy", "pose_paste"), "help_pose_clip" }, { keys("undo", "redo", "redo2"), "help_undo" },
+					{ "Shift + " .. L("key_drag"), "help_fine" },
+					{ L("help_dock_key"), "help_dock" }, { L("help_max_key"), "dock_maximize" },
+					{ L("help_props_key"), "dock_props" },
+			}) do
+			list:AddLine(row[1], L(row[2]))
+		end
+		-- mod keys
+		for _, h in ipairs(SPeditor.Mods.hotkeys) do
+			if h.desc then
+				local b = K.Get("mod:" .. h.id)
+				-- the mod's own caption of its default key ("Space"), otherwise the key name
+				local text = (h.label and K.Same(b, K.Default("mod:" .. h.id))) and h.label or K.BindText(b)
+				list:AddLine(text ~= "" and text or "—", L(h.desc) .. "   [" .. h.mod.name .. "]")
+			end
+		end
+	end
+	fill()
+	-- keys changed in Interface settings: the list follows (the hook goes away with the list)
+	hook.Add("SPeditor_KeysChanged", list, function() fill() end)
+	-- the keys are changed in Interface settings
+	local foot = vgui.Create("DPanel", body)
+	foot:Dock(BOTTOM)
+	foot:SetTall(UI.S(32))
+	foot.Paint = function() end
+	local change = vgui.Create("DButton", foot)
+	change:Dock(LEFT)
+	change:DockMargin(6, 4, 4, 4)
+	surface.SetFont("SPeditor.Small")
+	change:SetWide(select(1, surface.GetTextSize(L("keys_change"))) + UI.S(40))
+	change:SetText("  " .. L("keys_change"))
+	change:SetIcon("icon16/keyboard.png")
+	UI.StyleButton(change, nil, 3)
+	change.DoClick = function()
+		win:Close()
+		UI.OpenSettings("keys")
 	end
 end
 
@@ -305,6 +349,7 @@ end
 function UI.Open()
 	UI.Close()
 	UI.ApplyTheme(GetConVar("speditor_theme"):GetString(), true)
+	UI.ScaleDermaFonts(true)
 	local scrW, scrH = ScrW(), ScrH()
 
 	-----------------------------------------------------------------
@@ -322,7 +367,7 @@ function UI.Open()
 		local b = vgui.Create("DButton", top)
 		b:Dock(LEFT)
 		surface.SetFont("SPeditor.Small")
-		b:SetWide(select(1, surface.GetTextSize(label)) + 18)
+		b:SetWide(select(1, surface.GetTextSize(label)) + UI.S(18))
 		b:SetText(label)
 		b:SetFont("SPeditor.Small")
 		b:SetTextColor(UI.ChromeText("MenuBar") or COL.TEXT)
@@ -384,17 +429,17 @@ function UI.Open()
 	end
 
 	mbtn(L("menu_edit"), function(m)
-		keyed(m, L("edit_undo"), "Ctrl+Z", function() C.Undo() end):SetIcon("icon16/arrow_undo.png")
-		keyed(m, L("edit_redo"), "Ctrl+Y", function() C.Redo() end):SetIcon("icon16/arrow_redo.png")
+		keyed(m, L("edit_undo"), K.Text("undo"), function() C.Undo() end):SetIcon("icon16/arrow_undo.png")
+		keyed(m, L("edit_redo"), K.Text("redo"), function() C.Redo() end):SetIcon("icon16/arrow_redo.png")
 		m:AddSpacer()
-		keyed(m, L("obj_duplicate"), "Ctrl+D", function() if IsValid(C.selected) then C.SendDuplicate(C.selected) end end)
-		keyed(m, L("obj_delete"), "Del", function() if IsValid(C.selected) then C.SendDelete(C.selected) C.Select(nil) end end)
+		keyed(m, L("obj_duplicate"), K.Text("duplicate"), function() C.DuplicateSelection() end)
+		keyed(m, L("obj_delete"), K.Text("delete"), function() C.DeleteSelection() end)
 		m:AddOption(L("props_open"), function()
 			if IsValid(C.selected) and not C.IsAux(C.selected) then UI.OpenObjectProps(C.selected) end
 		end):SetIcon("icon16/wrench.png")
 		m:AddSpacer()
-		keyed(m, L("pose_copy"), "Ctrl+C", function() C.CopyPose(C.selected) end)
-		keyed(m, L("pose_paste"), "Ctrl+V", function() C.PastePose(C.selected) end)
+		keyed(m, L("pose_copy"), K.Text("pose_copy"), function() C.CopyPose(C.selected) end)
+		keyed(m, L("pose_paste"), K.Text("pose_paste"), function() C.PastePose(C.selected) end)
 		m:AddOption(L("drop_floor"), function() if IsValid(C.selected) then C.SendDropToFloor(C.selected) end end)
 		m:AddSpacer()
 		local cr = m:AddSubMenu(L("menu_create"))
@@ -407,6 +452,9 @@ function UI.Open()
 		cr:AddOption(L("rig_make"), function() C.SpawnLightRig(C.selected) end)
 		SPeditor.Mods.RunMenu("create", cr)
 		m:AddSpacer()
+		keyed(m, L("edit_select_all"), K.Text("list_select_all"), function() C.SelectAll() end)
+		keyed(m, L("keys_list_copy"), K.Text("list_copy"), function() C.CopyObjects() end)
+		keyed(m, L("keys_list_paste"), K.Text("list_paste"), function() C.PasteObjects() end)
 		m:AddOption(L("edit_deselect"), function() C.Select(nil) end)
 		SPeditor.Mods.RunMenu("edit", m)
 	end)
@@ -464,6 +512,7 @@ function UI.Open()
 	end)
 
 	mbtn(L("menu_help"), function(m)
+		m:AddOption(L("guide_title") .. "…", function() UI.OpenGuide() end):SetIcon("icon16/help.png")
 		m:AddOption(L("help_hotkeys"), function() UI.OpenHotkeys() end):SetIcon("icon16/keyboard.png")
 		m:AddOption(L("cam_settings") .. "…", function() UI.OpenCameraSettings() end):SetIcon("icon16/camera_edit.png")
 		m:AddOption(L("files_title") .. "…", function() UI.OpenFileLocations() end):SetIcon("icon16/folder_explore.png")
@@ -488,7 +537,7 @@ function UI.Open()
 		b:Dock(RIGHT)
 		b:DockMargin(0, 2, 4, 2)
 		surface.SetFont("SPeditor.Small")
-		b:SetWide(select(1, surface.GetTextSize(text)) + 34)
+		b:SetWide(select(1, surface.GetTextSize(text)) + UI.S(34))
 		b:SetText("  " .. text)
 		b:SetIcon(icon)
 		UI.StyleButton(b, hot, 0)
@@ -587,7 +636,7 @@ function UI.Open()
 	-- how to get the windows back — a card in the middle says it and restores the layout.
 	-----------------------------------------------------------------
 	local empty = UI.Skin(vgui.Create("DPanel"))
-	empty:SetSize(math.min(480, scrW - 40), 132)
+	empty:SetSize(math.min(UI.S(480), scrW - 40), UI.S(132))
 	empty:SetPos(math.floor(scrW / 2 - empty:GetWide() / 2), math.floor(scrH / 2 - 66))
 	empty:MakePopup()
 	empty:SetKeyboardInputEnabled(false)
@@ -602,13 +651,13 @@ function UI.Open()
 	msg:SetFont("SPeditor.Small")
 	msg:SetTextColor(COL.TEXT)
 	msg:SetWrap(true)
-	msg:SetTall(64)
+	msg:SetTall(UI.S(64))
 	msg:SetContentAlignment(7)
 	msg:SetText(L("empty_hint"))
 	local restore = vgui.Create("DButton", empty)
 	restore:Dock(BOTTOM)
 	restore:DockMargin(14, 0, 14, 12)
-	restore:SetTall(26)
+	restore:SetTall(UI.S(26))
 	restore:SetText(L("empty_restore"))
 	restore:SetIcon("icon16/application_side_tree.png")
 	UI.StyleButton(restore, true, 3)
@@ -632,6 +681,7 @@ function UI.Open()
 	-- layout: the SFM preset, then the last saved one
 	Dock.Reset("default")
 	Dock.RestoreLast()
+	UI.builtScale = UI.Scale()
 	hook.Run("SPeditor_UIBuilt")
 end
 
@@ -706,6 +756,8 @@ local REOPEN = {
 
 function UI.Rebuild()
 	local fullbright = C.fullbright
+	-- the scale changed: the windows opened by hand get the size they would have at the new one
+	local k = UI.Scale() / (UI.builtScale or UI.Scale())
 	local extra = {}
 	for key in pairs(REOPEN) do
 		local w = Dock.ByKey(key)
@@ -721,8 +773,10 @@ function UI.Rebuild()
 		if not ok then ErrorNoHalt("[SPeditor] reopen " .. e.key .. ": " .. tostring(err) .. "\n") end
 		local w = Dock.ByKey(e.key)
 		if IsValid(w) then
-			w:SetPos(e.x, e.y)
-			w:SetSize(e.w, e.h)
+			local ww = math.min(math.max(math.Round(e.w * k), w.minW or 0), ScrW())
+			local hh = math.min(math.max(math.Round(e.h * k), w.minH or 0), ScrH() - MENU_H - STATUS_H)
+			w:SetSize(ww, hh)
+			w:SetPos(math.Clamp(e.x, 0, ScrW() - ww), math.Clamp(e.y, MENU_H, math.max(ScrH() - STATUS_H - hh, MENU_H)))
 		end
 	end
 end

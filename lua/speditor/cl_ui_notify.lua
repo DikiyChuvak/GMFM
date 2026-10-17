@@ -52,6 +52,9 @@ local MAX_LOG  = 200
 local MARGIN   = 8          -- from the screen edge and between cards
 local TOP_H    = 24         -- menu bar
 local STATUS_H = 20
+local function metrics() TOP_H, STATUS_H = SPeditor.UI.S(24), SPeditor.UI.S(20) end
+metrics()
+hook.Add("SPeditor_FontsCreated", "SPeditor.NotifyMetrics", metrics)
 local IN_T, OUT_T = 0.25, 0.35
 
 local KINDS = {
@@ -822,14 +825,16 @@ function UI.OpenNotifyLog()
 	local W, H = 560, 380
 	local win, body = Dock.Create({ key = "notifylog", id = "notifylog", title = L("notify_log"), w = W, h = H,
 			x = math.floor(ScrW() / 2 - W / 2), y = 140, dockable = false, icon = "icon16/comments.png" })
-	win.minW, win.minH = 320, 200
+	win.minW, win.minH = UI.S(320), UI.S(200)
 
 	local foot = vgui.Create("DPanel", body)
 	foot:Dock(BOTTOM)
-	foot:SetTall(34)
+	foot:SetTall(UI.S(34))
 	foot.Paint = function() end
 
 	local list = vgui.Create("DListView", body)
+
+	UI.StyleListView(list)
 	list:Dock(FILL)
 	list:SetMultiSelect(false)
 	list:AddColumn(L("notify_col_time")):SetFixedWidth(70)
@@ -864,7 +869,7 @@ function UI.OpenNotifyLog()
 	local clear = vgui.Create("DButton", foot)
 	clear:Dock(LEFT)
 	clear:DockMargin(8, 5, 4, 5)
-	clear:SetWide(150)
+	clear:SetWide(UI.S(150))
 	clear:SetText(L("notify_clear"))
 	UI.StyleButton(clear, nil, 3)
 	clear.DoClick = function()
@@ -874,7 +879,7 @@ function UI.OpenNotifyLog()
 	local close = vgui.Create("DButton", foot)
 	close:Dock(RIGHT)
 	close:DockMargin(4, 5, 8, 5)
-	close:SetWide(110)
+	close:SetWide(UI.S(110))
 	close:SetText(L("about_close"))
 	UI.StyleButton(close, nil, 3)
 	close.DoClick = function() win:Close() end

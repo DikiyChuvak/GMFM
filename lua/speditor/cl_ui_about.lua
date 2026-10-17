@@ -75,7 +75,7 @@ function UI.OpenAbout()
 	local W, H = 620, 680
 	local win, body = Dock.Create({ key = "about", id = "about", title = L("about_title"), w = W, h = math.min(H, ScrH() - 160),
 			x = math.floor(ScrW() / 2 - W / 2), y = 110, dockable = false, icon = "icon16/information.png" })
-	win.minW, win.minH = 420, 320
+	win.minW, win.minH = UI.S(420), UI.S(320)
 
 	local icon
 	if file.Exists("materials/" .. ICON_PATH, "GAME") then
@@ -87,7 +87,7 @@ function UI.OpenAbout()
 	-- header: icon, name, version
 	local head = vgui.Create("DPanel", body)
 	head:Dock(TOP)
-	head:SetTall(ICON_SIZE + 24)
+	head:SetTall(UI.S(ICON_SIZE + 24))
 	head.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.HEADER)
 		surface.DrawRect(0, 0, w, h)
@@ -124,7 +124,7 @@ function UI.OpenAbout()
 		link:SetIcon("icon16/world_link.png")
 		link:SetTooltip(github)
 		UI.StyleButton(link)
-		link:SetSize(110, 22)
+		link:SetSize(UI.S(110), UI.S(22))
 		link.DoClick = function() gui.OpenURL(github) end
 	end
 	local wiki = SPeditor.Wiki or ""
@@ -135,18 +135,18 @@ function UI.OpenAbout()
 		doc:SetIcon("icon16/book_open.png")
 		doc:SetTooltip(wiki)
 		UI.StyleButton(doc)
-		doc:SetSize(110, 22)
+		doc:SetSize(UI.S(110), UI.S(22))
 		doc.DoClick = function() gui.OpenURL(wiki) end
 	end
 
 	local foot = vgui.Create("DPanel", body)
 	foot:Dock(BOTTOM)
-	foot:SetTall(34)
+	foot:SetTall(UI.S(34))
 	foot.Paint = function() end
 	local close = vgui.Create("DButton", foot)
 	close:Dock(RIGHT)
 	close:DockMargin(4, 5, 8, 5)
-	close:SetWide(110)
+	close:SetWide(UI.S(110))
 	close:SetText(L("about_close"))
 	UI.StyleButton(close, nil, 3)
 	close.DoClick = function() win:Close() end
@@ -190,7 +190,7 @@ function UI.OpenAbout()
 		local b = vgui.Create("DButton", scroll)
 		b:Dock(TOP)
 		b:DockMargin(12, 3, 12, 0)
-		b:SetTall(32)
+		b:SetTall(UI.S(32))
 		b:SetText("")
 		if url then b:SetTooltip(L("about_link_hint")) end
 		b.Paint = function(self, w, h)
@@ -206,7 +206,7 @@ function UI.OpenAbout()
 	end
 	local pad = vgui.Create("DPanel", scroll)
 	pad:Dock(TOP)
-	pad:SetTall(12)
+	pad:SetTall(UI.S(12))
 	pad.Paint = function() end
 end
 
@@ -220,7 +220,7 @@ function UI.OpenFileLocations()
 	local W = 560
 	local win, body = Dock.Create({ key = "fileloc", id = "fileloc", title = L("files_title"), w = W, h = 400,
 			x = math.floor(ScrW() / 2 - W / 2), y = 140, dockable = false, icon = "icon16/folder_explore.png" })
-	win.minW, win.minH = 420, 300
+	win.minW, win.minH = UI.S(420), UI.S(300)
 
 	local root = "garrysmod/data/" .. (SPeditor.Config.SaveDir or "speditor") .. "/"
 	local sid = (IsValid(LocalPlayer()) and LocalPlayer():SteamID64()) or "local"
@@ -234,12 +234,12 @@ function UI.OpenFileLocations()
 
 	local foot = vgui.Create("DPanel", body)
 	foot:Dock(BOTTOM)
-	foot:SetTall(34)
+	foot:SetTall(UI.S(34))
 	foot.Paint = function() end
 	local close = vgui.Create("DButton", foot)
 	close:Dock(RIGHT)
 	close:DockMargin(4, 5, 8, 5)
-	close:SetWide(110)
+	close:SetWide(UI.S(110))
 	close:SetText(L("about_close"))
 	UI.StyleButton(close, nil, 3)
 	close.DoClick = function() win:Close() end
@@ -255,7 +255,7 @@ function UI.OpenFileLocations()
 		local row = vgui.Create("DPanel", scroll)
 		row:Dock(TOP)
 		row:DockMargin(12, 6, 12, 0)
-		row:SetTall(38)
+		row:SetTall(UI.S(38))
 		row.Paint = function(_, w, h)
 			surface.SetDrawColor(COL.ROW_B)
 			surface.DrawRect(0, 0, w, h)
@@ -265,7 +265,7 @@ function UI.OpenFileLocations()
 		local copy = vgui.Create("DButton", row)
 		copy:Dock(RIGHT)
 		copy:DockMargin(4, 8, 6, 8)
-		copy:SetWide(96)
+		copy:SetWide(UI.S(96))
 		copy:SetText(L("files_copy"))
 		UI.StyleButton(copy, nil, 3)
 		copy.DoClick = function()
@@ -284,7 +284,7 @@ function UI.OpenCameraSettings()
 	local W = 400
 	local win, body = Dock.Create({ key = "camset", id = "camset", title = L("cam_settings"), w = W, h = 270,
 			x = math.floor(ScrW() / 2 - W / 2), y = 160, dockable = false, icon = "icon16/camera_edit.png" })
-	win.minW, win.minH = 320, 240
+	win.minW, win.minH = UI.S(320), UI.S(240)
 
 	local D = C.CAM_DEFAULTS
 	local syncing = false
@@ -321,12 +321,12 @@ function UI.OpenCameraSettings()
 
 	local foot = vgui.Create("DPanel", body)
 	foot:Dock(BOTTOM)
-	foot:SetTall(34)
+	foot:SetTall(UI.S(34))
 	foot.Paint = function() end
 	local reset = vgui.Create("DButton", foot)
 	reset:Dock(LEFT)
 	reset:DockMargin(8, 5, 4, 5)
-	reset:SetWide(150)
+	reset:SetWide(UI.S(150))
 	reset:SetText(L("cam_reset"))
 	UI.StyleButton(reset, nil, 3)
 	reset.DoClick = function()
@@ -338,7 +338,7 @@ function UI.OpenCameraSettings()
 	local close = vgui.Create("DButton", foot)
 	close:Dock(RIGHT)
 	close:DockMargin(4, 5, 8, 5)
-	close:SetWide(110)
+	close:SetWide(UI.S(110))
 	close:SetText(L("about_close"))
 	UI.StyleButton(close, nil, 3)
 	close.DoClick = function() win:Close() end

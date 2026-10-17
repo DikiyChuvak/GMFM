@@ -120,7 +120,9 @@ end
 function SPeditor.ReadTable()
 	local len = net.ReadUInt(16)
 	if len == 0 then return nil end
-	local raw = util.Decompress(net.ReadData(len))
+	-- a cap on the unpacked size: 64 KB of compressed zeros would otherwise unpack into gigabytes
+	-- and hang the server (a real table is a few hundred KB at most)
+	local raw = util.Decompress(net.ReadData(len), 16 * 1024 * 1024)
 	if not raw then return nil end
 	return util.JSONToTable(raw)
 end

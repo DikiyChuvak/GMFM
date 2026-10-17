@@ -1,18 +1,19 @@
 --[[
 SPeditor — the "Interface settings" window (View → Interface settings…).
 
-Two pages:
+Three pages:
   * Appearance    — theme, accent colour, font and its size, window corners, how the active
                     tab is marked, animations, interface sounds;
   * Notifications — style, animation, place, width, number of cards, opacity,
-                    the time line, sounds, display time (cl_ui_notify.lua).
+                    the time line, sounds, display time (cl_ui_notify.lua);
+  * Keys          — the editor hotkeys and the mod hotkeys (cl_keys.lua, data/speditor/keys.json).
 
 Everything is kept in console variables (speditor_ui_*, speditor_notify_*), so it
 stays between sessions. Corners, tab mark, accent and all notification settings take
 effect at once; a new font rebuilds the interface (widgets measure text when created).
 
 API:
-  UI.OpenSettings(page)   open the window ("look" or "notify")
+  UI.OpenSettings(page)   open the window ("look", "notify" or "keys")
   UI.ResetUISettings()    all these settings back to their defaults
 ]]
 SPeditor = SPeditor or {}
@@ -22,7 +23,7 @@ local L   = SPeditor.L
 local COL = UI.PAL
 
 local DEFAULTS = {
-	speditor_ui_font = "Tahoma", speditor_ui_fontsize = "13", speditor_ui_accent = "", speditor_ui_corners = "0",
+	speditor_ui_font = "Tahoma", speditor_ui_fontsize = "13", speditor_ui_scale = "0", speditor_ui_accent = "", speditor_ui_corners = "0",
 	speditor_ui_tabstyle = "top", speditor_ui_anim = "1", speditor_ui_sounds = "1",
 	speditor_notify = "1", speditor_notify_sound = "1", speditor_notify_time = "4", speditor_notify_style = "auto",
 	speditor_notify_anim = "auto", speditor_notify_pos = "br", speditor_notify_width = "380", speditor_notify_max = "6",
@@ -48,7 +49,7 @@ local function rebuildSoon()
 end
 
 -- the font: new fonts, then the interface is built anew
-for _, cv in ipairs({ "speditor_ui_font", "speditor_ui_fontsize" }) do
+for _, cv in ipairs({ "speditor_ui_font", "speditor_ui_fontsize", "speditor_ui_scale" }) do
 	cvars.AddChangeCallback(cv, function()
 		UI.CreateFonts()
 		rebuildSoon()
@@ -86,11 +87,11 @@ local function row(parent, text, h)
 	local r = vgui.Create("DPanel", parent)
 	r:Dock(TOP)
 	r:DockMargin(10, 2, 10, 2)
-	r:SetTall(h or 24)
+	r:SetTall(UI.S(h or 24))
 	r.Paint = function() end
 	local l = vgui.Create("DLabel", r)
 	l:Dock(LEFT)
-	l:SetWide(190)
+	l:SetWide(UI.S(190))
 	l:SetFont("SPeditor.Small")
 	l:SetTextColor(COL.TEXT)
 	l:SetText(text)
@@ -150,7 +151,7 @@ local function button(parent, text, icon, fn)
 	b:Dock(LEFT)
 	b:DockMargin(0, 0, 6, 0)
 	surface.SetFont("SPeditor.Small")
-	b:SetWide(select(1, surface.GetTextSize(text)) + (icon and 40 or 24))
+	b:SetWide(select(1, surface.GetTextSize(text)) + UI.S(icon and 40 or 24))
 	b:SetText((icon and "  " or "") .. text)
 	if icon then b:SetIcon(icon) end
 	UI.StyleButton(b, nil, 3)
@@ -175,7 +176,7 @@ local function buildLook(page)
 	local tools = vgui.Create("DPanel", page)
 	tools:Dock(TOP)
 	tools:DockMargin(200, 2, 10, 4)
-	tools:SetTall(24)
+	tools:SetTall(UI.S(24))
 	tools.Paint = function() end
 	button(tools, L("theme_rescan"), "icon16/arrow_refresh.png", function()
 		local n = UI.ScanUserThemes and UI.ScanUserThemes() or 0
@@ -190,7 +191,7 @@ local function buildLook(page)
 		local b = vgui.Create("DButton", sw)
 		b:Dock(LEFT)
 		b:DockMargin(0, 1, 4, 1)
-		b:SetWide(24)
+		b:SetWide(UI.S(24))
 		b:SetText("")
 		b:SetTooltip(tip)
 		b.Paint = function(s, w, h)
@@ -226,7 +227,7 @@ local function buildLook(page)
 	mixer = vgui.Create("DColorMixer", page)
 	mixer:Dock(TOP)
 	mixer:DockMargin(200, 4, 10, 4)
-	mixer:SetTall(150)
+	mixer:SetTall(UI.S(150))
 	mixer:SetPalette(false)
 	mixer:SetAlphaBar(false)
 	mixer:SetWangs(true)
@@ -240,6 +241,10 @@ local function buildLook(page)
 	end
 
 	heading(page, L("uis_text"))
+	-- the size of the whole interface: text, rows, buttons, window strips
+	local scales = { { 0, string.format(L("uis_scale_auto"), math.floor(UI.AutoScale() * 100 + 0.5)) } }
+	for _, pct in ipairs({ 50, 60, 65, 70, 75, 85, 90, 100, 110, 125, 150, 175, 200 }) do scales[#scales + 1] = { pct, pct .. " %" } end
+	combo(page, L("uis_scale"), "speditor_ui_scale", scales)
 	local faces = {}
 	for _, f in ipairs(UI.FONT_FACES) do faces[#faces + 1] = { f, f } end
 	combo(page, L("uis_font"), "speditor_ui_font", faces)
@@ -267,7 +272,7 @@ local function colorButton(parent, getC, setC, alpha)
 	local b = vgui.Create("DButton", parent)
 	b:Dock(LEFT)
 	b:DockMargin(0, 1, 8, 1)
-	b:SetWide(46)
+	b:SetWide(UI.S(46))
 	b:SetText("")
 	b.Paint = function(s, w, h)
 		draw.RoundedBox(4, 0, 0, w, h, s:IsHovered() and COL.TEXT or COL.BORDER)
@@ -282,7 +287,7 @@ local function colorButton(parent, getC, setC, alpha)
 	b.DoClick = function()
 		local m = UI.Menu()
 		local mixer = vgui.Create("DColorMixer")
-		mixer:SetSize(260, 190)
+		mixer:SetSize(UI.S(260), UI.S(190))
 		mixer:SetPalette(false)
 		mixer:SetAlphaBar(alpha and true or false)
 		mixer:SetWangs(true)
@@ -312,7 +317,7 @@ local function buildNotify(page)
 	local box = vgui.Create("DPanel", page)
 	box:Dock(TOP)
 	box:DockMargin(10, 2, 10, 4)
-	box:SetTall(170)
+	box:SetTall(UI.S(170))
 	box.Paint = function(_, w, h)
 		draw.RoundedBox(4, 0, 0, w, h, COL.BORDER)
 		surface.SetDrawColor(COL.VIEW_BG)
@@ -350,7 +355,7 @@ local function buildNotify(page)
 	local kinds = vgui.Create("DPanel", page)
 	kinds:Dock(TOP)
 	kinds:DockMargin(10, 0, 10, 4)
-	kinds:SetTall(24)
+	kinds:SetTall(UI.S(24))
 	kinds.Paint = function() end
 	for _, k in ipairs(KIND_IDS) do
 		local b = button(kinds, L("notify_kind_" .. k), ({ [0] = "icon16/information.png", "icon16/exclamation.png",
@@ -389,7 +394,7 @@ local function buildNotify(page)
 	local edToggle = vgui.Create("DPanel", page)
 	edToggle:Dock(TOP)
 	edToggle:DockMargin(10, 6, 10, 2)
-	edToggle:SetTall(24)
+	edToggle:SetTall(UI.S(24))
 	edToggle.Paint = function() end
 	local ed = vgui.Create("DPanel", page)
 	ed:Dock(TOP)
@@ -535,7 +540,7 @@ local function buildNotify(page)
 	local edTools = vgui.Create("DPanel", ed)
 	edTools:Dock(TOP)
 	edTools:DockMargin(8, 6, 8, 8)
-	edTools:SetTall(24)
+	edTools:SetTall(UI.S(24))
 	edTools.Paint = function() end
 	button(edTools, L("nse_save"), "icon16/disk.png", function()
 		if string.Trim(draft.name or "") == "" then draft.name = UI.NotifyStyleDefaults.name end
@@ -620,7 +625,7 @@ local function buildNotify(page)
 		local play = vgui.Create("DButton", r)
 		play:Dock(RIGHT)
 		play:DockMargin(4, 0, 0, 0)
-		play:SetWide(26)
+		play:SetWide(UI.S(26))
 		play:SetText("")
 		play:SetIcon("icon16/sound.png")
 		UI.StyleButton(play, nil, 3)
@@ -629,7 +634,7 @@ local function buildNotify(page)
 		local more = vgui.Create("DButton", r)
 		more:Dock(RIGHT)
 		more:DockMargin(4, 0, 0, 0)
-		more:SetWide(26)
+		more:SetWide(UI.S(26))
 		more:SetText("…")
 		UI.StyleButton(more, nil, 3)
 		more.DoClick = function()
@@ -659,7 +664,7 @@ local function buildNotify(page)
 	local tools = vgui.Create("DPanel", page)
 	tools:Dock(TOP)
 	tools:DockMargin(10, 6, 10, 2)
-	tools:SetTall(24)
+	tools:SetTall(UI.S(24))
 	tools.Paint = function() end
 	button(tools, L("nsa_title") .. "…", "icon16/plugin.png", function() UI.OpenSoundAddons() end)
 	button(tools, L("nsnd_rescan"), "icon16/arrow_refresh.png", function()
@@ -685,10 +690,140 @@ local function buildNotify(page)
 	local tools2 = vgui.Create("DPanel", page)
 	tools2:Dock(TOP)
 	tools2:DockMargin(10, 10, 10, 10)
-	tools2:SetTall(24)
+	tools2:SetTall(UI.S(24))
 	tools2.Paint = function() end
 	button(tools2, L("notify_test"), "icon16/comment.png", function() UI.NotifyDemo() end)
 	button(tools2, L("notify_log") .. "…", "icon16/comments.png", function() UI.OpenNotifyLog() end)
+end
+
+---------------------------------------------------------------------
+-- Keys (cl_keys.lua)
+---------------------------------------------------------------------
+local function buildKeys(page)
+	local K = SPeditor.Client.Keys
+	local note = UI.Label(page, L("keys_note"), COL.DIM)
+	note:SetWrap(true)
+	note:SetAutoStretchVertical(true)
+	note:DockMargin(10, 8, 10, 4)
+
+	local function small(parent, icon, tip, fn)
+		local b = vgui.Create("DButton", parent)
+		b:Dock(RIGHT)
+		b:DockMargin(4, 0, 0, 0)
+		b:SetWide(UI.S(24))
+		b:SetText("")
+		b:SetIcon(icon)
+		b:SetTooltip(tip)
+		UI.StyleButton(b, nil, 3)
+		b.DoClick = fn
+		return b
+	end
+
+	local function keyRow(id)
+		local r = vgui.Create("DPanel", page)
+		r:Dock(TOP)
+		r:DockMargin(10, 2, 10, 2)
+		r:SetTall(UI.S(24))
+		r.Paint = function() end
+		small(r, "icon16/cross.png", L("keys_clear"), function() K.Set(id, false) end)
+		local reset = small(r, "icon16/arrow_undo.png", L("keys_default") .. ": " .. K.BindText(K.Default(id)), function() K.Set(id, nil) end)
+		reset.Think = function(s)
+			local changed = not K.Same(K.Get(id), K.Default(id))
+			s:SetEnabled(changed)
+			s:SetAlpha(changed and 255 or 60)
+		end
+
+		local bind = vgui.Create("DButton", r)
+		bind:Dock(RIGHT)
+		bind:SetWide(UI.S(170))
+		bind:SetText("")
+		UI.StyleButton(bind, nil, 3)
+		local base = bind.Paint
+		bind.Paint = function(s, w, h)
+			if base then base(s, w, h) end
+			local cap = K.capturing and K.capturing.id == id
+			local b = K.Get(id)
+			local clash = not cap and b and #K.Conflicts(id, b) > 0
+			local text
+			if cap then
+				text = L(K.capturing.kind == "click" and "keys_wait_click" or "keys_wait")
+			else
+				text = b and K.BindText(b) or "—"
+			end
+			if cap then
+				surface.SetDrawColor(COL.ORANGE)
+				surface.DrawOutlinedRect(0, 0, w, h, 1)
+			end
+			draw.SimpleText(text, "SPeditor.Small", w / 2, h / 2, cap and COL.ORANGE or (clash and COL.RED or (b and COL.TEXT or COL.DIM)),
+				TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+			return true
+		end
+		bind.Think = function(s)
+			local b = K.Get(id)
+			local list = (b and not K.capturing) and K.Conflicts(id, b) or {}
+			local tip
+			if #list > 0 then
+				local names = {}
+				for _, o in ipairs(list) do names[#names + 1] = K.Caption(o) end
+				tip = L("keys_clash") .. " " .. table.concat(names, ", ")
+			end
+			if tip ~= s._tip then
+				s._tip = tip
+				s:SetTooltip(tip or L("keys_press_to_change"))
+			end
+		end
+		bind.DoClick = function()
+			if K.capturing then
+				local same = K.capturing.id == id
+				K.CancelCapture()
+				if same then return end
+			end
+			K.Capture(id, function(b)
+				if not b then return end
+				K.Set(id, b)
+				local list = K.Conflicts(id, b)
+				if #list > 0 then
+					SPeditor.Notify(string.format(L("keys_clash_n"), K.BindText(b), K.Caption(list[1])), 1)
+				end
+			end)
+		end
+
+		local l = vgui.Create("DLabel", r)
+		l:Dock(FILL)
+		l:SetFont("SPeditor.Small")
+		l:SetTextColor(COL.TEXT)
+		l:SetText(K.Caption(id))
+		return r
+	end
+
+	local group
+	for _, a in ipairs(K.LIST) do
+		if a.group ~= group then
+			group = a.group
+			heading(page, L(group))
+		end
+		keyRow(a.id)
+	end
+	local mods = {}
+	for _, h in ipairs(SPeditor.Mods.hotkeys) do
+		if h.desc then mods[#mods + 1] = h end
+	end
+	if #mods > 0 then
+		heading(page, L("keys_g_mods"))
+		for _, h in ipairs(mods) do keyRow("mod:" .. h.id) end
+	end
+
+	local tools = vgui.Create("DPanel", page)
+	tools:Dock(TOP)
+	tools:DockMargin(10, 10, 10, 10)
+	tools:SetTall(UI.S(24))
+	tools.Paint = function() end
+	button(tools, L("keys_reset_all"), "icon16/arrow_undo.png", function()
+		Derma_Query(L("keys_reset_q"), L("ui_settings"), L("yes"), function() K.ResetAll() end, L("cancel"), function() end)
+	end)
+	button(tools, L("help_hotkeys") .. "…", "icon16/keyboard.png", function() UI.OpenHotkeys() end)
+	-- a key that is being waited for is dropped when the page goes away
+	page.OnRemove = function() if K.capturing then K.CancelCapture() end end
 end
 
 ---------------------------------------------------------------------
@@ -697,6 +832,7 @@ end
 local PAGES = {
 	{ id = "look",   title = "uis_appearance", icon = "icon16/palette.png", build = buildLook },
 	{ id = "notify", title = "uis_notify",     icon = "icon16/comment.png", build = buildNotify },
+	{ id = "keys",   title = "uis_keys",       icon = "icon16/keyboard.png", build = buildKeys },
 }
 
 function UI.OpenSettings(which)
@@ -709,12 +845,12 @@ function UI.OpenSettings(which)
 	local W, H = 560, 620
 	local win, body = Dock.Create({ key = "uisettings", id = "uisettings", title = L("ui_settings"), w = W,
 			h = math.min(H, ScrH() - 120), x = math.floor(ScrW() / 2 - W / 2), y = 90, dockable = false, icon = "icon16/cog.png" })
-	win.minW, win.minH = 460, 320
+	win.minW, win.minH = UI.S(460), UI.S(320)
 
 	-- a page switch on top (the window tab strip holds the window title)
 	local bar = vgui.Create("DPanel", body)
 	bar:Dock(TOP)
-	bar:SetTall(30)
+	bar:SetTall(UI.S(30))
 	bar.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.HEADER)
 		surface.DrawRect(0, 0, w, h)
@@ -724,7 +860,7 @@ function UI.OpenSettings(which)
 
 	local foot = vgui.Create("DPanel", body)
 	foot:Dock(BOTTOM)
-	foot:SetTall(34)
+	foot:SetTall(UI.S(34))
 	foot.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.BORDER)
 		surface.DrawRect(0, 0, w, 1)
@@ -751,7 +887,8 @@ function UI.OpenSettings(which)
 		t:Dock(LEFT)
 		t:DockMargin(6, 4, 0, 0)
 		surface.SetFont("SPeditor.Small")
-		t:SetWide(select(1, surface.GetTextSize(L(pg.title))) + 42)
+		local is = UI.IconSize(UI.S(30) - 4)
+		t:SetWide(select(1, surface.GetTextSize(L(pg.title))) + is + 26)
 		t:SetText("")
 		local icon = Material(pg.icon)
 		t.Paint = function(s, w, h)
@@ -765,8 +902,8 @@ function UI.OpenSettings(which)
 			end
 			surface.SetMaterial(icon)
 			surface.SetDrawColor(255, 255, 255, on and 255 or 170)
-			surface.DrawTexturedRect(8, (h - 16) / 2, 16, 16)
-			draw.SimpleText(L(pg.title), "SPeditor.Small", 30, h / 2, on and COL.TEXT or COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+			surface.DrawTexturedRect(8, math.floor((h - is) / 2), is, is)
+			draw.SimpleText(L(pg.title), "SPeditor.Small", 14 + is, h / 2, on and COL.TEXT or COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 		end
 		t.DoClick = function() choose(pg.id) end
 		tabs[pg.id] = t
@@ -777,7 +914,7 @@ function UI.OpenSettings(which)
 	reset:Dock(LEFT)
 	reset:DockMargin(8, 5, 4, 5)
 	surface.SetFont("SPeditor.Small")
-	reset:SetWide(select(1, surface.GetTextSize(L("uis_reset"))) + 40)
+	reset:SetWide(select(1, surface.GetTextSize(L("uis_reset"))) + UI.S(40))
 	reset:SetText("  " .. L("uis_reset"))
 	reset:SetIcon("icon16/arrow_undo.png")
 	UI.StyleButton(reset, nil, 3)
@@ -788,7 +925,7 @@ function UI.OpenSettings(which)
 	local close = vgui.Create("DButton", foot)
 	close:Dock(RIGHT)
 	close:DockMargin(4, 5, 8, 5)
-	close:SetWide(110)
+	close:SetWide(UI.S(110))
 	close:SetText(L("about_close"))
 	UI.StyleButton(close, nil, 3)
 	close.DoClick = function() win:Close() end

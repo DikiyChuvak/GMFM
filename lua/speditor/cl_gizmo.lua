@@ -5,6 +5,9 @@
 -- Halo is off in the nested viewport render (otherwise the frame darkens).
 -- Move has plane handles too (the squares between two axes): they move in two
 -- axes at once, e.g. along a diagonal on the floor.
+-- Rotate has, besides the three axis rings, a ring around the line of sight (the outer one) and
+-- a trackball (a0.6): drag anywhere inside the rings and the object turns freely in every
+-- direction after the mouse, as in SFM and Blender; a click there without a drag still selects.
 -- IK (I): a hand / foot pulls its limb; moving or turning the body keeps the feet
 -- planted (C.gizmo.ikFeet). Bone locks (C.SetBoneLock): a physical bone of a ragdoll follows
 -- another bone of the same ragdoll during a drag — e.g. the right hand holds on to the left one;
@@ -19,6 +22,8 @@ local COL_PHYS    = Color(80, 220, 255)
 local COL_MANIP   = Color(210, 210, 210)
 local COL_SEL     = Color(255, 220, 60)
 local COL_LOCK    = Color(255, 140, 40)
+local COL_VIEWRING = Color(235, 235, 235)
+local COL_BALL     = Color(255, 255, 255, 60)
 
 C.gizmo = C.gizmo or {}
 if C.gizmo.ik == nil then C.gizmo.ik = false end
@@ -43,6 +48,17 @@ local function rotateVec(v, k, deg)
 	local c, s = math.cos(th), math.sin(th)
 	return v * c + k:Cross(v) * s + k * (k:Dot(v) * (1 - c))
 end
+
+-- a turn by deg degrees around the unit axis k, as a matrix
+local function axisMatrix(k, deg)
+	local x = rotateVec(Vector(1, 0, 0), k, deg)
+	local y = rotateVec(Vector(0, 1, 0), k, deg)
+	local z = rotateVec(Vector(0, 0, 1), k, deg)
+	return Matrix({ { x.x, y.x, z.x, 0 }, { x.y, y.y, z.y, 0 }, { x.z, y.z, z.z, 0 }, { 0, 0, 0, 1 } })
+end
+
+local VIEW_RING = 1.18      -- radius of the ring around the line of sight, in ring radii
+local BALL_SPEED = 0.5      -- trackball: degrees per pixel of the mouse
 
 local function makeBasis(axis)
 	local ref = (math.abs(axis.z) < 0.9) and Vector(0, 0, 1) or Vector(1, 0, 0)
@@ -165,18 +181,28 @@ local function hitTest(tgt)
 		end
 	else
 		local R = size * 0.85
-		for i = 1, 3 do
-			local u, v = makeBasis(axes[i])
+		local _, vang = C.GetView()
+		-- index 5: the ring around the line of sight
+		local rings = { axes[1], axes[2], axes[3], vang:Forward() }
+		for i, axis in ipairs(rings) do
+			local u, v = makeBasis(axis)
+			local r = (i == 4) and R * VIEW_RING or R
 			local prevx, prevy, prevv = nil, nil, false
 			for s = 0, 40 do
 				local a = (s / 40) * math.pi * 2
-				local px, py, pvis = C.ProjectToViewport(tgt.pos + (u * math.cos(a) + v * math.sin(a)) * R)
+				local px, py, pvis = C.ProjectToViewport(tgt.pos + (u * math.cos(a) + v * math.sin(a)) * r)
 				if pvis and prevv then
 					local d = segDist(prevx, prevy, px, py, mx, my)
-					if d < HIT_TOL and (not bestD or d < bestD) then best, bestD = i, d end
+					if d < HIT_TOL and (not bestD or d < bestD) then best, bestD = (i == 4) and 5 or i, d end
 				end
 				prevx, prevy, prevv = px, py, pvis
 			end
+		end
+		-- index 4: the trackball, anywhere inside the rings
+		if not best then
+			local x0, y0, v0 = C.ProjectToViewport(tgt.pos)
+			local xr, yr, vr = C.ProjectToViewport(tgt.pos + vang:Up() * R)
+			if v0 and vr and (mx - x0) ^ 2 + (my - y0) ^ 2 < (xr - x0) ^ 2 + (yr - y0) ^ 2 then best = 4 end
 		end
 	end
 	if best then return { mode = mode, index = best } end
@@ -489,9 +515,11 @@ end
 
 local function startDrag(tgt, hit)
 	local ro, rd = C.MouseRay()
-	local free = (hit.index == 4)
-	local plane = hit.index > 4 and hit.index - 4 or nil
-	local axis = (not free and not plane) and gizmoAxes(tgt)[hit.index] or nil
+	local turnFree = hit.mode == "rotate" and hit.index >= 4       -- the trackball or the view ring
+	local free = (hit.index == 4) and not turnFree
+	local plane = (hit.index > 4 and not turnFree) and hit.index - 4 or nil
+	local axis = (not free and not plane and not turnFree) and gizmoAxes(tgt)[hit.index] or nil
+	if turnFree and hit.index == 5 then axis = select(2, C.GetView()):Forward() end
 	local d = {
 		kind = tgt.kind, ent = tgt.ent, bone = tgt.bone, physIdx = tgt.physIdx,
 		mode = hit.mode, axisIndex = hit.index, axis = axis,
@@ -519,7 +547,13 @@ local function startDrag(tgt, hit)
 	elseif hit.mode == "move" then
 		d.t0 = axisParam(ro, rd, tgt.pos, axis)
 		if not d.t0 then return end
+	elseif turnFree and hit.index == 4 then
+		local _, vang = C.GetView()
+		d.ball, d.M = true, Matrix()
+		d.mx, d.my = gui.MousePos()
+		d.camRight, d.camUp = vang:Right(), vang:Up()
 	else
+		d.viewRing = turnFree
 		local h = util.IntersectRayWithPlane(ro, rd, tgt.pos, axis)
 		if not h then return end
 		d.U, d.V = makeBasis(axis)
@@ -585,7 +619,37 @@ local function applyMove(d, off)
 	sendItems(d)
 end
 
+-- A turn of any kind, as a matrix M around the gizmo centre (the trackball, the view ring)
+local function applyTurn(d, M)
+	if d.kind == "manip" then
+		-- the bone in the world = base * manip (the manip turn is the bone's own, applied
+		-- last), so the new manip turn is base⁻¹ * M * the bone at the start
+		local it = d.items[1]
+		if not it.w0 then
+			it.w0 = Matrix()
+			it.w0:SetAngles(d.startAng)
+			local m0 = Matrix()
+			m0:SetAngles(it.m0ang)
+			it.baseInv = (it.w0 * m0:GetInverseTR()):GetInverseTR()
+		end
+		it.m1ang = (it.baseInv * (M * it.w0)):GetAngles()
+		C.SendBoneManip(d.ent, d.bone, it.m0pos, it.m1ang, it.m0scale)
+		return
+	end
+	for _, it in ipairs(d.items) do
+		if not it.extra then
+			it.p1 = d.startPos + M * (it.p0 - d.startPos)
+			it.a1 = (M * it.a0:Forward()):AngleEx(M * it.a0:Up())
+		end
+	end
+	sendItems(d)
+end
+
 local function applyRotate(d, total)
+	if d.viewRing then
+		applyTurn(d, axisMatrix(d.axis, total))
+		return
+	end
 	if d.kind == "manip" then
 		local it = d.items[1]
 		local a = Angle(it.m0ang.p, it.m0ang.y, it.m0ang.r)
@@ -677,6 +741,17 @@ local function updateDrag()
 		if snap > 0 then delta = math.Round(delta / snap) * snap end
 		d.total = delta
 		applyMove(d, d.axis * delta)
+	elseif d.ball then
+		-- the trackball: the object turns after the mouse, as if a ball in front of it was rolled
+		local mx, my = gui.MousePos()
+		local dx, dy = mx - d.mx, my - d.my
+		if dx == 0 and dy == 0 then return end
+		d.mx, d.my = mx, my
+		local axis = d.camUp * dx + d.camRight * dy
+		local deg = axis:Length() * BALL_SPEED
+		d.M = axisMatrix(axis:GetNormalized(), deg) * d.M
+		d.total = d.total + deg
+		applyTurn(d, d.M)
 	else
 		local h = util.IntersectRayWithPlane(ro, rd, d.startPos, d.axis)
 		if not h then return end
@@ -692,10 +767,17 @@ local function updateDrag()
 	end
 end
 
+local pickClick          -- below, next to onPress
+
 local function endDrag()
 	local d = C.gizmo.drag
 	C.gizmo.drag = nil
 	C.FlushQueue()
+	-- a click inside the rotate rings without a drag is an ordinary click: it selects a bone
+	if d and d.ball and d.total == 0 then
+		pickClick()
+		return
+	end
 	if not d or d.total == 0 or not IsValid(d.ent) then return end
 	local ref = C.Ref(d.ent)
 	for _, it in ipairs(d.items) do
@@ -743,24 +825,39 @@ local function endDrag()
 			end
 		end
 	end
+	-- which parts of the model the drag changed: the bone keys of SAeditor key only those
+	local parts = {}
+	if d.kind == "phys" then
+		local root = false
+		for _, it in ipairs(d.items) do
+			if it.physIdx then parts[#parts + 1] = "p" .. it.physIdx end
+			root = root or it.physIdx == 0
+		end
+		-- the other bodies are kept relative to the root body: when it moves alone, all of
+		-- them changed in that sense, and the key holds the whole pose
+		if root and IsValid(d.ent) then
+			parts = {}
+			for b = 0, d.ent:GetBoneCount() - 1 do
+				local pi = C.PhysIndexOfBone(d.ent, b)
+				if pi then parts[#parts + 1] = "p" .. pi end
+			end
+		end
+	elseif d.kind == "manip" then
+		parts[1] = "b" .. d.bone
+	end
+	C.lastEditParts = { ent = d.ent, parts = table.concat(parts, ","), t = RealTime() }
 	C.PushHistory(d.mode,
 		function() restore(false) end,
 	function() restore(true) end)
 end
 
 local lmbPrev = false
-local function onPress(tgt)
-	if tgt then
-		local hit = hitTest(tgt)
-		if hit then
-			startDrag(tgt, hit)
-			return
-		end
-	end
-	-- A click on a bone in the viewport: selects the bone (the gizmo goes onto the bone)
+-- A click on a bone in the viewport: selects the bone (the gizmo goes onto the bone)
+function pickClick()
 	local ent = C.selected
-	local ctrlDown = input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL)
-	if IsValid(ent) and not C.IsAux(ent) and C.showSkeleton and not ctrlDown then
+	-- Shift / Ctrl + click (Interface settings → Keys): add to / remove from the selection
+	local adding = C.Keys.ClickAny(C.MULTI_CLICK)
+	if IsValid(ent) and not C.IsAux(ent) and C.showSkeleton and not adding then
 		local b = C.PickBone(ent, 16)
 		-- a click on the body of the selected ragdoll away from the markers: the body part under
 		-- the cursor (the markers are small and hard to hit while animating)
@@ -771,12 +868,23 @@ local function onPress(tgt)
 		end
 	end
 	local picked = C.PickEntity()
-	if input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL) then
-		-- Ctrl+click: add to / remove from the selection (a click on empty space resets nothing)
+	if adding then
+		-- a click on empty space resets nothing
 		if IsValid(picked) then C.ToggleMulti(picked) end
 		return
 	end
 	C.Select(picked, -1)
+end
+
+local function onPress(tgt)
+	if tgt then
+		local hit = hitTest(tgt)
+		if hit then
+			startDrag(tgt, hit)
+			return
+		end
+	end
+	pickClick()
 end
 
 hook.Add("Think", "SPeditor.GizmoInput", function()
@@ -839,17 +947,23 @@ local function drawGizmo(tgt)
 		end
 	else
 		local R = size * 0.85
-		for i = 1, 3 do
-			local col = (hv and hv.mode == "rotate" and hv.index == i) and HOVER_COLOR or AXIS_COLORS[i]
-			local u, v = makeBasis(axes[i])
+		local function ring(axis, r, col, width)
+			local u, v = makeBasis(axis)
 			local prev
 			for s = 0, 48 do
 				local a = (s / 48) * math.pi * 2
-				local p = tgt.pos + (u * math.cos(a) + v * math.sin(a)) * R
-				if prev then render.DrawBeam(prev, p, w, 0, 1, col) end
+				local p = tgt.pos + (u * math.cos(a) + v * math.sin(a)) * r
+				if prev then render.DrawBeam(prev, p, width, 0, 1, col) end
 				prev = p
 			end
 		end
+		for i = 1, 3 do
+			ring(axes[i], R, (hv and hv.mode == "rotate" and hv.index == i) and HOVER_COLOR or AXIS_COLORS[i], w)
+		end
+		local fwd = select(2, C.GetView()):Forward()
+		-- the ring around the line of sight, and the outline of the trackball
+		ring(fwd, R * VIEW_RING, (hv and hv.mode == "rotate" and hv.index == 5) and HOVER_COLOR or COL_VIEWRING, w)
+		ring(fwd, R, (hv and hv.mode == "rotate" and hv.index == 4) and HOVER_COLOR or COL_BALL, w * 0.5)
 	end
 	render.DrawSphere(tgt.pos, w * 2, 8, 8, (hv and hv.index == 4) and HOVER_COLOR or color_white)
 end
@@ -936,11 +1050,13 @@ hook.Add("PostDrawTranslucentRenderables", "SPeditor.Gizmo", function(bDepth, bS
 end)
 
 -- Halo only in the main pass: in the nested viewport render it darkens the frame
+local HALO_COL, haloList = Color(255, 200, 60), {}
 hook.Add("PreDrawHalos", "SPeditor.Halo", function()
 	if not C.active or C.hideUI or C.renderViewEnt or C.vpPass then return end
 	local ent = C.selected
 	if IsValid(ent) and not C.IsLight(ent) and not C.IsEffect(ent) and ent ~= C.camera.viewEnt then
-		halo.Add({ ent }, Color(255, 200, 60), 2, 2, 1, true, true)
+		haloList[1] = ent
+		halo.Add(haloList, HALO_COL, 2, 2, 1, true, true)
 	end
 end)
 

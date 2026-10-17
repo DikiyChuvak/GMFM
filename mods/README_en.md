@@ -284,6 +284,14 @@ end)
 
 A character can be animated from a script: `SA.ImportSequence(ent, seq, { start = frame, frames = length, pos = Vector, yaw = degrees, loops, step, root, cycle0, cycle1, params = { aim_yaw = 0 } })` bakes a model animation into keys of a ragdoll at an exact frame, place and direction. On the server `S.RigidPlaces` / `S.SnapRigid` put the bodies of a ragdoll where the client draws its bones — use them if your mod poses ragdolls and attaches objects to them.
 | `cl_saeditor_ui.lua` | The Timeline page (`MOD:AddPage`, window `bottom`), the import and render windows, menu items (`MOD:AddMenu`), the section in the Render window and the playback buttons in the preview (hooks `SPeditor_RenderDialog`, `SPeditor_RenderPreviewBuilt`). |
+| `cl_saeditor_lipsync.lua` | Lip sync: phonemes from the VDAT chunk of a WAV, or the loudness of the sound, sent as mouth shapes (message `Lip`); `SA.MouthMap(ent)` in `sh_saeditor.lua` picks the mouth flexes of a model. |
+| `cl_saeditor_show.lua` | Watching the animation outside the editor (message `Show` with play / pause / seek actions, works with the editor closed): the view through the camera of the cuts or a chosen camera, the console commands `saeditor_show*`, the Q menu panel. |
+| `cl_saeditor_player.lua` | The player outside the editor in the style of Windows Media Player: play / pause, stop, previous / next shot, seek bar, repeat, volume (`SA.OpenPlayer`). |
+| `cl_saeditor_cuts.lua` | Camera cuts — which camera the animation is seen through from which frame (`SA.cuts`, `SA.CameraAt(frame)`, message `Cuts`); the Cameras row of the timeline. |
+| `cl_saeditor_ghost.lua` | Ghosts: the selected model drawn see-through at the keys around the playhead (message `Ghost`, `SA.StateAt` on the server). |
+| `cl_saeditor_record.lua`, `sv_saeditor_record.lua` | Record gameplay (machinima): the Record window, the countdown and the REC mark (client); the take — bones of the player and NPCs sampled on the server, sounds (`EntityEmitSound`), tracers, explosions, `util.Effect` — turned into ragdolls with keys, attached weapons, sound clips and effect objects (message `Rec`). |
+| `cl_saeditor_guides.lua` | The SAeditor guides of Help → How to use (`UI.AddGuide` in `cl_ui_guide.lua`; a mod can add its own guides the same way, with pictures and live demonstrations). |
+| `cl_saeditor_easy.lua` | Ready motions for characters (`SA.MOTIONS`, `SA.PlayMotion`) and camera moves (`SA.CAM_MOVES`, message `Cam`). |
 
 Worth noticing:
 

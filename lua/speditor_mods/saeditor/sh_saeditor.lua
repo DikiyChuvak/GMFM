@@ -6,7 +6,11 @@ local SA = MOD.SA
 SA.FPS_LIST   = { 12, 15, 24, 30, 60 }
 SA.MAX_FRAMES = 432000          -- animation length in frames, at most (an hour at 120 fps)
 SA.MAX_KEYS   = 100000          -- keys per object (a baked 12-minute animation has ~10 000)
-SA.EASES      = { "ease", "linear", "ease_in", "ease_out", "hold" }
+-- the kinds of motion from a key to the next one. "spline" (a0.6, the default for new keys) is
+-- continuous: the object passes through a key without stopping, its speed worked out from the
+-- keys around (sv_saeditor.lua, segment); the others are timing curves of one stretch.
+SA.EASES      = { "spline", "ease", "linear", "ease_in", "ease_out", "sine", "expo", "back", "elastic", "bounce", "hold" }
+SA.EASE_MAIN  = { "spline", "ease", "linear", "ease_in", "ease_out", "hold" }    -- the buttons of the curve editor
 
 -- Models whose animations the import offers for any character with the same skeleton:
 -- the player models carry every player animation (walking, gestures, dances and whatever
@@ -59,8 +63,81 @@ SA.FACE = 2 ^ 30
 function SA.IsFaceTrack(id) return id >= SA.FACE end
 function SA.FaceTrack(uid) return uid + SA.FACE end
 
+-- Lip sync (a0.6): a mouth shape is five channels, 0..1 each — how open the jaw is, how wide
+-- the lips stretch, how round they are, pressed together (m, b, p), the lower lip under the
+-- teeth (f, v). SA.MouthMap(ent) says which flexes of a model make each channel.
+SA.LIP_CH = { "open", "wide", "round", "close", "bite" }
+
+-- the faces of Valve characters (HL2, TF2, CS:S… — FACS flex controllers)
+local LIP_VALVE = {
+	jaw_drop = { 1, 0.2, 0.35 },
+	right_part = { 1, 0.6, 0.4 }, left_part = { 1, 0.6, 0.4 },
+	right_mouth_drop = { 0.6, 0.3 }, left_mouth_drop = { 0.6, 0.3 },
+	right_stretcher = { 0, 0.8 }, left_stretcher = { 0, 0.8 },
+	right_corner_puller = { 0, 0.25 }, left_corner_puller = { 0, 0.25 },
+	right_puckerer = { 0, 0, 0.8 }, left_puckerer = { 0, 0, 0.8 },
+	right_funneler = { 0, 0, 0.7 }, left_funneler = { 0, 0, 0.7 },
+	presser = { 0, 0, 0, 0.9 }, tightener = { 0, 0, 0, 0.3 },
+	bite = { 0, 0, 0, 0, 0.8 }, lip_bite = { 0, 0, 0, 0, 0.6 },
+	right_upper_raiser = { 0, 0, 0, 0, 0.35 }, left_upper_raiser = { 0, 0, 0, 0, 0.35 },
+}
+-- other models: flexes by name (visemes of VRChat / MMD / ported models), one channel each
+local LIP_NAMES = {
+	{ 1, { "jaw_open", "jawopen", "mouth_open", "mouthopen", "open_mouth", "mouth_a", "viseme_aa", "vrc.v_aa", "aa", "a", "あ" } },
+	{ 2, { "viseme_e", "viseme_ih", "vrc.v_e", "vrc.v_ih", "mouth_e", "mouth_i", "ee", "e", "i", "い", "え" } },
+	{ 3, { "viseme_ou", "viseme_oh", "viseme_o", "viseme_u", "vrc.v_ou", "vrc.v_oh", "mouth_o", "mouth_u", "oo", "o", "u", "ou", "お", "う" } },
+	{ 4, { "viseme_pp", "vrc.v_pp", "mbp", "mouth_close", "mouthclose", "mouth_press", "mouthpress" } },
+	{ 5, { "viseme_ff", "vrc.v_ff", "fv", "f_v" } },
+}
+
+-- { [flex id] = { weight of each channel } } or nil — the model has no mouth to move
+function SA.MouthMap(ent)
+	local n = ent:GetFlexNum() or 0
+	if n == 0 then return nil end
+	local byName = {}
+	for i = 0, n - 1 do
+		local name = string.lower(ent:GetFlexName(i) or "")
+		if name ~= "" and byName[name] == nil then byName[name] = i end
+	end
+	local map, open = {}, false
+	for name, w in pairs(LIP_VALVE) do
+		local id = byName[name]
+		if id then
+			map[id] = w
+			if (w[1] or 0) > 0 then open = true end
+		end
+	end
+	if open then return map end
+	map = {}
+	for _, ch in ipairs(LIP_NAMES) do
+		for _, name in ipairs(ch[2]) do
+			local id = byName[name]
+			if id and not map[id] then
+				local w = { 0, 0, 0, 0, 0 }
+				w[ch[1]] = 1
+				map[id] = w
+				if ch[1] == 1 then open = true end
+				break
+			end
+		end
+	end
+	-- no "open" in the names: a flex with jaw / mouth and open in its name
+	if not open then
+		for name, id in pairs(byName) do
+			if (string.find(name, "jaw", 1, true) or string.find(name, "mouth", 1, true)) and string.find(name, "open", 1, true) then
+				map[id] = { 1, 0, 0, 0, 0 }
+				open = true
+				break
+			end
+		end
+	end
+	return open and map or nil
+end
+
 -- actions of the Key message
-SA.OP = { SET = 1, DELETE = 2, MOVE = 3, EASE = 4, CLEAR = 5, CLEAR_ALL = 6, COPY = 7 }
+-- SHIFT (a0.6): several keys of one track at once — str = "f1,f2,…", arg = by how many frames,
+-- frame = 1 to copy them; they all move together, so a key never lands on one still to move
+SA.OP = { SET = 1, DELETE = 2, MOVE = 3, EASE = 4, CLEAR = 5, CLEAR_ALL = 6, COPY = 7, SHIFT = 8 }
 
 -- "bezier": a timing curve of its own, drawn in the curve editor. bz = { x1, y1, x2, y2 } —
 -- the two handles of a cubic curve from (0, 0) to (1, 1), as in CSS cubic-bezier; y may
@@ -97,12 +174,44 @@ SA.EASE_BEZIER = {
 	ease_in = { 0.5, 0, 0.85, 0.7 }, ease_out = { 0.15, 0.3, 0.5, 1 },
 }
 
+local PI = math.pi
+local function bounceOut(u)
+	local n, d = 7.5625, 2.75
+	if u < 1 / d then return n * u * u end
+	if u < 2 / d then u = u - 1.5 / d return n * u * u + 0.75 end
+	if u < 2.5 / d then u = u - 2.25 / d return n * u * u + 0.9375 end
+	u = u - 2.625 / d
+	return n * u * u + 0.984375
+end
+
+-- 0..1 of the way at the share u of the time (it may leave 0..1: overshoot, swing back)
 function SA.EaseValue(ease, u, bz)
 	if ease == "bezier" and bz then return SA.BezierEase(u, bz) end
 	if ease == "hold" then return 0 end
 	if ease == "linear" then return u end
 	if ease == "ease_in" then return u * u end                     -- starts slowly, arrives at full speed
 	if ease == "ease_out" then return 1 - (1 - u) * (1 - u) end    -- leaves at full speed, slows down at the key
+	if ease == "spline" then
+		-- alone (no keys around) a spline stretch is a Hermite curve with half-speed ends;
+		-- between keys the server works it out from the neighbours
+		local u2, u3 = u * u, u * u * u
+		return (u3 - 2 * u2 + u) * 0.5 + (-2 * u3 + 3 * u2) + (u3 - u2) * 0.5
+	end
+	if ease == "sine" then return -(math.cos(PI * u) - 1) / 2 end   -- softer than smooth
+	if ease == "expo" then                                          -- a sharp rush in the middle
+		if u <= 0 then return 0 elseif u >= 1 then return 1 end
+		return u < 0.5 and 2 ^ (20 * u - 10) / 2 or (2 - 2 ^ (-20 * u + 10)) / 2
+	end
+	if ease == "back" then                                          -- swings back, overshoots, settles
+		local c2 = 1.70158 * 1.525
+		if u < 0.5 then return ((2 * u) ^ 2 * ((c2 + 1) * 2 * u - c2)) / 2 end
+		return ((2 * u - 2) ^ 2 * ((c2 + 1) * (u * 2 - 2) + c2) + 2) / 2
+	end
+	if ease == "elastic" then                                       -- springs around the key and calms down
+		if u <= 0 then return 0 elseif u >= 1 then return 1 end
+		return 2 ^ (-10 * u) * math.sin((u * 10 - 0.75) * (2 * PI / 3)) + 1
+	end
+	if ease == "bounce" then return bounceOut(u) end               -- bounces on the key like a ball
 	return u * u * (3 - 2 * u)
 end
 
@@ -113,9 +222,10 @@ end
 ---------------------------------------------------------------------
 local sin, cos, acos, sqrt, rad, deg = math.sin, math.cos, math.acos, math.sqrt, math.rad, math.deg
 
+-- u may leave 0..1 (an easing that overshoots): the turn goes on along the same arc
 function SA.SlerpAngle(a, b, u)
-	if u <= 0 then return Angle(a.p, a.y, a.r) end
-	if u >= 1 then return Angle(b.p, b.y, b.r) end
+	if u == 0 then return Angle(a.p, a.y, a.r) end
+	if u == 1 then return Angle(b.p, b.y, b.r) end
 	-- rotation of b relative to a
 	local _, l = WorldToLocal(vector_origin, b, vector_origin, a)
 	-- its quaternion (the AngleQuaternion formula from Source)
@@ -137,6 +247,46 @@ function SA.SlerpAngle(a, b, u)
 end
 
 function SA.LerpNum(a, b, u) return a + (b - a) * u end
+
+-- Angles as quaternions (Source's AngleQuaternion / QuaternionMatrix): a weighted sum of turns
+-- (the spline) is done on them
+function SA.AngToQuat(a)
+	local sy, cy = sin(rad(a.y) * 0.5), cos(rad(a.y) * 0.5)
+	local sp, cp = sin(rad(a.p) * 0.5), cos(rad(a.p) * 0.5)
+	local sr, cr = sin(rad(a.r) * 0.5), cos(rad(a.r) * 0.5)
+	return sr * cp * cy - cr * sp * sy, cr * sp * cy + sr * cp * sy, cr * cp * sy - sr * sp * cy, cr * cp * cy + sr * sp * sy
+end
+
+function SA.QuatToAng(x, y, z, w)
+	local fwd = Vector(1 - 2 * y * y - 2 * z * z, 2 * x * y + 2 * w * z, 2 * x * z - 2 * w * y)
+	local up = Vector(2 * x * z + 2 * w * y, 2 * y * z - 2 * w * x, 1 - 2 * x * x - 2 * y * y)
+	return fwd:AngleEx(up)
+end
+
+-- angles with weights (the weights add up to 1; some may be negative); ref — the index whose
+-- hemisphere the others are brought to
+function SA.BlendAngles(angs, ws, ref)
+	local rx, ry, rz, rw = SA.AngToQuat(angs[ref])
+	local X, Y, Z, W = 0, 0, 0, 0
+	for i, a in ipairs(angs) do
+		local x, y, z, w = SA.AngToQuat(a)
+		if x * rx + y * ry + z * rz + w * rw < 0 then x, y, z, w = -x, -y, -z, -w end
+		X, Y, Z, W = X + x * ws[i], Y + y * ws[i], Z + z * ws[i], W + w * ws[i]
+	end
+	local len = sqrt(X * X + Y * Y + Z * Z + W * W)
+	if len < 1e-6 then return Angle(angs[ref].p, angs[ref].y, angs[ref].r) end
+	return SA.QuatToAng(X / len, Y / len, Z / len, W / len)
+end
+
+-- The weights of the four keys around a spline stretch (Catmull-Rom with the real distances in
+-- time between the keys, as a Hermite curve): t0 < t1 <= frame < t2 < t3, u — the share of t1..t2
+function SA.SplineWeights(t0, t1, t2, t3, u)
+	local a = (t2 - t1) / math.max(t2 - t0, 1e-6)
+	local b = (t2 - t1) / math.max(t3 - t1, 1e-6)
+	local u2, u3 = u * u, u * u * u
+	local h00, h10, h01, h11 = 2 * u3 - 3 * u2 + 1, u3 - 2 * u2 + u, -2 * u3 + 3 * u2, u3 - u2
+	return -h10 * a, h00 - h11 * b, h01 + h10 * a, h11 * b
+end
 
 ---------------------------------------------------------------------
 -- Tables bigger than one net message (64 KB): a long animation has tens of thousands of
@@ -252,6 +402,75 @@ end
 ---------------------------------------------------------------------
 MOD:Lang("en", {
 	sa_timeline = "Timeline",
+	-- a0.6: animations from addons
+	sa_imp_src_addon = "Animation pack of an addon…",
+	sa_asrc_title = "Animations from addons",
+	sa_asrc_hint = "Animation packs are models that hold only animations (the model browser hides them). Pick an addon — Workshop or a folder in garrysmod/addons — then a model: its animations are offered for the character if the skeletons share bone names.",
+	sa_asrc_addon = "Addon", sa_asrc_model = "Model", sa_asrc_all = "Show all models of the addon, not only animation ones",
+	sa_asrc_none = "No animation models here: tick “all models” to choose from the others",
+	sa_asrc_info = "%d animations · %d of %d bones of the character match", sa_asrc_bad = "The model does not load",
+	sa_asrc_go = "Take animations from it",
+	-- a0.6: lip sync
+	sa_lip_menu = "Lip sync", sa_lip_for = "Mouth of %s follows this sound", sa_lip_nobody = "Nobody in the scene has a mouth to move",
+	sa_lip_strength = "How wide the mouth opens",
+	sa_lip_noface = "This model has no mouth flexes to move", sa_lip_wait = "The sound is still loading: try again in a moment",
+	sa_lip_failed = "The sound could not be read", sa_lip_silent = "The sound is silent: nothing to say",
+	sa_lip_listening = "Listening to the sound (%d s)…",
+	sa_lip_phonemes = "Lip sync: by the phonemes written in the file", sa_lip_loudness = "Lip sync: by loudness (the file has no phonemes)",
+	sa_lip_done = "Lip sync: %s mouth keys on the face track",
+	hist_sa_lipsync = "Lip sync",
+	-- a0.6: ready motions and camera moves
+	sa_easy = "Ready motion: for a character — walks, waves, dances…; for a camera — dolly, orbit, pan…",
+	sa_easy_need = "Select a character or a camera first",
+	sa_mo_menu = "Ready motions", sa_mo_more = "More animations…", sa_mo_missing = "This animation is not in the game",
+	sa_mg_stand = "Stand", sa_mg_move = "Move", sa_mg_gesture = "Gestures", sa_mg_fun = "Fun", sa_mg_action = "Action",
+	sa_mo_idle = "Stands and breathes", sa_mo_scared = "Stands scared", sa_mo_angry = "Stands angry", sa_mo_crouch = "Crouches", sa_mo_sit = "Sits cross-legged",
+	sa_mo_walk = "Walks", sa_mo_run = "Runs", sa_mo_panic = "Runs in panic", sa_mo_sneak = "Sneaks crouching", sa_mo_zombie = "Walks like a zombie", sa_mo_swim = "Swims",
+	sa_mo_wave = "Waves", sa_mo_yes = "Nods: yes", sa_mo_no = "Shakes the head: no", sa_mo_bow = "Bows", sa_mo_salute = "Salutes",
+	sa_mo_come = "Beckons: come here", sa_mo_halt = "Signals: stop", sa_mo_forward = "Signals: forward",
+	sa_mo_dance = "Dances", sa_mo_laugh = "Laughs", sa_mo_cheer = "Cheers", sa_mo_robot = "Robot dance", sa_mo_muscle = "Shows muscles",
+	sa_mo_throw = "Throws", sa_mo_land = "Lands after a jump", sa_mo_flinch = "Flinches from a hit", sa_mo_die = "Falls dead", sa_mo_die2 = "Falls dead slowly",
+	sa_cm_menu = "Camera move", sa_cm_need = "Select a camera first",
+	sa_cm_in = "Dolly in (closer to what it sees)", sa_cm_out = "Dolly out", sa_cm_orbit_l = "Orbit left (a quarter circle)",
+	sa_cm_orbit_r = "Orbit right (a quarter circle)", sa_cm_pan_l = "Pan left", sa_cm_pan_r = "Pan right",
+	sa_cm_crane = "Crane up (rises, keeps looking)", sa_cm_shake = "Shake that calms down",
+	hist_sa_camera_move = "Camera move",
+	-- a0.6: ghosts, bone keys, a hint about edits without a key
+	sa_show_cuts = "As the animation switches cameras (the Cameras row)",
+	sa_pl_untitled = "Untitled scene", sa_pl_camera = "Camera", sa_pl_eyes = "Without a camera (your eyes)", sa_pl_exit = "Leave the player (Backspace)",
+	sa_pl_stop = "Stop", sa_pl_prev = "Previous shot (PgUp)", sa_pl_next = "Next shot (PgDn)", sa_pl_play = "Play (Space)", sa_pl_pause = "Pause (Space)",
+	sa_pl_loop_on = "Repeat: on (R)", sa_pl_loop_off = "Repeat: off (R)", sa_pl_mute = "Mute (M)",
+	sa_rec_title = "Record gameplay", sa_rec_go = "Start recording",
+	sa_rec_hint = "Play the game and it becomes animation, as in machinima: the editor closes, after a countdown everything you do is recorded — you as your player model with its skin and weapon, the NPCs around, their sounds and effects. Backspace stops the take; the editor opens with the actors keyed in the scene. The animation you already have plays along.",
+	sa_rec_npcs = "Record the NPCs around", sa_rec_radius = "Radius for NPCs and effects, units", sa_rec_sounds = "Record sounds (steps, shots, voices)",
+	sa_rec_effects = "Record effects (tracers, explosions, effects of weapons)", sa_rec_step = "A key every N frames",
+	sa_rec_from = "The take starts at frame %d (the playhead)", sa_rec_get_ready = "Recording starts…",
+	sa_rec_stop_hint = "Backspace — stop the take", sa_rec_done = "Take recorded: %d actors, %d keys, %d sounds, %d effects",
+	sa_cuts_row = "Cameras", sa_cuts_empty = "Right click: which camera the animation is watched through from here",
+	sa_cuts_nocam = "The scene has no cameras", sa_cuts_change = "Camera", sa_cuts_go = "Go to this cut", sa_cuts_delete = "Delete the cut",
+	sa_cuts_here = "Switch to %s here (frame %d)", hist_sa_cut = "Camera cut",
+	sa_ew_ease = "Smooth: starts slowly, speeds up, slows down into the next key", sa_ew_linear = "Even: the same speed all the way, starts and stops sharply",
+	sa_ew_ease_in = "Speeds up: starts slowly and arrives at the next key at full speed", sa_ew_ease_out = "Slows down: leaves at full speed and comes gently to the next key",
+	sa_ew_hold = "A jump: stays still and switches to the next key at once (a cut, a light switched on)",
+	sa_ew_b_start_slow = "Own curve: starts slowly", sa_ew_b_start_fast = "Own curve: starts fast", sa_ew_b_start_even = "Own curve: starts at an even speed",
+	sa_ew_b_end_slow = "comes gently to the next key", sa_ew_b_end_fast = "hits the next key at speed", sa_ew_b_end_even = "arrives at an even speed",
+	sa_ew_b_over = "goes past the key and comes back", sa_ew_b_back = "swings back before leaving",
+	sa_ew_none = "Select a key on the graph (or move the playhead between two keys) to see how it moves",
+	sa_ew_from_to = "Frames %d → %d  (%.2f s)",
+	sa_ghosts = "Ghosts: the selected model is shown see-through in its pose at the key before (blue) and after (green) the playhead",
+	sa_bone_keys = "Bone keys: a key set while a bone is selected (K, auto key after a drag) holds only that bone, and every bone moves between its own keys",
+	sa_bone_key_set = "Bone key at frame %s", sa_bone_key_here = "Set a key of this bone here", sa_bone_key_delete = "Delete the key of this bone",
+	sa_bone_clear = "Delete all keys of this bone",
+	sa_hint_moved = "The pose changed at a frame without a key: it will be lost when the playhead moves. Press K (or turn on Auto key) to keep it.",
+	-- a0.6: watching the animation outside the editor
+	sa_show = "Watch in the game (outside the editor)", sa_show_empty = "There is no animation to play yet",
+	sa_show_menu = "Watch in the game", sa_show_eyes = "Walk around the scene (your own eyes)", sa_show_loop = "In a loop",
+	sa_show_player = "Player", sa_show_player_tip = "Player: watch the animation through the cameras, full screen (outside the editor)",
+	sa_show_eyes_tip = "Walk around the scene and watch the animation with your own eyes (Backspace stops)",
+	sa_walk_hint = "Backspace — stop", sa_pl_look_on = "Render settings: on (V)", sa_pl_look_off = "Render settings: off (V)",
+	sa_pl_pick_cam = "Click to pick the camera", sa_pl_look_nocam = "Render settings need a camera",
+	sa_show_stop = "Stop", sa_show_cam = "Camera (name)", sa_show_cam_help = "Empty — the first camera of the scene; eyes — walk around the scene and watch it yourself.",
+	sa_show_qhelp = "The animation of your scene plays in the game, with the editor closed: in the player through a scene camera, with its sounds, without the HUD (Backspace leaves it), or while you walk around the scene yourself (saeditor_show eyes). Console: saeditor_show [camera | eyes], saeditor_show_stop, saeditor_show_toggle — they can be bound to keys.",
 	-- a0.5: curve editor, procedural motion, Stop Motion Helper, sound fades
 	sa_ease_bezier = "Curve of its own (curve editor)",
 	sa_crv_title = "Curve editor", sa_crv_none = "Nothing selected", sa_crv_pick = "Select an animated object or one of its bones",
@@ -273,7 +492,7 @@ MOD:Lang("en", {
 	sa_proc_breath = "Breathing", sa_proc_rate = "Breaths a minute", sa_proc_blink = "Blinking", sa_proc_head = "Head moves by itself",
 	sa_proc_sway = "Drift, units", sa_proc_freq = "Speed of the motion, Hz", sa_proc_preview = "Play to see it", sa_proc_off = "Switch off",
 	sa_smh_title = "Stop Motion Helper", sa_smh_file = "SMH save", sa_smh_map = "Map", sa_smh_object = "Object in the save", sa_smh_keys = "Keys",
-	sa_smh_hint = "Saves of Stop Motion Helper (garrysmod/data/smh) can be taken onto the selected object as keys, and the animation of the selected objects can be written as an SMH save (SMH: Load → the name of the model).",
+	sa_smh_hint = "Saves of Stop Motion Helper (garrysmod/data/smh, and data/smh or data_static/smh of addons) can be taken onto the selected object as keys, and the animation of the selected objects can be written as an SMH save (SMH: Load → the name of the model).",
 	sa_smh_target = "Onto", sa_smh_no_target = "select a model in the scene", sa_smh_start = "First frame",
 	sa_smh_conv = "Convert speed: SMH frames a second", sa_smh_world = "Keep the places of the save",
 	sa_smh_import = "Take onto the object", sa_smh_pick = "Pick a save and an object in it",
@@ -290,12 +509,6 @@ MOD:Lang("en", {
 	sa_face_start = "Separate face keys: start here", sa_face_clear = "Remove the face keys (the body keys drive the face again)",
 	sa_face_key_set = "Face key set: frame %d", sa_need_face = "Select a model with a face (flexes)",
 	hist_sa_face_key = "Face key",
-	sa_rd_frames = "Chosen frames", sa_rd_which = "Which frames",
-	sa_rd_which_tip = "keys — the frames with keys; every 6 — every 6th frame; 0, 12, 24-30 — a list (24-30/2 — every 2nd inside the range). Each frame is saved as a picture named by its number (name_f0012); a video of chosen frames is made without sound.",
-	sa_rd_which_keys = "Frames with keys", sa_rd_which_every = "Every %d frames", sa_rd_which_cur = "Add the current frame (%d)",
-	sa_rd_note_frames = "%d frames will be rendered, each named by its number. Pictures (JPEG / PNG) suit this best.",
-	sa_rnd_frames_none = "No frames to render: check the list of frames",
-	sa_rnd_only = "Only frames", sa_rnd_only_tip = "empty — every frame from…to",
 	sa_play = "Play / pause (Space)", sa_first = "To the first frame (Home)", sa_last = "To the last frame (End)",
 	sa_prev_key = "Previous key", sa_next_key = "Next key",
 	sa_prev_frame = "Previous frame (,)", sa_next_frame = "Next frame (.)",
@@ -304,10 +517,18 @@ MOD:Lang("en", {
 	sa_loop = "Loop playback", sa_frame = "frame", sa_fps = "fps", sa_length = "length, s",
 	sa_import = "Import model animation…", sa_render = "Render animation…",
 	sa_menu = "Animation", sa_clear_track = "Remove animation of this object", sa_clear_all = "Remove all animation",
-	sa_clear_all_q = "Remove all keys of all objects?",
+	sa_clear_all_q = "Remove all keys of all objects, the sounds and the camera cuts?",
 	sa_ease = "Motion to the next key", sa_ease_ease = "Smooth", sa_ease_linear = "Linear", sa_ease_hold = "Hold (stepped)",
+	sa_ease_spline = "Continuous (spline)", sa_ease_sine = "Gentle (sine)", sa_ease_expo = "Sharp (expo)", sa_ease_back = "With a swing (back)",
+	sa_ease_elastic = "Springy (elastic)", sa_ease_bounce = "Bouncing (bounce)", sa_ease_more = "More",
+	sa_ew_spline = "Continuous: passes through the keys without stopping, its speed follows from the keys around",
+	sa_ew_sine = "Gentle: a very soft start and stop", sa_ew_expo = "Sharp: stands, rushes through the middle, stops dead",
+	sa_ew_back = "With a swing: steps back first, overshoots the next key and settles on it",
+	sa_ew_elastic = "Springy: overshoots the next key and wobbles around it, calming down",
+	sa_ew_bounce = "Bouncing: hits the next key and bounces off it a few times, like a ball",
 	sa_ease_ease_in = "Speed up (ease in)", sa_ease_ease_out = "Slow down (ease out)",
 	sa_copy_key = "Copy key", sa_paste_key = "Paste key here", sa_key_here = "Set key here",
+	sa_keys_n = "%d keys selected", sa_copy_keys = "Copy keys", sa_keys_delete = "Delete keys", sa_paste_keys = "Paste %d keys here",
 	sa_no_tracks = "No animation yet. Select an object, move the playhead and press K — or switch Auto key on.",
 	sa_need_sel = "Select an object first", sa_need_ragdoll = "Select a character (ragdoll)",
 	sa_key_set = "Key set: frame %d", sa_keys_limit = "Too many keys for one object",
@@ -328,23 +549,18 @@ MOD:Lang("en", {
 	sa_imp_skeleton = "This model has another skeleton: its animation does not fit the character",
 	sa_imp_done_n = "Imported '%s' for %s characters",
 	sa_rnd_title = "Render animation", sa_rnd_camera = "Camera",
-	sa_rnd_from = "From frame", sa_rnd_to = "To frame", sa_rnd_name = "Name", sa_rnd_format = "Format",
+	sa_rnd_from = "From frame", sa_rnd_to = "To frame", sa_rnd_name = "Name", 
 	sa_rnd_settle = "Longest wait for the scene, s",
 	sa_rnd_settle_tip = "The scene is moved by the server. A frame is taken as soon as every object has stopped on the client; this is the longest the render waits for that.",
 	sa_rnd_go = "Render", sa_rnd_cancel = "Cancel",
-	sa_rnd_hint = "Frames are saved as separate pictures to garrysmod/data/speditor/renders/<name>/. Picture size, smoothing, depth of field and camera effects are taken from the Render window.",
-	sa_rnd_progress = "Rendering frame %d of %d…", sa_rnd_done = "Animation rendered: %d frames in %s",
+	sa_rnd_progress = "Rendering frame %d of %d…", 
 	sa_rnd_stopped = "Animation render stopped", sa_rnd_busy = "An animation render is already running",
 	sa_rnd_failed = "Could not create the video file", sa_rnd_done_avi = "Animation rendered: %d frames, video %s (remove '.dat' from the name)",
-	sa_fmt_avi = "AVI video (MJPEG)", sa_fmt_jpeg = "JPEG frames (for MP4)", sa_fmt_png = "PNG frames",
 	sa_rd_title = "Animated scene: %d frames, %.2f s, %d fps",
 	sa_rd_what = "Render", sa_rd_anim = "The whole animation", sa_rd_frame = "Only the current frame",
-	sa_rd_format = "Video format", sa_rd_button = "Render animation", sa_rd_stop = "Stop the animation render",
+	sa_rd_button = "Render animation", sa_rd_stop = "Stop the animation render",
 	sa_rd_note_avi = "One video file: garrysmod/data/speditor/renders/<name>.avi.dat. The game lets addons write only a few file types, so remove '.dat' from the name — it is a regular AVI that any player opens.",
-	sa_rd_note_jpeg = "Frames go to garrysmod/data/speditor/renders/<name>/. The game cannot write MP4 itself; the ffmpeg command that turns the frames into MP4 is printed to the console after the render.",
-	sa_rd_note_png = "Lossless frames in garrysmod/data/speditor/renders/<name>/ — for editing in a video editor.",
 	sa_rd_note_frame = "The Render button saves one picture of the current frame, as in a still scene.",
-	sa_rnd_video = "To make a video: ffmpeg -framerate %d -i %s_%%04d.%s%s -pix_fmt yuv420p %s.mp4",
 	hist_sa_key = "Keyframe", hist_sa_key_delete = "Delete key", hist_sa_key_move = "Move key", hist_sa_ease = "Key motion",
 	hist_sa_clear = "Remove animation", hist_sa_import = "Import animation", hist_sa_paste = "Paste key",
 	hist_sa_sound = "Sound", hist_sa_effect = "Effect playback",
@@ -371,11 +587,10 @@ MOD:Lang("en", {
 	sa_snd_m_trim_out = "Trim the end to the playhead", sa_snd_m_untrim = "Restore the whole sound",
 	sa_snd_trim_bad = "The playhead is not inside this sound",
 	sa_snd_skipped = "Sounds left out of the video (only uncompressed WAV can be mixed in): %s",
-	sa_snd_wav = "The sound track is saved next to the frames: %s",
 	sa_rd_quality = "Video size", sa_rd_samples = "Shadow / DoF passes",
 	sa_rd_fps = "Video frame rate", sa_rd_fps_anim = "As the animation (%d)",
 	sa_rd_fps_tip = "Frames a second of the rendered video. Above the animation's rate the frames in between are posed between the keys (smooth 60 fps from a 24 fps animation).",
-	sa_tl_tip = "Ctrl + wheel — zoom the timeline, Shift + wheel — scroll it in time, wheel — scroll the rows",
+	sa_tl_tip = "Ctrl + wheel — zoom the timeline, Shift + wheel — scroll it in time, wheel — scroll the rows\nCtrl + click on a key — select several, Shift + drag — select keys in a box, drag a selected key — move them all (with Ctrl — copy)",
 	sa_rd_samples_100 = "All, as in a still", sa_rd_samples_50 = "Half (faster)", sa_rd_samples_25 = "Quarter (fastest)",
 	sa_rnd_part = "The video is larger than 1.9 GB: it continues in %s",
 	sa_rd_q_100 = "Largest: JPEG 100 (7 times larger)", sa_rd_q_90 = "Normal: JPEG 90", sa_rd_q_70 = "Smaller by 40%: JPEG 70",
@@ -386,6 +601,75 @@ MOD:Lang("en", {
 
 MOD:Lang("ru", {
 	sa_timeline = "Таймлайн",
+	-- a0.6: анимации из аддонов
+	sa_imp_src_addon = "Пак анимаций из аддона…",
+	sa_asrc_title = "Анимации из аддонов",
+	sa_asrc_hint = "Паки анимаций — это модели, в которых только анимации (браузер моделей их скрывает). Выберите аддон — из Мастерской или папку в garrysmod/addons, — потом модель: её анимации подойдут персонажу, если у скелетов совпадают имена костей.",
+	sa_asrc_addon = "Аддон", sa_asrc_model = "Модель", sa_asrc_all = "Показывать все модели аддона, а не только анимации",
+	sa_asrc_none = "Моделей анимаций тут нет: включите «все модели», чтобы выбрать из остальных",
+	sa_asrc_info = "Анимаций: %d · совпадает костей персонажа: %d из %d", sa_asrc_bad = "Модель не загружается",
+	sa_asrc_go = "Брать анимации отсюда",
+	-- a0.6: липсинк
+	sa_lip_menu = "Липсинк", sa_lip_for = "Рот %s говорит этим звуком", sa_lip_nobody = "В сцене нет никого, у кого есть рот",
+	sa_lip_strength = "Насколько открывается рот",
+	sa_lip_noface = "У этой модели нет флексов рта", sa_lip_wait = "Звук ещё загружается: попробуйте через секунду",
+	sa_lip_failed = "Звук не удалось прочитать", sa_lip_silent = "В звуке тишина: говорить нечего",
+	sa_lip_listening = "Слушаю звук (%d с)…",
+	sa_lip_phonemes = "Липсинк: по фонемам, записанным в файле", sa_lip_loudness = "Липсинк: по громкости (в файле нет фонем)",
+	sa_lip_done = "Липсинк: %s ключей рта на дорожке лица",
+	hist_sa_lipsync = "Липсинк",
+	-- a0.6: готовые движения и пролёты камеры
+	sa_easy = "Готовое движение: персонажу — ходьба, жесты, танцы…; камере — наезд, облёт, панорама…",
+	sa_easy_need = "Сначала выберите персонажа или камеру",
+	sa_mo_menu = "Готовые движения", sa_mo_more = "Ещё анимации…", sa_mo_missing = "Этой анимации нет в игре",
+	sa_mg_stand = "Стоит", sa_mg_move = "Передвигается", sa_mg_gesture = "Жесты", sa_mg_fun = "Веселье", sa_mg_action = "Действие",
+	sa_mo_idle = "Стоит и дышит", sa_mo_scared = "Стоит напуганный", sa_mo_angry = "Стоит злой", sa_mo_crouch = "Сидит на корточках", sa_mo_sit = "Сидит по-турецки",
+	sa_mo_walk = "Идёт", sa_mo_run = "Бежит", sa_mo_panic = "Бежит в панике", sa_mo_sneak = "Крадётся пригнувшись", sa_mo_zombie = "Идёт как зомби", sa_mo_swim = "Плывёт",
+	sa_mo_wave = "Машет рукой", sa_mo_yes = "Кивает: да", sa_mo_no = "Мотает головой: нет", sa_mo_bow = "Кланяется", sa_mo_salute = "Отдаёт честь",
+	sa_mo_come = "Зовёт: иди сюда", sa_mo_halt = "Знак: стой", sa_mo_forward = "Знак: вперёд",
+	sa_mo_dance = "Танцует", sa_mo_laugh = "Смеётся", sa_mo_cheer = "Радуется", sa_mo_robot = "Танец робота", sa_mo_muscle = "Показывает мускулы",
+	sa_mo_throw = "Бросает", sa_mo_land = "Приземляется после прыжка", sa_mo_flinch = "Вздрагивает от удара", sa_mo_die = "Падает замертво", sa_mo_die2 = "Медленно падает замертво",
+	sa_cm_menu = "Пролёт камеры", sa_cm_need = "Сначала выберите камеру",
+	sa_cm_in = "Наезд (ближе к тому, что видит)", sa_cm_out = "Отъезд", sa_cm_orbit_l = "Облёт влево (четверть круга)",
+	sa_cm_orbit_r = "Облёт вправо (четверть круга)", sa_cm_pan_l = "Панорама влево", sa_cm_pan_r = "Панорама вправо",
+	sa_cm_crane = "Подъём (взлетает, не теряя объект)", sa_cm_shake = "Затихающая тряска",
+	hist_sa_camera_move = "Пролёт камеры",
+	-- a0.6: призраки, ключи костей, подсказка о правке без ключа
+	sa_show_cuts = "Как переключает камеры анимация (строка «Камеры»)",
+	sa_pl_untitled = "Сцена без названия", sa_pl_camera = "Камера", sa_pl_eyes = "Без камеры (своими глазами)", sa_pl_exit = "Выйти из плеера (Backspace)",
+	sa_pl_stop = "Стоп", sa_pl_prev = "Предыдущий план (PgUp)", sa_pl_next = "Следующий план (PgDn)", sa_pl_play = "Воспроизвести (Пробел)", sa_pl_pause = "Пауза (Пробел)",
+	sa_pl_loop_on = "Повтор: вкл (R)", sa_pl_loop_off = "Повтор: выкл (R)", sa_pl_mute = "Без звука (M)",
+	sa_rec_title = "Запись игры", sa_rec_go = "Начать запись",
+	sa_rec_hint = "Играйте — и игра станет анимацией, как в машиниме: редактор закроется, после отсчёта записывается всё, что вы делаете, — вы своей моделью игрока со скином и оружием, NPC вокруг, их звуки и эффекты. Backspace останавливает дубль; редактор откроется с актёрами в сцене, уже с ключами. Уже сделанная анимация играет вместе с записью.",
+	sa_rec_npcs = "Записывать NPC вокруг", sa_rec_radius = "Радиус для NPC и эффектов, юниты", sa_rec_sounds = "Записывать звуки (шаги, выстрелы, голоса)",
+	sa_rec_effects = "Записывать эффекты (трассеры, взрывы, эффекты оружия)", sa_rec_step = "Ключ каждые N кадров",
+	sa_rec_from = "Дубль начнётся с кадра %d (головка)", sa_rec_get_ready = "Сейчас начнётся запись…",
+	sa_rec_stop_hint = "Backspace — остановить дубль", sa_rec_done = "Дубль записан: актёров %d, ключей %d, звуков %d, эффектов %d",
+	sa_cuts_row = "Камеры", sa_cuts_empty = "Правый клик: через какую камеру смотреть анимацию с этого места",
+	sa_cuts_nocam = "В сцене нет камер", sa_cuts_change = "Камера", sa_cuts_go = "Перейти к этой смене", sa_cuts_delete = "Удалить смену камеры",
+	sa_cuts_here = "Переключиться на %s здесь (кадр %d)", hist_sa_cut = "Смена камеры",
+	sa_ew_ease = "Плавно: трогается медленно, разгоняется и тормозит к следующему ключу", sa_ew_linear = "Равномерно: одна скорость всю дорогу, резкий старт и остановка",
+	sa_ew_ease_in = "Разгон: трогается медленно и приходит к следующему ключу на полной скорости", sa_ew_ease_out = "Торможение: уходит на полной скорости и мягко подходит к следующему ключу",
+	sa_ew_hold = "Скачок: стоит на месте и сразу переключается на следующий ключ (склейка, включённый свет)",
+	sa_ew_b_start_slow = "Своя кривая: трогается медленно", sa_ew_b_start_fast = "Своя кривая: трогается быстро", sa_ew_b_start_even = "Своя кривая: трогается равномерно",
+	sa_ew_b_end_slow = "мягко подходит к ключу", sa_ew_b_end_fast = "влетает в ключ на скорости", sa_ew_b_end_even = "подходит равномерно",
+	sa_ew_b_over = "проскакивает ключ и возвращается", sa_ew_b_back = "сначала отходит назад",
+	sa_ew_none = "Выберите ключ на графике (или поставьте головку между двумя ключами), чтобы увидеть, как он движется",
+	sa_ew_from_to = "Кадры %d → %d  (%.2f с)",
+	sa_ghosts = "Призраки: выбранная модель видна полупрозрачной в позе предыдущего (синяя) и следующего (зелёная) ключа",
+	sa_bone_keys = "Ключи костей: ключ, поставленный при выбранной кости (K, автоключ после перетаскивания), хранит только эту кость, и каждая кость движется между своими ключами",
+	sa_bone_key_set = "Ключ кости на кадре %s", sa_bone_key_here = "Поставить ключ этой кости здесь", sa_bone_key_delete = "Удалить ключ этой кости",
+	sa_bone_clear = "Удалить все ключи этой кости",
+	sa_hint_moved = "Поза изменена на кадре без ключа: она пропадёт, когда головка сдвинется. Нажмите K (или включите автоключ), чтобы её сохранить.",
+	-- a0.6: просмотр анимации вне редактора
+	sa_show = "Смотреть в игре (вне редактора)", sa_show_empty = "Пока нечего проигрывать: анимации нет",
+	sa_show_menu = "Смотреть в игре", sa_show_eyes = "Ходить по сцене (своими глазами)", sa_show_loop = "По кругу",
+	sa_show_player = "Плеер", sa_show_player_tip = "Плеер: смотреть анимацию через камеры на весь экран (вне редактора)",
+	sa_show_eyes_tip = "Ходить по сцене и смотреть анимацию своими глазами (Backspace — стоп)",
+	sa_walk_hint = "Backspace — стоп", sa_pl_look_on = "Настройки рендера: вкл (V)", sa_pl_look_off = "Настройки рендера: выкл (V)",
+	sa_pl_pick_cam = "Нажмите, чтобы выбрать камеру", sa_pl_look_nocam = "Для настроек рендера нужна камера",
+	sa_show_stop = "Остановить", sa_show_cam = "Камера (имя)", sa_show_cam_help = "Пусто — первая камера сцены; eyes — ходить по сцене и смотреть самому.",
+	sa_show_qhelp = "Анимация вашей сцены идёт прямо в игре, с закрытым редактором: в плеере через камеру сцены, со звуками, без HUD (Backspace — выйти), или пока вы сами ходите по сцене (saeditor_show eyes). Консоль: saeditor_show [камера | eyes], saeditor_show_stop, saeditor_show_toggle — их можно забиндить на клавиши.",
 	-- a0.5: редактор кривых, процедурное движение, Stop Motion Helper, затухание звука
 	sa_ease_bezier = "Своя кривая (редактор кривых)",
 	sa_crv_title = "Редактор кривых", sa_crv_none = "Ничего не выделено", sa_crv_pick = "Выделите анимированный объект или его кость",
@@ -407,7 +691,7 @@ MOD:Lang("ru", {
 	sa_proc_breath = "Дыхание", sa_proc_rate = "Вдохов в минуту", sa_proc_blink = "Моргание", sa_proc_head = "Голова двигается сама",
 	sa_proc_sway = "Покачивание, юниты", sa_proc_freq = "Скорость движения, Гц", sa_proc_preview = "Запустить, чтобы увидеть", sa_proc_off = "Выключить",
 	sa_smh_title = "Stop Motion Helper", sa_smh_file = "Сохранение SMH", sa_smh_map = "Карта", sa_smh_object = "Объект в сохранении", sa_smh_keys = "Ключей",
-	sa_smh_hint = "Сохранения Stop Motion Helper (garrysmod/data/smh) можно взять на выделенный объект как ключи, а анимацию выделенных объектов — записать как сохранение SMH (в SMH: Load → имя модели).",
+	sa_smh_hint = "Сохранения Stop Motion Helper (garrysmod/data/smh, а также data/smh и data_static/smh аддонов) можно взять на выделенный объект как ключи, а анимацию выделенных объектов — записать как сохранение SMH (в SMH: Load → имя модели).",
 	sa_smh_target = "На объект", sa_smh_no_target = "выделите модель в сцене", sa_smh_start = "Первый кадр",
 	sa_smh_conv = "Пересчитать скорость: кадров SMH в секунду", sa_smh_world = "Оставить места из сохранения",
 	sa_smh_import = "Взять на объект", sa_smh_pick = "Выберите сохранение и объект в нём",
@@ -424,12 +708,6 @@ MOD:Lang("ru", {
 	sa_face_start = "Отдельные ключи лица: начать здесь", sa_face_clear = "Убрать ключи лица (лицом снова управляют ключи тела)",
 	sa_face_key_set = "Ключ лица поставлен: кадр %d", sa_need_face = "Выделите модель с лицом (флексами)",
 	hist_sa_face_key = "Ключ лица",
-	sa_rd_frames = "Выбранные кадры", sa_rd_which = "Какие кадры",
-	sa_rd_which_tip = "ключи — кадры с ключами; каждый 6 — каждый 6-й кадр; 0, 12, 24-30 — список (24-30/2 — каждый 2-й внутри диапазона). Каждый кадр сохраняется картинкой с его номером в имени (name_f0012); видео из выбранных кадров — без звука.",
-	sa_rd_which_keys = "Кадры с ключами", sa_rd_which_every = "Каждый %d-й кадр", sa_rd_which_cur = "Добавить текущий кадр (%d)",
-	sa_rd_note_frames = "Будет снято кадров: %d, у каждого в имени его номер. Лучше всего подходят картинки (JPEG / PNG).",
-	sa_rnd_frames_none = "Нет кадров для рендера: проверьте список кадров",
-	sa_rnd_only = "Только кадры", sa_rnd_only_tip = "пусто — все кадры с…по",
 	sa_play = "Воспроизвести / пауза (Пробел)", sa_first = "К первому кадру (Home)", sa_last = "К последнему кадру (End)",
 	sa_prev_key = "Предыдущий ключ", sa_next_key = "Следующий ключ",
 	sa_prev_frame = "Предыдущий кадр (,)", sa_next_frame = "Следующий кадр (.)",
@@ -438,10 +716,18 @@ MOD:Lang("ru", {
 	sa_loop = "Повторять по кругу", sa_frame = "кадр", sa_fps = "к/с", sa_length = "длина, с",
 	sa_import = "Импорт анимации модели…", sa_render = "Рендер анимации…",
 	sa_menu = "Анимация", sa_clear_track = "Убрать анимацию этого объекта", sa_clear_all = "Убрать всю анимацию",
-	sa_clear_all_q = "Удалить все ключи всех объектов?",
+	sa_clear_all_q = "Удалить все ключи всех объектов, звуки и переключения камер?",
 	sa_ease = "Движение к следующему ключу", sa_ease_ease = "Плавно", sa_ease_linear = "Равномерно", sa_ease_hold = "Скачком (ступенька)",
+	sa_ease_spline = "Непрерывно (сплайн)", sa_ease_sine = "Мягко (синус)", sa_ease_expo = "Резко (экспонента)", sa_ease_back = "С замахом (back)",
+	sa_ease_elastic = "Упруго (elastic)", sa_ease_bounce = "С подскоками (bounce)", sa_ease_more = "Ещё",
+	sa_ew_spline = "Непрерывно: проходит через ключи не останавливаясь, скорость берётся из соседних ключей",
+	sa_ew_sine = "Мягко: очень плавные старт и остановка", sa_ew_expo = "Резко: стоит, проносится через середину, встаёт как вкопанный",
+	sa_ew_back = "С замахом: сначала отходит назад, проскакивает следующий ключ и возвращается на него",
+	sa_ew_elastic = "Упруго: проскакивает следующий ключ и пружинит вокруг него, затихая",
+	sa_ew_bounce = "С подскоками: ударяется о следующий ключ и отскакивает несколько раз, как мяч",
 	sa_ease_ease_in = "Разгон (ease in)", sa_ease_ease_out = "Торможение (ease out)",
 	sa_copy_key = "Копировать ключ", sa_paste_key = "Вставить ключ сюда", sa_key_here = "Поставить ключ здесь",
+	sa_keys_n = "Выбрано ключей: %d", sa_copy_keys = "Копировать ключи", sa_keys_delete = "Удалить ключи", sa_paste_keys = "Вставить ключи (%d) сюда",
 	sa_no_tracks = "Анимации пока нет. Выделите объект, передвиньте указатель кадра и нажмите K — или включите автоключ.",
 	sa_need_sel = "Сначала выделите объект", sa_need_ragdoll = "Выделите персонажа (рэгдолл)",
 	sa_key_set = "Ключ поставлен: кадр %d", sa_keys_limit = "Слишком много ключей у одного объекта",
@@ -462,23 +748,18 @@ MOD:Lang("ru", {
 	sa_imp_skeleton = "У этой модели другой скелет: её анимация не подходит персонажу",
 	sa_imp_done_n = "Импортировано «%s» для персонажей: %s",
 	sa_rnd_title = "Рендер анимации", sa_rnd_camera = "Камера",
-	sa_rnd_from = "С кадра", sa_rnd_to = "По кадр", sa_rnd_name = "Имя", sa_rnd_format = "Формат",
+	sa_rnd_from = "С кадра", sa_rnd_to = "По кадр", sa_rnd_name = "Имя", 
 	sa_rnd_settle = "Ждать сцену не дольше, с",
 	sa_rnd_settle_tip = "Сцену двигает сервер. Кадр снимается, как только все объекты встали на место у клиента; это наибольшее время такого ожидания.",
 	sa_rnd_go = "Рендер", sa_rnd_cancel = "Отмена",
-	sa_rnd_hint = "Кадры сохраняются отдельными картинками в garrysmod/data/speditor/renders/<имя>/. Размер кадра, сглаживание, глубина резкости и эффекты камеры берутся из окна «Рендер».",
-	sa_rnd_progress = "Рендер кадра %d из %d…", sa_rnd_done = "Анимация снята: кадров — %d, папка %s",
+	sa_rnd_progress = "Рендер кадра %d из %d…", 
 	sa_rnd_stopped = "Рендер анимации остановлен", sa_rnd_busy = "Рендер анимации уже идёт",
 	sa_rnd_failed = "Не удалось создать видеофайл", sa_rnd_done_avi = "Анимация снята: кадров — %d, видео %s (уберите «.dat» из имени)",
-	sa_fmt_avi = "Видео AVI (MJPEG)", sa_fmt_jpeg = "Кадры JPEG (для MP4)", sa_fmt_png = "Кадры PNG",
 	sa_rd_title = "Анимированная сцена: кадров — %d, %.2f с, %d к/с",
 	sa_rd_what = "Снимать", sa_rd_anim = "Всю анимацию", sa_rd_frame = "Только текущий кадр",
-	sa_rd_format = "Формат видео", sa_rd_button = "Рендер анимации", sa_rd_stop = "Остановить рендер анимации",
+	sa_rd_button = "Рендер анимации", sa_rd_stop = "Остановить рендер анимации",
 	sa_rd_note_avi = "Один видеофайл: garrysmod/data/speditor/renders/<имя>.avi.dat. Игра разрешает аддонам создавать файлы только нескольких типов, поэтому уберите «.dat» из имени — это обычный AVI, его открывает любой проигрыватель.",
-	sa_rd_note_jpeg = "Кадры сохраняются в garrysmod/data/speditor/renders/<имя>/. Записать MP4 сама игра не может; команда ffmpeg, которая соберёт из кадров MP4, печатается в консоль после рендера.",
-	sa_rd_note_png = "Кадры без потерь в garrysmod/data/speditor/renders/<имя>/ — для монтажа в видеоредакторе.",
 	sa_rd_note_frame = "Кнопка «Рендер» сохранит одну картинку текущего кадра, как у неподвижной сцены.",
-	sa_rnd_video = "Собрать видео: ffmpeg -framerate %d -i %s_%%04d.%s%s -pix_fmt yuv420p %s.mp4",
 	hist_sa_key = "Ключевой кадр", hist_sa_key_delete = "Удаление ключа", hist_sa_key_move = "Перенос ключа", hist_sa_ease = "Движение ключа",
 	hist_sa_clear = "Удаление анимации", hist_sa_import = "Импорт анимации", hist_sa_paste = "Вставка ключа",
 	hist_sa_sound = "Звук", hist_sa_effect = "Проигрывание эффекта",
@@ -505,11 +786,10 @@ MOD:Lang("ru", {
 	sa_snd_m_trim_out = "Обрезать конец от курсора", sa_snd_m_untrim = "Вернуть звук целиком",
 	sa_snd_trim_bad = "Курсор не внутри этого звука",
 	sa_snd_skipped = "Звуки, не попавшие в видео (подмешать можно только несжатый WAV): %s",
-	sa_snd_wav = "Звуковая дорожка сохранена рядом с кадрами: %s",
 	sa_rd_quality = "Размер видео", sa_rd_samples = "Проходы теней и ГРИП",
 	sa_rd_fps = "Частота кадров видео", sa_rd_fps_anim = "Как у анимации (%d)",
 	sa_rd_fps_tip = "Кадров в секунду в готовом видео. Если больше, чем у анимации, промежуточные кадры берутся между ключами (плавные 60 к/с из анимации на 24).",
-	sa_tl_tip = "Ctrl + колесо — масштаб таймлайна, Shift + колесо — прокрутка по времени, колесо — прокрутка строк",
+	sa_tl_tip = "Ctrl + колесо — масштаб таймлайна, Shift + колесо — прокрутка по времени, колесо — прокрутка строк\nCtrl + клик по ключу — выбрать несколько, Shift + перетаскивание — выбрать ключи рамкой, перетащить выбранный ключ — сдвинуть все (с Ctrl — копировать)",
 	sa_rd_samples_100 = "Все, как в одном кадре", sa_rd_samples_50 = "Половина (быстрее)", sa_rd_samples_25 = "Четверть (ещё быстрее)",
 	sa_rnd_part = "Видео больше 1,9 ГБ: продолжение в %s",
 	sa_rd_q_100 = "Самое большое: JPEG 100 (в 7 раз больше)", sa_rd_q_90 = "Обычное: JPEG 90", sa_rd_q_70 = "Меньше на 40%: JPEG 70",

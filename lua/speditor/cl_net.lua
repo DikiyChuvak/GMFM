@@ -250,6 +250,7 @@ function C.SendCameraFX(ent, fx, now, noHist)
 	if not C.IsCamera(ent) then return end
 	fx = table.Copy(fx or {})
 	if not noHist then
+		C.lastCameraEdit = ent      -- auto key (SAeditor) keys this camera even when it is not selected
 		local ref = C.Ref(ent)
 		C.BurstEdit("fx" .. ent:EntIndex(), "camera fx", function() return table.Copy(C.GetCameraFX(ent) or {}) end, fx, function(st)
 			local e = C.Deref(ref)
@@ -639,6 +640,7 @@ end
 function C.SendCameraEdit(ent, field, value, now, noHist)
 	if not IsValid(ent) then return end
 	if not noHist then
+		C.lastCameraEdit = ent
 		local before = C.CameraField(ent, field) or value
 		local ref = C.Ref(ent)
 		C.BurstEdit("ce" .. ent:EntIndex() .. field, field == "fov" and "camera fov" or "camera motion", function() return before end, value, function(v)
@@ -731,10 +733,19 @@ end)
 
 -- The server reports the index of the new entity; select it once it reaches the client
 net.Receive(Net.Spawned, function()
-	C.pendingSelect = net.ReadUInt(16)
-	C.pendingUntil  = RealTime() + 3
+	local idx         = net.ReadUInt(16)
 	local uid         = net.ReadUInt(32)
 	local fromHistory = net.ReadBool()
+	-- a copy of several selected objects: one history step and one new selection (cl_scene.lua)
+	local batch = C.dupBatch
+	if batch and not fromHistory and uid ~= 0 and RealTime() < batch.untilT then
+		batch.uids[#batch.uids + 1] = uid
+		batch.idx[#batch.idx + 1] = idx
+		if #batch.uids >= batch.n then C.FinishDuplicate() end
+		return
+	end
+	C.pendingSelect = idx
+	C.pendingUntil  = RealTime() + 3
 	-- creating / duplicating is a history step; restoring from undo/redo is not
 	if not fromHistory and uid ~= 0 then
 		C.PushHistory("spawn",

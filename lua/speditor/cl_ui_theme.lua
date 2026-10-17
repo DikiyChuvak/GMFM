@@ -58,16 +58,57 @@ local cvTabStyle = CreateClientConVar("speditor_ui_tabstyle", "top", true, false
 local cvAnim     = CreateClientConVar("speditor_ui_anim", "1", true, false)       -- fades and smooth hover
 CreateClientConVar("speditor_ui_sounds", "1", true, false)                        -- interface sounds of themes that have them
 
+-- the size of the whole interface, percent; 0 — by the screen: 100 % up to 1080 lines, then in
+-- steps of 25 % (1440 lines — 125 %, 2160 — 200 %)
+-- (below 100 %: more room for the viewports on small screens and for those who like small text)
+local cvScale    = CreateClientConVar("speditor_ui_scale", "0", true, false, "Interface scale, percent (0 — by the screen resolution, 50 to 200)", 0, 200)
+
 UI.FONT_FACES = { "Tahoma", "Verdana", "Arial", "Roboto", "Segoe UI", "Trebuchet MS", "Courier New" }
+
+function UI.AutoScale()
+	return math.Clamp(math.floor(ScrH() / 1080 * 4 + 0.15) / 4, 1, 2)
+end
+
+function UI.Scale()
+	local pct = cvScale:GetInt()
+	if pct <= 0 then return UI.AutoScale() end
+	return math.Clamp(pct, 50, 200) / 100
+end
+
+-- a size in pixels of the interface at 100 %, scaled
+function UI.S(px) return math.floor(px * UI.Scale() + 0.5) end
+
+-- a 16 px icon drawn by hand inside a strip h px tall: smaller when the strip is
+-- (interface scale below 100 %), so that it does not stick out of it
+function UI.IconSize(h) return math.Clamp(math.floor(h) - 4, 8, 16) end
 
 function UI.CreateFonts()
 	local face = cvFont:GetString()
 	if face == "" then face = "Tahoma" end
-	local size = math.Clamp(cvFontSize:GetInt(), 11, 16)
+	-- not below 8 px: at 50 % smaller text cannot be read at all
+	local size = math.max(UI.S(math.Clamp(cvFontSize:GetInt(), 11, 16)), 8)
 	surface.CreateFont("SPeditor.Small", { font = face, size = size, weight = 500, antialias = true, extended = true })
 	surface.CreateFont("SPeditor.Bold",  { font = face, size = size, weight = 800, antialias = true, extended = true })
-	surface.CreateFont("SPeditor.Time",  { font = face, size = size + 8, weight = 400, antialias = true, extended = true })
+	surface.CreateFont("SPeditor.Time",  { font = face, size = size + UI.S(8), weight = 400, antialias = true, extended = true })
+	UI.ScaleDermaFonts(SPeditor.Client and SPeditor.Client.active)
+	hook.Run("SPeditor_FontsCreated")
 end
+
+-- Labels, buttons, text fields and menus without a font of their own use the game's
+-- DermaDefault. While the editor is open it is made at the interface scale; when the editor
+-- closes it is put back as the game makes it (lua/derma/init.lua), for the rest of the game.
+local dermaScaled
+function UI.ScaleDermaFonts(on)
+	local k = on and UI.Scale() or 1
+	if k == 1 and not dermaScaled then return end
+	dermaScaled = k ~= 1
+	local linux = system.IsLinux()
+	local face, size = linux and "DejaVu Sans" or "Tahoma", linux and 14 or 13
+	local px = math.max(math.floor(size * k + 0.5), 8)
+	surface.CreateFont("DermaDefault", { font = face, size = px, weight = 500, extended = true })
+	surface.CreateFont("DermaDefaultBold", { font = face, size = px, weight = 800, extended = true })
+end
+hook.Add("SPeditor_StateChanged", "SPeditor.DermaScale", function(on) UI.ScaleDermaFonts(on) end)
 UI.CreateFonts()
 
 function UI.Animated() return cvAnim:GetBool() end
@@ -123,10 +164,11 @@ function UI.DrawTabLabel(t, y, h, col, iconAlpha)
 	if t.page.icon then
 		local m = iconMat(t.page.icon)
 		if m then
+			local is = UI.IconSize(h)
 			surface.SetMaterial(m)
 			surface.SetDrawColor(255, 255, 255, iconAlpha or (t.on and 255 or 150))
-			surface.DrawTexturedRect(t.x + 6, y + math.floor((h - 16) / 2), 16, 16)
-			tx = t.x + 26
+			surface.DrawTexturedRect(t.x + 6, y + math.floor((h - is) / 2), is, is)
+			tx = t.x + 10 + is
 		end
 	end
 	draw.SimpleText(t.page.title, "SPeditor.Small", tx, y + h / 2, col, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
@@ -287,7 +329,7 @@ function UI.Button(parent, text, icon, fn, tall)
 	local b = vgui.Create("DButton", parent)
 	b:Dock(TOP)
 	b:DockMargin(2, 1, 2, 1)
-	b:SetTall(tall or 22)
+	b:SetTall(UI.S(tall or 22))
 	if icon then b:SetIcon(icon) end
 	b:SetText((icon and "  " or "") .. (text or ""))
 	UI.StyleButton(b)
@@ -299,7 +341,7 @@ function UI.Slider(parent, label, min, max, dec, val, onchg)
 	local s = vgui.Create("DNumSlider", parent)
 	s:Dock(TOP)
 	s:DockMargin(4, 1, 4, 1)
-	s:SetTall(22)
+	s:SetTall(UI.S(22))
 	s:SetText(label)
 	s:SetMin(min)
 	s:SetMax(max)
@@ -352,7 +394,7 @@ function UI.IconButton(parent, icon, tip, fn, isOn, dock)
 	local b = vgui.Create("DButton", parent)
 	b:Dock(dock or LEFT)
 	b:DockMargin(2, 3, 0, 3)
-	b:SetWide(24)
+	b:SetWide(UI.S(24))
 	b:SetText("")
 	b:SetIcon(icon)
 	b:SetTooltip(tip)
@@ -378,6 +420,27 @@ function UI.NodeColor(node, col)
 	end
 end
 
+-- a list (DListView) at the interface scale: taller rows, the interface font
+function UI.StyleListView(list)
+	if UI.Scale() == 1 then return list end
+	list:SetDataHeight(UI.S(17))
+	list:SetHeaderHeight(UI.S(16))
+	local addColumn, addLine = list.AddColumn, list.AddLine
+	list.AddColumn = function(s, ...)
+		local col = addColumn(s, ...)
+		if IsValid(col) and IsValid(col.Header) then col.Header:SetFont("SPeditor.Small") end
+		return col
+	end
+	list.AddLine = function(s, ...)
+		local line = addLine(s, ...)
+		for _, c in pairs(IsValid(line) and line.Columns or {}) do
+			if IsValid(c) and c.SetFont then c:SetFont("SPeditor.Small") end
+		end
+		return line
+	end
+	return list
+end
+
 function UI.StyleTree(tree)
 	tree:SetIndentSize(12)
 	tree.Paint = function(_, w, h)
@@ -393,7 +456,7 @@ end
 local CTRL = {}
 
 function CTRL:Init()
-	self:SetTall(18)
+	self:SetTall(UI.S(18))
 	self:SetCursor("sizewe")
 	self.min, self.max, self.value, self.default = 0, 1, 0, 0
 	self.decimals = 2
@@ -535,7 +598,7 @@ function UI.ToggleRow(parent, label, getter, setter)
 	local b = vgui.Create("DButton", parent)
 	b:Dock(TOP)
 	b:DockMargin(0, 0, 0, 1)
-	b:SetTall(18)
+	b:SetTall(UI.S(18))
 	b:SetText("")
 	b.Paint = function(s, w, h)
 		local on = getter()
@@ -556,7 +619,7 @@ function UI.LinkRow(parent, label, col, isSel, fn)
 	local b = vgui.Create("DButton", parent)
 	b:Dock(TOP)
 	b:DockMargin(0, 0, 0, 1)
-	b:SetTall(18)
+	b:SetTall(UI.S(18))
 	b:SetText("")
 	b.Paint = function(s, w, h)
 		local sel = isSel and isSel()

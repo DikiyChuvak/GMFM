@@ -341,7 +341,7 @@ function UI.OpenSoundAddons()
 	local W, H = 760, 480
 	local win, body = Dock.Create({ key = "soundaddons", id = "soundaddons", title = L("nsa_title"), w = W, h = H,
 			x = math.floor(ScrW() / 2 - W / 2), y = 120, dockable = false, icon = "icon16/sound.png" })
-	win.minW, win.minH = 520, 300
+	win.minW, win.minH = UI.S(520), UI.S(300)
 
 	local hint = UI.Label(body, L("nsa_hint"), COL.DIM)
 	hint:SetWrap(true)
@@ -350,16 +350,19 @@ function UI.OpenSoundAddons()
 
 	local foot = vgui.Create("DPanel", body)
 	foot:Dock(BOTTOM)
-	foot:SetTall(34)
+	foot:SetTall(UI.S(34))
 	foot.Paint = function() end
 
 	local addons = vgui.Create("DListView", body)
+
+	UI.StyleListView(addons)
 	addons:Dock(LEFT)
-	addons:SetWide(260)
+	addons:SetWide(UI.S(260))
 	addons:DockMargin(6, 0, 3, 0)
 	addons:SetMultiSelect(false)
 	addons:AddColumn(L("nsa_addons"))
 	local sounds = vgui.Create("DListView", body)
+	UI.StyleListView(sounds)
 	sounds:Dock(FILL)
 	sounds:DockMargin(3, 0, 6, 0)
 	sounds:SetMultiSelect(false)
@@ -409,7 +412,7 @@ function UI.OpenSoundAddons()
 		b:Dock(dock or LEFT)
 		b:DockMargin(dock == RIGHT and 4 or 8, 5, dock == RIGHT and 8 or 0, 5)
 		surface.SetFont("SPeditor.Small")
-		b:SetWide(select(1, surface.GetTextSize(text)) + 40)
+		b:SetWide(select(1, surface.GetTextSize(text)) + UI.S(40))
 		b:SetText("  " .. text)
 		b:SetIcon(icon)
 		UI.StyleButton(b, nil, 3)

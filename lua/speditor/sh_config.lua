@@ -1,6 +1,6 @@
 -- Shared SPeditor settings
 SPeditor = SPeditor or {}
-SPeditor.Version = "a0.5"
+SPeditor.Version = "a0.6"
 SPeditor.API     = 1        -- API version for mods (lua/speditor_mods), grows with incompatible changes
 SPeditor.GitHub  = "https://github.com/DikiyChuvak/SPeditor"     -- address of the addon page (empty: the About window shows a caption instead of a link)
 SPeditor.Wiki    = "https://dikiychuvak.github.io/SPeditor/"     -- player documentation (EN / RU), the About window links to it

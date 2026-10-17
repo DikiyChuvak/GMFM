@@ -64,6 +64,13 @@ local TOL         = 6        -- tolerance for "the edges coincide"
 local SNAP_DIST   = 12
 local TOP_Y       = 26       -- below the menu bar (24 px)
 local BOTTOM_H    = 20       -- status bar
+-- the tab strip, the menu bar and the status bar follow the interface scale (UI.S)
+local function metrics()
+	local S = SPeditor.UI.S
+	TAB_H, TOP_Y, BOTTOM_H = S(22), S(24) + 2, S(20)
+end
+metrics()
+hook.Add("SPeditor_FontsCreated", "SPeditor.DockMetrics", metrics)
 local SIDE_BAND   = 0.28     -- share of a window at its edge = the "split" zone
 local OUTER_BAND  = 16       -- px at the edge of the work area = the "full side" zone
 local OUTER_FRAC  = 0.22     -- what share of the work area such a window takes
@@ -492,7 +499,7 @@ function PANEL:Init()
 	self.active   = nil
 	self.dockable = true
 	self.floating = false
-	self.minW, self.minH = 200, 120
+	self.minW, self.minH = SPeditor.UI.S(200), SPeditor.UI.S(120)
 	self.HdrBtns  = {}
 	self.SPeditorDock = true
 	self:SetMouseInputEnabled(true)
@@ -533,7 +540,7 @@ function PANEL:TabRects()
 	local out, x = {}, EDGE + 2
 	for _, p in ipairs(self.pages) do
 		local tw = surface.GetTextSize(p.title)
-		local w = tw + 20 + (p.icon and 18 or 0)
+		local w = tw + 20 + (p.icon and SPeditor.UI.IconSize(TAB_H) + 2 or 0)
 		out[#out + 1] = { page = p, x = x, w = w }
 		x = x + w + 2
 	end
@@ -614,7 +621,7 @@ end
 
 function PANEL:AddCloseButton()
 	local b = vgui.Create("DButton", self)
-	b:SetSize(18, 18)
+	b:SetSize(SPeditor.UI.S(18), SPeditor.UI.S(18))
 	b:SetText("")
 	b.Paint = function(s, w, h) SPeditor.UI.PaintChrome("CloseButton", s, w, h) end
 	b.DoClick = function() self:Close() end
@@ -999,7 +1006,7 @@ vgui.Register("SPeditorDock", PANEL, "EditablePanel")
 ---------------------------------------------------------------------
 function Dock.NewWindow(o)
 	local win = SPeditor.UI.Skin(vgui.Create("SPeditorDock"))
-	win:SetSize(o.w or 400, o.h or 300)
+	win:SetSize(SPeditor.UI.S(o.w or 400), SPeditor.UI.S(o.h or 300))
 	win:SetPos(o.x or 100, o.y or TOP_Y)
 	win:SetDockable(o.dockable ~= false)
 	win.floating = o.floating and true or false
@@ -1120,9 +1127,19 @@ local function ensureDir()
 	end
 end
 
+-- The menu bar and the status bar change their height with the interface scale. A layout
+-- remembers the work area its windows were laid out for (Dock.placedWS: the bars of the last
+-- Apply; the scale itself changes before the old layout is captured) and is stretched to the
+-- present one when applied: before, after 200 % → 100 % the windows stayed lower, with a
+-- strip of empty space above them and below.
+local function currentWS()
+	local sh = ScrH()
+	return { top = TOP_Y / sh, bottom = (BOTTOM_H + GAP) / sh }
+end
+
 function Dock.Capture()
 	local sw, sh = ScrW(), ScrH()
-	local data = { version = LAYOUT_VERSION, windows = {}, snap = Dock.snap, locked = Dock.locked }
+	local data = { version = LAYOUT_VERSION, windows = {}, snap = Dock.snap, locked = Dock.locked, ws = Dock.placedWS or currentWS() }
 	for _, w in ipairs(Dock.windows) do
 		if IsValid(w) then
 			-- a maximized window is saved with its regular place
@@ -1139,6 +1156,38 @@ function Dock.Capture()
 		end
 	end
 	return data
+end
+
+-- the work area a layout was made for: saved with it, or (older layouts) where its docked
+-- windows begin and end, when that is close to a bar
+local function layoutWS(data)
+	local ws = data.ws
+	if type(ws) == "table" and tonumber(ws.top) and tonumber(ws.bottom) then
+		return { top = tonumber(ws.top), bottom = tonumber(ws.bottom) }
+	end
+	local top, bot
+	for _, d in pairs(data.windows) do
+		if type(d) == "table" and d.visible and not d.floating and tonumber(d.y) and tonumber(d.h) then
+			local y, b = tonumber(d.y), tonumber(d.y) + tonumber(d.h)
+			top = math.min(top or y, y)
+			bot = math.max(bot or b, b)
+		end
+	end
+	local band = 80 / ScrH()       -- bars at 200 % are ~50 px: farther than this is the player's own gap
+	if not top or top > band or 1 - bot > band then return nil end
+	return { top = top, bottom = 1 - bot }
+end
+
+-- a vertical fraction of the old work area → the same place in the present one
+local function remapY(d, from, to)
+	if not from or (math.abs(from.top - to.top) < 1e-4 and math.abs(from.bottom - to.bottom) < 1e-4) then return d end
+	local oldH, newH = 1 - from.top - from.bottom, 1 - to.top - to.bottom
+	if oldH <= 0.1 then return d end
+	local y, h = tonumber(d.y) or 0, tonumber(d.h) or 0.2
+	local out = table.Copy(d)
+	out.y = to.top + (y - from.top) / oldH * newH
+	out.h = h / oldH * newH
+	return out
 end
 
 local function place(win, d)
@@ -1187,11 +1236,12 @@ function Dock.Apply(data)
 		end
 	end
 
-	-- 2) sizes, visibility, active tabs
+	-- 2) sizes, visibility, active tabs (docked windows follow the bars of the present scale)
+	local fromWS, toWS = layoutWS(data), currentWS()
 	for key, d in pairs(data.windows) do
 		local win = Dock.ByKey(key)
 		if IsValid(win) and type(d) == "table" then
-			place(win, d)
+			place(win, d.floating and d or remapY(d, fromWS, toWS))
 			if d.active and Dock.pages[d.active] and Dock.pages[d.active].win == win then
 				win:SelectPage(d.active)
 			end
@@ -1224,6 +1274,7 @@ function Dock.Apply(data)
 
 	if data.snap ~= nil then Dock.snap = data.snap and true or false end
 	Dock.locked = data.locked and true or false
+	Dock.placedWS = toWS
 	return true, forced
 end
 
@@ -1276,7 +1327,7 @@ local function preset(leftF, secF, topF, showSec, showBottom)
 		local sw, sh = ScrW(), ScrH()
 		local G = 2                                  -- gap between windows
 		local H = sh - TOP_Y - BOTTOM_H - G
-		local data = { version = LAYOUT_VERSION, windows = {}, snap = Dock.snap, locked = false }
+		local data = { version = LAYOUT_VERSION, windows = {}, snap = Dock.snap, locked = false, ws = currentWS() }
 		local function put(key, x, y, w, h, vis, pages, active)
 			data.windows[key] = { x = x / sw, y = y / sh, w = w / sw, h = h / sh, visible = vis, floating = false, pages = pages, active = active }
 		end

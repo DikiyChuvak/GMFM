@@ -13,6 +13,7 @@ local COL = UI.PAL
 
 local function styledList(parent, col1, col2)
 	local l = vgui.Create("DListView", parent)
+	UI.StyleListView(l)
 	l:SetMultiSelect(false)
 	local a = l:AddColumn(col1)
 	if col2 then l:AddColumn(col2) end
@@ -36,7 +37,7 @@ end
 local function buttonRow(parent)
 	local r = vgui.Create("DPanel", parent)
 	r:Dock(BOTTOM)
-	r:SetTall(26)
+	r:SetTall(UI.S(26))
 	r.Paint = function() end
 	return r
 end
@@ -46,7 +47,7 @@ local function rowButton(row, text, icon, fn)
 	b:Dock(LEFT)
 	b:DockMargin(2, 2, 0, 2)
 	surface.SetFont("SPeditor.Small")
-	b:SetWide(select(1, surface.GetTextSize(text)) + 34)
+	b:SetWide(select(1, surface.GetTextSize(text)) + UI.S(34))
 	return b
 end
 
@@ -109,7 +110,7 @@ function UI.BuildScenePage(host)
 		Derma_Query(string.format(L("delete_confirm"), name), "SPeditor",
 			L("delete"), function() C.SceneDelete(name) end, L("cancel"), function() end)
 	end)
-	rowButton(brow, "", "icon16/arrow_refresh.png", function() C.SceneRequestList() end):SetWide(26)
+	rowButton(brow, "", "icon16/arrow_refresh.png", function() C.SceneRequestList() end):SetWide(UI.S(26))
 
 	-- poses
 	local prow = buttonRow(rightCol)
@@ -149,7 +150,7 @@ function UI.BuildScenePage(host)
 		Derma_Query(string.format(L("pose_delete_confirm"), name), "SPeditor",
 			L("delete"), function() C.DeletePose(name) end, L("cancel"), function() end)
 	end)
-	rowButton(prow, "", "icon16/arrow_refresh.png", refreshPoses):SetWide(26)
+	rowButton(prow, "", "icon16/arrow_refresh.png", refreshPoses):SetWide(UI.S(26))
 
 	host:AddSheet(L("tab_scene"), page, "icon16/folder.png", "scene")
 end
@@ -201,7 +202,7 @@ function UI.BuildShadowsPage(host)
 	local q = UI.StyleCombo(vgui.Create("DComboBox", form))
 	q:Dock(TOP)
 	q:DockMargin(6, 2, 6, 2)
-	q:SetTall(22)
+	q:SetTall(UI.S(22))
 	for i, preset in ipairs(Sh.QUALITY) do
 		q:AddChoice(string.format("%s (%d)", L("shadows_q" .. i), preset.res), i, i == Sh.GetQuality())
 	end

@@ -55,7 +55,7 @@ function SA.OpenProc(ent)
 	local W = 380
 	local win, body = Dock.Create({ key = "sa_proc", id = "sa_proc", title = L("sa_proc_title") .. ": " .. C.DisplayName(ent), w = W, h = 330,
 			x = math.floor(ScrW() / 2 - W / 2), y = 160, dockable = false, icon = "icon16/heart.png" })
-	win.minW, win.minH = 300, 260
+	win.minW, win.minH = UI.S(300), UI.S(260)
 
 	local cur = table.Copy(SA.proc and SA.proc[uid] or PROC_DEFAULT)
 	for k, v in pairs(PROC_DEFAULT) do if cur[k] == nil then cur[k] = v end end
@@ -86,12 +86,12 @@ function SA.OpenProc(ent)
 
 	local foot = vgui.Create("DPanel", body)
 	foot:Dock(BOTTOM)
-	foot:SetTall(34)
+	foot:SetTall(UI.S(34))
 	foot.Paint = function() end
 	local play = vgui.Create("DButton", foot)
 	play:Dock(LEFT)
 	play:DockMargin(8, 5, 4, 5)
-	play:SetWide(210)
+	play:SetWide(UI.S(210))
 	play:SetText(L("sa_proc_preview"))
 	play:SetIcon("icon16/control_play_blue.png")
 	UI.StyleButton(play, nil, 3)
@@ -99,7 +99,7 @@ function SA.OpenProc(ent)
 	local off = vgui.Create("DButton", foot)
 	off:Dock(RIGHT)
 	off:DockMargin(4, 5, 8, 5)
-	off:SetWide(110)
+	off:SetWide(UI.S(110))
 	off:SetText(L("sa_proc_off"))
 	UI.StyleButton(off, nil, 3)
 	off.DoClick = function()
@@ -133,14 +133,14 @@ function SA.OpenSMH()
 	local W = 560
 	local win, body = Dock.Create({ key = "sa_smh", id = "sa_smh", title = L("sa_smh_title"), w = W, h = 520,
 			x = math.floor(ScrW() / 2 - W / 2), y = 120, dockable = false, icon = "icon16/arrow_switch.png" })
-	win.minW, win.minH = 440, 420
+	win.minW, win.minH = UI.S(440), UI.S(420)
 
 	hint(body, L("sa_smh_hint"))
 
 	-- export (bottom)
 	local exp = vgui.Create("DPanel", body)
 	exp:Dock(BOTTOM)
-	exp:SetTall(64)
+	exp:SetTall(UI.S(64))
 	exp:DockMargin(8, 4, 8, 8)
 	exp.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.ROW_B)
@@ -162,7 +162,7 @@ function SA.OpenSMH()
 	local expBtn = vgui.Create("DButton", expRow)
 	expBtn:Dock(RIGHT)
 	expBtn:DockMargin(6, 0, 0, 0)
-	expBtn:SetWide(170)
+	expBtn:SetWide(UI.S(170))
 	expBtn:SetText(L("sa_smh_export"))
 	expBtn:SetIcon("icon16/page_save.png")
 	UI.StyleButton(expBtn, true, 3)
@@ -179,7 +179,7 @@ function SA.OpenSMH()
 	-- import options
 	local opts = vgui.Create("DPanel", body)
 	opts:Dock(BOTTOM)
-	opts:SetTall(120)
+	opts:SetTall(UI.S(120))
 	opts:DockMargin(8, 4, 8, 0)
 	opts.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.ROW_B)
@@ -198,28 +198,28 @@ function SA.OpenSMH()
 	start:DockMargin(8, 0, 8, 0)
 	local row = vgui.Create("DPanel", opts)
 	row:Dock(TOP)
-	row:SetTall(24)
+	row:SetTall(UI.S(24))
 	row:DockMargin(8, 2, 8, 0)
 	row.Paint = function() end
 	local conv = vgui.Create("DCheckBoxLabel", row)
 	conv:Dock(LEFT)
-	conv:SetWide(330)
+	conv:SetWide(UI.S(330))
 	conv:SetText(L("sa_smh_conv"))
 	conv:SetTextColor(COL.TEXT)
 	conv:SetValue(false)
 	local fps = vgui.Create("DNumberWang", row)
 	fps:Dock(LEFT)
-	fps:SetWide(50)
+	fps:SetWide(UI.S(50))
 	fps:SetMinMax(1, 120)
 	fps:SetValue(30)
 	local row2 = vgui.Create("DPanel", opts)
 	row2:Dock(TOP)
-	row2:SetTall(22)
+	row2:SetTall(UI.S(22))
 	row2:DockMargin(8, 2, 8, 0)
 	row2.Paint = function() end
 	local world = vgui.Create("DCheckBoxLabel", row2)
 	world:Dock(LEFT)
-	world:SetWide(330)
+	world:SetWide(UI.S(330))
 	world:SetText(L("sa_smh_world"))
 	world:SetTextColor(COL.TEXT)
 	world:SetValue(false)
@@ -230,12 +230,14 @@ function SA.OpenSMH()
 	lists:DockMargin(8, 0, 8, 0)
 	lists.Paint = function() end
 	local files = vgui.Create("DListView", lists)
+	UI.StyleListView(files)
 	files:Dock(LEFT)
-	files:SetWide(250)
+	files:SetWide(UI.S(250))
 	files:SetMultiSelect(false)
 	files:AddColumn(L("sa_smh_file"))
 	files:AddColumn(L("sa_smh_map")):SetFixedWidth(90)
 	local objs = vgui.Create("DListView", lists)
+	UI.StyleListView(objs)
 	objs:Dock(FILL)
 	objs:DockMargin(6, 0, 0, 0)
 	objs:SetMultiSelect(false)
@@ -248,7 +250,7 @@ function SA.OpenSMH()
 	UI.StyleButton(imp, true, 3)
 	opts.PerformLayout = function(_, w)
 		imp:SetPos(w - 178, 4)
-		imp:SetSize(170, 22)
+		imp:SetSize(UI.S(170), UI.S(22))
 	end
 
 	local curFile
@@ -286,5 +288,148 @@ function SA.OpenSMH()
 		if #SA.smh.files == 0 then objs:AddLine(L("sa_smh_none"), "") end
 	end
 	smhSend(0)
+	return win
+end
+
+---------------------------------------------------------------------
+-- Animations from addons (a0.6): animation packs ("animation collections") are models whose
+-- only content is animations — the model browser hides them. This window lists them for
+-- every installed addon, Workshop or legacy (a folder in garrysmod/addons), and gives the
+-- chosen one to the import as the source of animations. done(model) is called with its path.
+---------------------------------------------------------------------
+-- how many bones of the character the model has by name, and how many animations
+local function animInfo(ent, model)
+	local temp = ClientsideModel(model, RENDERGROUP_OTHER)
+	if not IsValid(temp) then return nil end
+	temp:SetNoDraw(true)
+	local seqs, hit, total = 0, 0, 0
+	for id in pairs(temp:GetSequenceList() or {}) do
+		if (temp:SequenceDuration(id) or 0) > 0.05 then seqs = seqs + 1 end
+	end
+	if IsValid(ent) then
+		for b = 0, ent:GetBoneCount() - 1 do
+			local name = ent:GetBoneName(b)
+			if name and name ~= "__INVALIDBONE__" then
+				total = total + 1
+				if temp:LookupBone(name) then hit = hit + 1 end
+			end
+		end
+	end
+	temp:Remove()
+	return seqs, hit, total
+end
+
+function SA.OpenAnimModels(ent, done)
+	local old = Dock.ByKey("sa_animsrc")
+	if IsValid(old) then old:Remove() end
+	local W = 620
+	local win, body = Dock.Create({ key = "sa_animsrc", id = "sa_animsrc", title = L("sa_asrc_title"), w = W, h = 480,
+			x = math.floor(ScrW() / 2 - W / 2), y = 130, dockable = false, icon = "icon16/package_go.png" })
+	win.minW, win.minH = UI.S(480), UI.S(360)
+	hint(body, L("sa_asrc_hint"))
+
+	local foot = vgui.Create("DPanel", body)
+	foot:Dock(BOTTOM)
+	foot:SetTall(UI.S(30))
+	foot:DockMargin(6, 2, 6, 6)
+	foot.Paint = function() end
+	local info = vgui.Create("DLabel", foot)
+	info:Dock(FILL)
+	info:SetFont("SPeditor.Small")
+	info:SetTextColor(COL.DIM)
+	info:SetText("")
+	local go = UI.Button(foot, L("sa_asrc_go"), "icon16/film_add.png", function() end, 26)
+	go:Dock(RIGHT)
+	go:SetWide(UI.S(190))
+	go:SetEnabled(false)
+
+	local div = vgui.Create("DHorizontalDivider", body)
+	div:Dock(FILL)
+	div:DockMargin(6, 0, 6, 0)
+	div:SetLeftWidth(230)
+	local addons = vgui.Create("DListView", div)
+	UI.StyleListView(addons)
+	addons:SetMultiSelect(false)
+	addons:AddColumn(L("sa_asrc_addon"))
+	local right = vgui.Create("DPanel", div)
+	right.Paint = function() end
+	div:SetLeft(addons)
+	div:SetRight(right)
+
+	local all = false
+	local allBox = UI.Check(right, L("sa_asrc_all"), false)
+	local models = vgui.Create("DListView", right)
+	UI.StyleListView(models)
+	models:Dock(FILL)
+	models:SetMultiSelect(false)
+	models:AddColumn(L("sa_asrc_model"))
+	for _, lv in ipairs({ addons, models }) do
+		if lv.SetBackgroundColor then lv:SetBackgroundColor(COL.LIST_BG) end
+	end
+
+	local current, picked
+	local function fillModels(list, finished, anims)
+		models:Clear()
+		local shown = 0
+		for _, m in ipairs(anims or {}) do
+			models:AddLine(m).SPModel = m
+			shown = shown + 1
+		end
+		if all then
+			for _, m in ipairs(list or {}) do models:AddLine(m).SPModel = m end
+		end
+		if finished and shown == 0 and not all then info:SetText(L("sa_asrc_none")) end
+	end
+	local function open(src)
+		current = src
+		picked = nil
+		go:SetEnabled(false)
+		info:SetText(L("browser_indexing"))
+		UI.ScanSourceModels(src.pathId, src.prefix, function(list, finished, anims)
+			if current ~= src or not IsValid(models) then return end
+			src.list, src.anims, src.finished = list, anims, finished
+			if finished then info:SetText("") end
+			fillModels(list, finished, anims)
+		end)
+	end
+	allBox.OnChange = function(_, v)
+		all = v
+		if current then fillModels(current.list, current.finished, current.anims) end
+	end
+
+	-- the sources: Workshop addons with models, then legacy addons
+	-- addons named like animation packs go first
+	local ws = table.Copy(UI.AddonsWithModels(""))
+	local function animy(a) return string.find(string.lower(a.title), "anim", 1, true) and 0 or 1 end
+	table.sort(ws, function(x, y)
+		if animy(x) ~= animy(y) then return animy(x) < animy(y) end
+		return string.lower(x.title) < string.lower(y.title)
+	end)
+	for _, a in ipairs(ws) do
+		addons:AddLine(a.title).SPSrc = { pathId = a.title }
+	end
+	for _, a in ipairs(UI.LegacyAddons()) do
+		if a.models then addons:AddLine("[addons] " .. a.name).SPSrc = { pathId = "MOD", prefix = "addons/" .. a.name .. "/" } end
+	end
+	addons.OnRowSelected = function(_, _, line) open(line.SPSrc) end
+
+	models.OnRowSelected = function(_, _, line)
+		picked = line.SPModel
+		local seqs, hit, total = animInfo(ent, picked)
+		if not seqs then
+			info:SetText(L("sa_asrc_bad"))
+			go:SetEnabled(false)
+			return
+		end
+		info:SetText(string.format(L("sa_asrc_info"), seqs, hit, total))
+		go:SetEnabled(seqs > 0 and (total == 0 or hit > 0))
+	end
+	local function choose()
+		if not picked then return end
+		win:Remove()
+		done(picked)
+	end
+	go.DoClick = choose
+	models.DoDoubleClick = choose
 	return win
 end

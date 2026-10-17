@@ -4,8 +4,14 @@ SPeditor — frame export.
 Rendering goes to an off-screen render target of the needed size, so the interface
 does not have to be hidden and the resolution does not depend on the monitor. The
 parameters come from the Render window (cl_ui_render.lua): camera, aspect ratio, size,
-fullbright, format (PNG / JPEG).
+fullbright, format (PNG / JPEG / Steam screenshot).
 Files: data/speditor/renders/<name>.png|jpg
+
+Steam screenshot (a0.6): Lua cannot add a picture to the Steam screenshot library, but the
+engine's "jpeg" command does (verified in game: the shot lands both in garrysmod/screenshots
+and in Steam → Screenshots → Garry's Mod, where it can be published). So the finished render
+is shown over the whole screen for a few frames — fitted into it, black bars if the aspect
+differs — and the engine shoots the screen. The size of such a shot is the size of the screen.
 
 Per the wiki, render.Capture shoots the CURRENT render target (hence PushRenderTarget)
 and returns nil if the ESC menu is open.
@@ -29,7 +35,7 @@ SPeditor.Export.pending = nil
 
 -- opts: { camera = Entity | "work" | nil (the Primary Viewport source), name = string,
 -- dir = subfolder in renders (frame sequences), silent = no success notification,
--- format = "png" | "jpeg" (otherwise from the settings), onDone = function(ok, path),
+-- format = "png" | "jpeg" | "steam" (otherwise from the settings), onDone = function(ok, path),
 -- single = true — exactly one frame, without asking the mods,
 -- quality = JPEG quality (otherwise from the settings),
 -- capture = function(data, W, H) — the encoded frame is handed over instead of being written
@@ -59,6 +65,8 @@ function SPeditor.Export.Render(opts)
 		engine     = SPeditor.Render.EngineMode(),
 		single     = opts.single and true or false,
 		format     = (fmt == "jpeg") and "jpeg" or "png",
+		-- a Steam screenshot: the picture is kept as PNG, then shown and shot by the engine
+		steam      = fmt == "steam" and not opts.capture and not opts.dir,
 		quality    = math.Clamp(math.floor(tonumber(opts.quality) or GetConVar("speditor_render_quality"):GetInt()), 1, 100),
 		capture    = isfunction(opts.capture) and opts.capture or nil,
 		warmup     = tonumber(opts.warmup) and math.Clamp(math.floor(opts.warmup), 1, 30) or nil,
@@ -212,6 +220,7 @@ hook.Add("PostRender", "SPeditor.Export", function()
 		local path = dir .. "/" .. job.name .. ((job.format == "jpeg") and ".jpg" or ".png")
 		file.Write(path, data)
 		if not job.silent then SPeditor.Notify(string.format(L("render_saved"), path, W, H), 2) end
+		if job.steam then SPeditor.Export.ToSteam(path) end
 		done(true, path)
 	else
 		SPeditor.Notify(L("render_failed"), 1)
@@ -222,3 +231,36 @@ end)
 concommand.Add("speditor_render", function()
 	SPeditor.Export.Render({})
 end)
+
+---------------------------------------------------------------------
+-- A picture from data/ into the Steam screenshot library (see the top of the file)
+---------------------------------------------------------------------
+local STEAM_SHOOT, STEAM_HOLD = 3, 10      -- the frame the engine is asked to shoot, the frames shown
+
+function SPeditor.Export.ToSteam(path)
+	local mat = Material("../data/" .. path, "smooth")
+	if not mat or mat:IsError() then
+		SPeditor.Notify(L("render_steam_failed"), 1)
+		return false
+	end
+	local tex = mat:GetTexture("$basetexture")
+	local iw, ih = tex and tex:Width() or ScrW(), tex and tex:Height() or ScrH()
+	local n = 0
+	hook.Add("PostRenderVGUI", "SPeditor.SteamShot", function()
+		n = n + 1
+		local sw, sh = ScrW(), ScrH()
+		local k = math.min(sw / iw, sh / ih)
+		local w, h = math.floor(iw * k), math.floor(ih * k)
+		surface.SetDrawColor(0, 0, 0, 255)
+		surface.DrawRect(0, 0, sw, sh)
+		surface.SetDrawColor(255, 255, 255, 255)
+		surface.SetMaterial(mat)
+		surface.DrawTexturedRect(math.floor((sw - w) / 2), math.floor((sh - h) / 2), w, h)
+		if n == STEAM_SHOOT then RunConsoleCommand("jpeg") end
+		if n >= STEAM_HOLD then
+			hook.Remove("PostRenderVGUI", "SPeditor.SteamShot")
+			SPeditor.Notify(L("render_steam_done"), 2)
+		end
+	end)
+	return true
+end

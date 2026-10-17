@@ -160,17 +160,18 @@ end
 
 local function flyMove(cam, dt)
 	local mult = 1
-	if input.IsKeyDown(KEY_LSHIFT) then mult = 4
-	elseif input.IsKeyDown(KEY_LCONTROL) then mult = 0.25 end
+	local K = C.Keys
+	if K.Down("fly_fast") then mult = 4
+	elseif K.Down("fly_slow") then mult = 0.25 end
 	local f, r = cam.targetAngles:Forward(), cam.targetAngles:Right()
 	local up = Vector(0, 0, 1)
 	local move = Vector(0, 0, 0)
-	if input.IsKeyDown(KEY_W) then move = move + f end
-	if input.IsKeyDown(KEY_S) then move = move - f end
-	if input.IsKeyDown(KEY_D) then move = move + r end
-	if input.IsKeyDown(KEY_A) then move = move - r end
-	if input.IsKeyDown(KEY_E) then move = move + up end
-	if input.IsKeyDown(KEY_Q) then move = move - up end
+	if K.Down("fly_forward") then move = move + f end
+	if K.Down("fly_back") then move = move - f end
+	if K.Down("fly_right") then move = move + r end
+	if K.Down("fly_left") then move = move - r end
+	if K.Down("fly_up") then move = move + up end
+	if K.Down("fly_down") then move = move - up end
 	if not move:IsZero() then
 		if C.camMode then C.camMode.moved = C.camMode.moved + 100 end
 		cam.target = cam.target + move:GetNormalized() * C.GetFlySpeed() * mult * dt
@@ -274,6 +275,9 @@ hook.Add("Think", "SPeditor.CameraUpdate", function()
 			cam.sentPos = Vector(cam.pos.x, cam.pos.y, cam.pos.z)
 			cam.sentAng = Angle(cam.angles.p, cam.angles.y, cam.angles.r)
 			cam.sentT = RealTime()
+			-- flying a scene camera is not an edit of the history; animation tools (auto key)
+			-- hear it from here
+			hook.Run("SPeditor_ViewCameraMoved", cam.viewEnt)
 		end
 	end
 end)

@@ -82,7 +82,7 @@ function UI.OpenAdopt()
 	local W, H = 620, 460
 	local win, body = Dock.Create({ key = "adopt", id = "adopt", title = L("adopt_title"), w = W, h = H,
 			x = math.floor(ScrW() / 2 - W / 2), y = 110, dockable = false, icon = "icon16/world_add.png" })
-	win.minW, win.minH = 440, 260
+	win.minW, win.minH = UI.S(440), UI.S(260)
 
 	local hint = UI.Label(body, L("adopt_hint"), COL.DIM)
 	hint:SetWrap(true)
@@ -91,10 +91,12 @@ function UI.OpenAdopt()
 
 	local foot = vgui.Create("DPanel", body)
 	foot:Dock(BOTTOM)
-	foot:SetTall(34)
+	foot:SetTall(UI.S(34))
 	foot.Paint = function() end
 
 	local lv = vgui.Create("DListView", body)
+
+	UI.StyleListView(lv)
 	lv:Dock(FILL)
 	lv:DockMargin(6, 0, 6, 0)
 	lv:SetMultiSelect(true)
@@ -122,7 +124,8 @@ function UI.OpenAdopt()
 						if paint then paint(s, w, h) end
 						surface.SetMaterial(icon)
 						surface.SetDrawColor(255, 255, 255, 255)
-						surface.DrawTexturedRect(3, (h - 16) / 2, 16, 16)
+						local is = UI.IconSize(h + 3)
+						surface.DrawTexturedRect(3, math.floor((h - is) / 2), is, is)
 					end
 				end
 			end
@@ -175,7 +178,7 @@ function UI.OpenAdopt()
 		b:Dock(dock or LEFT)
 		b:DockMargin(dock == RIGHT and 4 or 8, 5, dock == RIGHT and 8 or 0, 5)
 		surface.SetFont("SPeditor.Small")
-		b:SetWide(select(1, surface.GetTextSize(text)) + 40)
+		b:SetWide(select(1, surface.GetTextSize(text)) + UI.S(40))
 		b:SetText("  " .. text)
 		b:SetIcon(icon)
 		UI.StyleButton(b, nil, 3)
@@ -196,7 +199,7 @@ function UI.OpenAdopt()
 		local radius = math.max(ent:BoundingRadius(), 20)
 		C.camera.target = ent:WorldSpaceCenter() - C.camera.targetAngles:Forward() * (radius * 2.4)
 	end)
-	btn("", "icon16/arrow_refresh.png", function() C.SendAdoptList() end):SetWide(30)
+	btn("", "icon16/arrow_refresh.png", function() C.SendAdoptList() end):SetWide(UI.S(30))
 	btn(L("about_close"), "icon16/door_out.png", function() win:Close() end, RIGHT)
 
 	lv.DoDoubleClick = function(_, _, line) if line.item then take({ line.item.ent }) end end

@@ -341,13 +341,18 @@ end
 -- a W x H texture. Returns the texture, or nil if there is no frame yet.
 function R.EngineToRT(W, H, aspect)
 	if not E.tex then return nil end
-	local ix, iy, iw, ih = C.FitRect(E.w, E.h, aspect or (W / H))
-	local u0, v0, u1, v1 = ix / E.w, iy / E.h, (ix + iw) / E.w, (iy + ih) / E.h
-	local out = getRT("eng_" .. W .. "x" .. H, W, H)
+	return R.CropToRT(E.tex, E.w, E.h, W, H, aspect, "eng_")
+end
+
+-- The same for any texture tex of tw x th pixels (SAeditor's player takes the screen this way)
+function R.CropToRT(tex, tw, th, W, H, aspect, prefix)
+	local ix, iy, iw, ih = C.FitRect(tw, th, aspect or (W / H))
+	local u0, v0, u1, v1 = ix / tw, iy / th, (ix + iw) / tw, (iy + ih) / th
+	local out = getRT((prefix or "crop_") .. W .. "x" .. H, W, H)
 	render.PushRenderTarget(out)
 	render.Clear(0, 0, 0, 255, true, true)
 	cam.Start2D()
-	matShow:SetTexture("$basetexture", E.tex)
+	matShow:SetTexture("$basetexture", tex)
 	render.SetMaterial(matShow)
 	mesh.Begin(MATERIAL_QUADS, 1)
 	mesh.Position(Vector(0, 0, 0)) mesh.TexCoord(0, u0, v0) mesh.Color(255, 255, 255, 255) mesh.AdvanceVertex()

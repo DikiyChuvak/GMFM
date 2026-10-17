@@ -160,7 +160,7 @@ function UI.OpenColorPopup(title, start, onPick)
 	if IsValid(UI.ColorPopup) then UI.ColorPopup:Remove() end
 	local f = UI.Skin(vgui.Create("DFrame"))
 	f:SetTitle(title)
-	f:SetSize(260, 330)
+	f:SetSize(UI.S(260), UI.S(330))
 	local mx, my = gui.MousePos()
 	f:SetPos(math.Clamp(mx - 130, 0, ScrW() - 260), math.Clamp(my - 20, 0, ScrH() - 330))
 	f:MakePopup()
@@ -177,13 +177,13 @@ function UI.OpenColorPopup(title, start, onPick)
 
 	local pal = vgui.Create("DPanel", f)
 	pal:Dock(TOP)
-	pal:SetTall(3 * 28)
+	pal:SetTall(UI.S(3 * 28))
 	pal.Paint = function() end
 	local mixer
 	for i, rgb in ipairs(SWATCHES) do
 		local sw = vgui.Create("DButton", pal)
 		sw:SetPos(((i - 1) % 7) * 34 + 6, math.floor((i - 1) / 7) * 28 + 2)
-		sw:SetSize(30, 24)
+		sw:SetSize(UI.S(30), UI.S(24))
 		sw:SetText("")
 		local col = Color(rgb[1], rgb[2], rgb[3])
 		sw.Paint = function(s, w, h)
@@ -220,7 +220,7 @@ function UI.BuildASE(body)
 	-----------------------------------------------------------------
 	local bar = vgui.Create("DPanel", body)
 	bar:Dock(TOP)
-	bar:SetTall(28)
+	bar:SetTall(UI.S(28))
 	bar.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.HEADER)
 		surface.DrawRect(0, 0, w, h)
@@ -229,7 +229,7 @@ function UI.BuildASE(body)
 	local add = vgui.Create("DButton", bar)
 	add:Dock(LEFT)
 	add:DockMargin(4, 3, 0, 3)
-	add:SetWide(26)
+	add:SetWide(UI.S(26))
 	add:SetText("+")
 	UI.StyleButton(add)
 	add:SetFont("SPeditor.Bold")
@@ -251,7 +251,7 @@ function UI.BuildASE(body)
 	local gear = vgui.Create("DButton", bar)
 	gear:Dock(RIGHT)
 	gear:DockMargin(0, 3, 4, 3)
-	gear:SetWide(26)
+	gear:SetWide(UI.S(26))
 	gear:SetText("")
 	gear:SetIcon("icon16/cog.png")
 	gear.Paint = add.Paint
@@ -307,7 +307,7 @@ function UI.BuildASE(body)
 	end
 	local presetHdr = vgui.Create("DPanel", presetHost)
 	presetHdr:Dock(TOP)
-	presetHdr:SetTall(20)
+	presetHdr:SetTall(UI.S(20))
 	presetHdr.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.HEADER)
 		surface.DrawRect(0, 0, w, h)
@@ -325,7 +325,7 @@ function UI.BuildASE(body)
 	end
 	local ctrlHdr = vgui.Create("DPanel", ctrlHost)
 	ctrlHdr:Dock(TOP)
-	ctrlHdr:SetTall(20)
+	ctrlHdr:SetTall(UI.S(20))
 	local ctrlTitle = ""
 	ctrlHdr.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.HEADER)
@@ -368,7 +368,7 @@ function UI.BuildASE(body)
 		rowAlt = not rowAlt
 		local b = vgui.Create("DButton", presets)
 		b:Dock(TOP)
-		b:SetTall(18)
+		b:SetTall(UI.S(18))
 		b:SetText("")
 		local alt = rowAlt
 		b.Paint = function(s, w, h)
@@ -383,7 +383,7 @@ function UI.BuildASE(body)
 	local function presetHeader(text)
 		local p = vgui.Create("DPanel", presets)
 		p:Dock(TOP)
-		p:SetTall(16)
+		p:SetTall(UI.S(16))
 		p.Paint = function(_, w, h)
 			surface.SetDrawColor(COL.HEADER)
 			surface.DrawRect(0, 0, w, h)
@@ -519,7 +519,7 @@ function UI.BuildASE(body)
 	local function ctrlHeader(text, col)
 		local p = vgui.Create("DPanel", controls)
 		p:Dock(TOP)
-		p:SetTall(16)
+		p:SetTall(UI.S(16))
 		p.Paint = function(_, w, h)
 			surface.SetDrawColor(COL.HEADER)
 			surface.DrawRect(0, 0, w, h)
@@ -627,7 +627,7 @@ function UI.BuildASE(body)
 		local cb = vgui.Create("DButton", controls)
 		cb:Dock(TOP)
 		cb:DockMargin(0, 0, 0, 1)
-		cb:SetTall(18)
+		cb:SetTall(UI.S(18))
 		cb:SetText("")
 		cb.Paint = function(s, w, h)
 			surface.SetDrawColor(s:IsHovered() and COL.ROW_A or COL.ROW_B)
@@ -1119,50 +1119,57 @@ function UI.BuildASE(body)
 		nodesByEnt = {}
 		local q = string.lower(string.Trim(search:GetValue() or ""))
 
-		for _, obj in ipairs(C.BuildEntityList()) do
+		-- one object the tree cannot show (a model with a broken skeleton, an entity of another
+		-- addon) must not take the whole list with it: it used to stop the rebuild at that object,
+		-- and everything after it, newly spawned objects too, never got into the tree
+		local function addObject(obj)
 			local ent = obj.ent
-			if IsValid(ent) and (q == "" or string.find(string.lower(obj.name), q, 1, true)) then
-				-- an attached object shows in the tree what it is attached to
-				local label = obj.name
-				if IsValid(obj.parent) then label = label .. "  → " .. C.DisplayName(obj.parent) end
-				local node = tree:AddNode(label, ICONS[obj.kind] or ICONS.prop)
-				UI.NodeColor(node, (obj.hidden or obj.locked) and COL.DIM or COL.TEXT)
-				nodesByEnt[ent] = node
-				if C.IsMulti(ent) then UI.NodeColor(node, COL.ORANGE) end
-				node.DoClick = function()
-					-- Ctrl+click: add to / remove from the selection
-					if input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL) then
-						C.ToggleMulti(ent)
-						return
-					end
-					setScope(ent, "all")
+			-- an attached object shows in the tree what it is attached to
+			local label = obj.name
+			if IsValid(obj.parent) then label = label .. "  → " .. C.DisplayName(obj.parent) end
+			local node = tree:AddNode(label, ICONS[obj.kind] or ICONS.prop)
+			UI.NodeColor(node, (obj.hidden or obj.locked) and COL.DIM or COL.TEXT)
+			nodesByEnt[ent] = node
+			if C.IsMulti(ent) then UI.NodeColor(node, COL.ORANGE) end
+			node.DoClick = function()
+				-- Shift / Ctrl + click: add to / remove from the selection
+				if C.Keys.ClickAny(C.MULTI_CLICK) then
+					C.ToggleMulti(ent)
+					return
 				end
-				node.DoRightClick = function()
-					setScope(ent, "all")
-					objectMenu(obj)
-				end
+				setScope(ent, "all")
+			end
+			node.DoRightClick = function()
+				setScope(ent, "all")
+				objectMenu(obj)
+			end
 
-				local mode = UI.AseTreeMode()
-				if mode == "skeleton" and isModel(ent) then
-					addSkeleton(node, ent)
-				elseif mode == "groups" and isModel(ent) then
-					local fg = flexGroupsOf(ent)
-					if next(fg) then
-						local face = addGroup(node, L("face"), COL.BLUE, ICONS.face, ent, "face")
-						for _, g in ipairs(FACE_ORDER) do
-							if fg[g] then addGroup(face, SPeditor.LN("grp_", g), COL.TEXT, nil, ent, "face:" .. g) end
-						end
-					end
-					if hasEyes(ent) then addGroup(node, L("grp_eyes"), COL.BLUE, ICONS.eyes, ent, "eyes") end
-					local bg = boneGroupsOf(ent)
-					for _, g in ipairs(GROUP_ORDER) do
-						if bg[g] then addGroup(node, groupLabel(ent, g), groupColor(g), nil, ent, "bones:" .. g) end
+			local mode = UI.AseTreeMode()
+			if mode == "skeleton" and isModel(ent) then
+				addSkeleton(node, ent)
+			elseif mode == "groups" and isModel(ent) then
+				local fg = flexGroupsOf(ent)
+				if next(fg) then
+					local face = addGroup(node, L("face"), COL.BLUE, ICONS.face, ent, "face")
+					for _, g in ipairs(FACE_ORDER) do
+						if fg[g] then addGroup(face, SPeditor.LN("grp_", g), COL.TEXT, nil, ent, "face:" .. g) end
 					end
 				end
-				if ent == cur.ent then
-					node:SetExpanded(true)
-					tree:SetSelectedItem(node)
+				if hasEyes(ent) then addGroup(node, L("grp_eyes"), COL.BLUE, ICONS.eyes, ent, "eyes") end
+				local bg = boneGroupsOf(ent)
+				for _, g in ipairs(GROUP_ORDER) do
+					if bg[g] then addGroup(node, groupLabel(ent, g), groupColor(g), nil, ent, "bones:" .. g) end
 				end
+			end
+			if ent == cur.ent then
+				node:SetExpanded(true)
+				tree:SetSelectedItem(node)
+			end
+		end
+		for _, obj in ipairs(C.BuildEntityList()) do
+			if IsValid(obj.ent) and (q == "" or string.find(string.lower(obj.name), q, 1, true)) then
+				local ok, err = pcall(addObject, obj)
+				if not ok then ErrorNoHalt("[SPeditor] tree: " .. tostring(obj.name) .. ": " .. tostring(err) .. "\n") end
 			end
 		end
 	end

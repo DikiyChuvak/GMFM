@@ -7,6 +7,7 @@ On the left, a tree of sources:
     Browse → Addons of the Q menu); above the tree they can be sorted (by name, the newest
     subscriptions first, the latest updated, by the number of models) and filtered by name;
   * Games — mounted games (Counter-Strike: Source, TF2…), each with its models;
+  * Legacy addons — folders in garrysmod/addons (not from the Workshop), each with its models;
   * Spawnlists (categories from the Q menu);
   * Player Models / Ragdolls;
   * models/ folders (loaded when expanded).
@@ -30,6 +31,15 @@ local USELESS = {
 	"_gestures", "_anim", "_gst", "_pst", "_shd", "_ss.mdl", "_posture", "_anm",
 	"ghostanim", "_paths", "_shared", "anim_", "gestures_", "shared_ragdoll_",
 }
+
+-- of the hidden ones, those that are animation models (the import takes animations from them)
+local ANIMLIKE = { "anim", "_anm", "_gst", "_pst", "gesture", "posture" }
+local function isAnimModel(path)
+	for _, s in ipairs(ANIMLIKE) do
+		if string.find(path, s, 1, true) then return true end
+	end
+	return false
+end
 
 local function isUseless(path)
 	for _, s in ipairs(USELESS) do
@@ -67,31 +77,41 @@ end
 ---------------------------------------------------------------------
 -- Models of one addon or one mounted game (path id = the addon title / the game folder),
 -- collected in the background a bit per frame. done(list, finished) is called as it grows.
+-- prefix: the models are looked for under prefix .. "models/" of that path id (a legacy
+-- addon: "addons/<folder>/" of "MOD"), and listed as "models/…" as the game mounts them.
 ---------------------------------------------------------------------
 local sourceCache = {}
 
-local function scanSource(pathId, done)
-	local c = sourceCache[pathId]
+local function scanSource(pathId, done, prefix)
+	prefix = prefix or ""
+	local key = pathId .. "|" .. prefix
+	local c = sourceCache[key]
 	if c and c.finished then
-		done(c.list, true)
+		done(c.list, true, c.anims)
 		return
 	end
 	if c then
 		c.done = done
 		return
 	end
-	c = { list = {}, queue = { "models/" }, finished = false, done = done }
-	sourceCache[pathId] = c
-	local id = "SPeditor.SourceScan." .. pathId
+	-- anims: the models the browser hides (animation and gesture models of characters):
+	-- the animation import takes its animations from them
+	c = { list = {}, anims = {}, queue = { "models/" }, finished = false, done = done }
+	sourceCache[key] = c
+	local id = "SPeditor.SourceScan." .. key
 	timer.Create(id, 0, 0, function()
 		local t0 = SysTime()
 		while #c.queue > 0 and SysTime() - t0 < 0.004 do
 			local dir = table.remove(c.queue)
-			local files, dirs = file.Find(dir .. "*", pathId)
+			local files, dirs = file.Find(prefix .. dir .. "*", pathId)
 			for _, f in ipairs(files or {}) do
 				if string.sub(f, -4) == ".mdl" then
 					local path = string.lower(dir .. f)
-					if not isUseless(path) then c.list[#c.list + 1] = path end
+					if not isUseless(path) then
+						c.list[#c.list + 1] = path
+					elseif isAnimModel(path) then
+						c.anims[#c.anims + 1] = path
+					end
 				end
 			end
 			for _, d in ipairs(dirs or {}) do c.queue[#c.queue + 1] = dir .. d .. "/" end
@@ -99,9 +119,10 @@ local function scanSource(pathId, done)
 		if #c.queue == 0 then
 			c.finished = true
 			table.sort(c.list)
+			table.sort(c.anims)
 			timer.Remove(id)
 		end
-		if c.done then c.done(c.list, c.finished) end
+		if c.done then c.done(c.list, c.finished, c.anims) end
 	end)
 end
 
@@ -130,6 +151,27 @@ local function addonsWithModels(filter)
 	end)
 	return out
 end
+
+-- Legacy addons: folders in garrysmod/addons. The game mounts them, but engine.GetAddons()
+-- lists only Workshop subscriptions, so they are found on disk. Returns { { name, models =
+-- has a models/ folder, smh = has data/smh or data_static/smh } }, sorted by name.
+function UI.LegacyAddons()
+	local out = {}
+	local _, dirs = file.Find("addons/*", "MOD")
+	for _, d in ipairs(dirs or {}) do
+		local base = "addons/" .. d .. "/"
+		local models = file.IsDir(base .. "models", "MOD")
+		local smh = file.IsDir(base .. "data/smh", "MOD") or file.IsDir(base .. "data_static/smh", "MOD")
+		if models or smh then out[#out + 1] = { name = d, models = models, smh = smh } end
+	end
+	table.sort(out, function(x, y) return string.lower(x.name) < string.lower(y.name) end)
+	return out
+end
+
+-- Models of a source for other windows: (path id, prefix, done(list, finished, anims)) as scanSource;
+-- a Workshop addon is (its title, nil), a legacy addon ("MOD", "addons/<folder>/")
+UI.ScanSourceModels = function(pathId, prefix, done) scanSource(pathId, done, prefix) end
+UI.AddonsWithModels = function(filter) return addonsWithModels(filter) end
 
 ---------------------------------------------------------------------
 -- Q menu categories and players
@@ -196,6 +238,13 @@ function UI.ToggleBrowser()
 	end
 end
 
+-- open the browser showing a category ("cat", name) or everything ("all")
+function UI.BrowserShow(kind, name)
+	local win = SPeditor.Dock.ByKey("browser")
+	if IsValid(win) then SPeditor.Dock.ShowPage("browser") else UI.BuildBrowser() end
+	timer.Simple(0, function() if UI.BrowserSelect then UI.BrowserSelect(kind, name) end end)
+end
+
 function UI.BuildBrowser()
 	UI.StartModelScan()
 
@@ -212,13 +261,13 @@ function UI.BuildBrowser()
 	-- top: path + search
 	local top = vgui.Create("DPanel", body)
 	top:Dock(TOP)
-	top:SetTall(54)
+	top:SetTall(UI.S(54))
 	top.Paint = function() end
 
 	local pathBox = vgui.Create("DTextEntry", top)
 	pathBox:Dock(TOP)
 	pathBox:DockMargin(4, 4, 4, 0)
-	pathBox:SetTall(22)
+	pathBox:SetTall(UI.S(22))
 	pathBox:SetPlaceholderText(L("spawn_by_path") .. " " .. L("path_placeholder"))
 	pathBox.OnEnter = function(self)
 		local m = string.lower(string.Trim(string.Replace(self:GetValue() or "", "\\", "/")))
@@ -232,30 +281,30 @@ function UI.BuildBrowser()
 	local search = vgui.Create("DTextEntry", top)
 	search:Dock(TOP)
 	search:DockMargin(4, 4, 4, 0)
-	search:SetTall(22)
+	search:SetTall(UI.S(22))
 	search:SetPlaceholderText(L("search_models"))
 
 	local status = vgui.Create("DLabel", body)
 	status:Dock(BOTTOM)
 	status:DockMargin(6, 2, 6, 2)
-	status:SetTall(16)
+	status:SetTall(UI.S(16))
 	status:SetTextColor(COL.DIM)
 
 	-- left: the addon sort / filter row, then the tree
 	local left = vgui.Create("DPanel", body)
 	left:Dock(LEFT)
-	left:SetWide(250)
+	left:SetWide(UI.S(250))
 	left:DockMargin(4, 4, 0, 4)
 	left.Paint = function() end
 
 	local addonBar = vgui.Create("DPanel", left)
 	addonBar:Dock(TOP)
-	addonBar:SetTall(22)
+	addonBar:SetTall(UI.S(22))
 	addonBar:DockMargin(0, 0, 0, 4)
 	addonBar.Paint = function() end
 	local sortBox = vgui.Create("DComboBox", addonBar)
 	sortBox:Dock(RIGHT)
-	sortBox:SetWide(118)
+	sortBox:SetWide(UI.S(118))
 	sortBox:SetSortItems(false)
 	UI.StyleCombo(sortBox)
 	sortBox:SetTooltip(L("browser_sort"))
@@ -291,7 +340,7 @@ function UI.BuildBrowser()
 		-- the size of the spawn menu icons: the game then takes the same cached picture
 		-- (materials/spawnicons/<model>.png, or the one shipped in the model's addon); any
 		-- other size is a picture of its own (<model>_128.png) that has to be rendered again
-		icon:SetSize(64, 64)
+		icon:SetSize(UI.S(64), UI.S(64))
 		icon:SetModel(model)
 		icon:SetTooltip(model)
 		icon.DoClick = function() C.SpawnModel(model) end
@@ -313,7 +362,7 @@ function UI.BuildBrowser()
 	function addMore()
 		if #pending <= shownCount then return end
 		local more = vgui.Create("DButton", icons)
-		more:SetSize(132, 64)
+		more:SetSize(UI.S(132), UI.S(64))
 		more:SetText(string.format(L("browser_more"), #pending - shownCount))
 		more:SetTextColor(COL.TEXT)
 		more.Paint = function(s2, w, h) draw.RoundedBox(3, 0, 0, w, h, s2:IsHovered() and COL.HOVER or COL.CTRL) end
@@ -382,17 +431,25 @@ function UI.BuildBrowser()
 		refresh()
 	end
 
+	-- other windows open the browser on a category: UI.BrowserShow("cat", "Ragdolls") (cl_ui_ase.lua)
+	UI.BrowserSelect = function(kind, name)
+		if not IsValid(icons) then return end
+		if kind == "cat" and not collectCategories()[name] then kind = "all" end
+		select(kind, name)
+	end
+
 	local allNode = tree:AddNode(L("browser_all"), "icon16/database.png")
 	allNode.DoClick = function() select("all") end
 	UI.NodeColor(allNode, COL.TEXT)
 
 	-- Workshop subscriptions and mounted games, each with its models
-	local function openSource(pathId, title)
-		current = { kind = "source", name = pathId, list = {} }
+	local function openSource(pathId, title, prefix)
+		local key = pathId .. "|" .. (prefix or "")
+		current = { kind = "source", name = key, list = {} }
 		search:SetValue("")
 		lastQ = ""
 		scanSource(pathId, function(list, finished)
-			if current.kind ~= "source" or current.name ~= pathId or not IsValid(icons) then return end
+			if current.kind ~= "source" or current.name ~= key or not IsValid(icons) then return end
 			current.list = list
 			-- while indexing, show what is found every so often
 			if finished or #list ~= (current.shown or 0) and RealTime() > (current.nextShow or 0) then
@@ -401,7 +458,7 @@ function UI.BuildBrowser()
 				refresh()
 				status:SetText(string.format(L("browser_source_status"), title, #list, finished and "" or (" — " .. L("browser_indexing"))))
 			end
-		end)
+		end, prefix)
 	end
 
 	local addonsNode = tree:AddNode(L("browser_addons"), "icon16/plugin.png")
@@ -445,6 +502,23 @@ function UI.BuildBrowser()
 			local n = gamesNode:AddNode(g.title, "icon16/controller.png")
 			UI.NodeColor(n, COL.TEXT)
 			n.DoClick = function() openSource(g.folder, g.title) end
+		end
+	end
+
+	-- legacy addons (folders in garrysmod/addons) with models
+	local legacy = {}
+	for _, a in ipairs(UI.LegacyAddons()) do
+		if a.models then legacy[#legacy + 1] = a end
+	end
+	if #legacy > 0 then
+		local legacyNode = tree:AddNode(string.format("%s (%d)", L("browser_legacy"), #legacy), "icon16/folder_wrench.png")
+		UI.NodeColor(legacyNode, COL.ORANGE)
+		legacyNode:SetTooltip(L("browser_legacy_tip"))
+		for _, a in ipairs(legacy) do
+			local n = legacyNode:AddNode(a.name, "icon16/folder_page.png")
+			UI.NodeColor(n, COL.TEXT)
+			n:SetTooltip("garrysmod/addons/" .. a.name)
+			n.DoClick = function() openSource("MOD", a.name, "addons/" .. a.name .. "/") end
 		end
 	end
 

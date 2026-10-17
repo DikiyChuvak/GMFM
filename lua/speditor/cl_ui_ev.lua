@@ -28,7 +28,7 @@ function UI.BuildElementViewer(host)
 
 	local head = vgui.Create("DPanel", page)
 	head:Dock(TOP)
-	head:SetTall(22)
+	head:SetTall(UI.S(22))
 	local title = ""
 	head.Paint = function(_, w, h)
 		surface.SetDrawColor(COL.HEADER)
@@ -45,6 +45,14 @@ function UI.BuildElementViewer(host)
 	local function row(cat, name, kind, data, value, onChange, getter)
 		cat, name = SPeditor.LN("ev_", cat), SPeditor.LN("ev_", name)
 		local r = props:CreateRow(cat, name)
+		-- the stock row is 20 px tall whatever the font: at the interface scale it grows
+		if UI.Scale() ~= 1 then
+			local layout = r.PerformLayout
+			r.PerformLayout = function(s, ...)
+				layout(s, ...)
+				s:SetTall(UI.S(20))
+			end
+		end
 		-- DProperties rows have a white background; dark themes need their own
 		local group = props:GetCategory(cat)
 		local bg = UI.Theme and UI.Theme.propBG
