@@ -56,7 +56,7 @@ net.Receive(Net.AdoptListData, function()
 end)
 
 -- the outline of the rows under the cursor / selected, in every editor view
-hook.Add("PostDrawTranslucentRenderables", "SPeditor.AdoptOutline", function(depth, sky)
+SPeditor.Hook("PostDrawTranslucentRenderables", "SPeditor.AdoptOutline", function(depth, sky)
 	if depth or sky or not C.active or C.exporting or next(state.outline) == nil then return end
 	local acc = COL.ORANGE
 	for ent, hot in pairs(state.outline) do

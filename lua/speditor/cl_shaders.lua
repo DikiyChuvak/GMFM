@@ -353,7 +353,7 @@ function Sd.Material(info)
 end
 
 -- Packs are mounted when the editor is first opened: their materials are not needed before that
-hook.Add("SPeditor_StateChanged", "SPeditor.Shaders", function(on)
+SPeditor.Hook("SPeditor_StateChanged", "SPeditor.Shaders", function(on)
 	if on and not Sd.scanned then
 		local ok, err = pcall(Sd.Scan, false)
 		if not ok then ErrorNoHalt("[SPeditor] shaders: " .. tostring(err) .. "\n") end

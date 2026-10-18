@@ -215,7 +215,7 @@ local function buildPacksPage(page)
 		end):SetIcon("icon16/page_copy.png")
 		m:Open()
 	end
-	hook.Add("SPeditor_ShadersScanned", "SPeditor.ShadersWindow", function()
+	SPeditor.Hook("SPeditor_ShadersScanned", "SPeditor.ShadersWindow", function()
 		if not IsValid(packs) then
 			hook.Remove("SPeditor_ShadersScanned", "SPeditor.ShadersWindow")
 			return

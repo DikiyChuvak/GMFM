@@ -127,7 +127,7 @@ end
 
 -- the bone under the cursor in the tree is marked in the viewports
 UI.TreeHover = nil
-hook.Add("PostDrawTranslucentRenderables", "SPeditor.TreeHover", function(depth, sky)
+SPeditor.Hook("PostDrawTranslucentRenderables", "SPeditor.TreeHover", function(depth, sky)
 	local h = UI.TreeHover
 	if depth or sky or not h or not C.active or C.exporting then return end
 	if not IsValid(h.ent) or RealTime() - h.t > 0.15 then return end
@@ -534,7 +534,7 @@ function UI.BuildASE(body)
 			end
 		end
 	end
-	hook.Add("SPeditor_PoseListChanged", "SPeditor.ASE", function() if IsValid(presets) then rebuildPresets() end end)
+	SPeditor.Hook("SPeditor_PoseListChanged", "SPeditor.ASE", function() if IsValid(presets) then rebuildPresets() end end)
 
 	-----------------------------------------------------------------
 	-- Control column
@@ -1230,12 +1230,12 @@ function UI.BuildASE(body)
 	end
 
 	search.OnChange = function() rebuildTree() end
-	hook.Add("SPeditor_MultiChanged", "SPeditor.ASE", function()
+	SPeditor.Hook("SPeditor_MultiChanged", "SPeditor.ASE", function()
 		if IsValid(tree) then rebuildTree() end
 	end)
 
 	-- selection from the viewport / another window
-	hook.Add("SPeditor_Selected", "SPeditor.ASE", function(ent)
+	SPeditor.Hook("SPeditor_Selected", "SPeditor.ASE", function(ent)
 		if not IsValid(tree) then return end
 		if ent ~= cur.ent then
 			cur.ent, cur.scope, cur.scopeLabel = ent, "all", nil

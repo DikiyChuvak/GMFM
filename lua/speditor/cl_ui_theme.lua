@@ -112,10 +112,10 @@ function UI.ScaleDermaFonts(on)
 	surface.CreateFont("DermaDefault", { font = face, size = px, weight = 500, extended = true })
 	surface.CreateFont("DermaDefaultBold", { font = face, size = px, weight = 800, extended = true })
 end
-hook.Add("SPeditor_StateChanged", "SPeditor.DermaScale", function(on) UI.ScaleDermaFonts(on) end)
+SPeditor.Hook("SPeditor_StateChanged", "SPeditor.DermaScale", function(on) UI.ScaleDermaFonts(on) end)
 UI.CreateFonts()
 -- the font of a language pack: once the packs are loaded and when the language changes
-hook.Add("SPeditor_LanguagesLoaded", "SPeditor.Fonts", function() UI.CreateFonts() end)
+SPeditor.Hook("SPeditor_LanguagesLoaded", "SPeditor.Fonts", function() UI.CreateFonts() end)
 cvars.AddChangeCallback("speditor_language", function() UI.CreateFonts() end, "SPeditor.Fonts")
 
 function UI.Animated() return cvAnim:GetBool() end

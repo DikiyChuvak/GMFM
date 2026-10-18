@@ -256,7 +256,7 @@ function UI.BuildElementViewer(host)
 		end
 	end
 
-	hook.Add("SPeditor_Selected", "SPeditor.ElementViewer", function(ent)
+	SPeditor.Hook("SPeditor_Selected", "SPeditor.ElementViewer", function(ent)
 		if IsValid(page) and ent ~= current then rebuild() end
 	end)
 	rebuild()

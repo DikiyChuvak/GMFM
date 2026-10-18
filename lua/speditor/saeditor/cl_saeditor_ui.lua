@@ -1287,7 +1287,16 @@ local function renderSpeedRows(row)
 	end
 	if not sc:GetSelected() then sc:SetText(string.format(L("sa_rd_shutter_n"), math.Round(SA.RenderShutter() * 360))) end
 	sc.OnSelect = function(_, _, _, data) RunConsoleCommand("saeditor_render_shutter", tostring(data)) end
-	return qRow, sRow, fRow, bRow, shRow
+	-- effects (a0.8): the game slowed down so that particles are exact in every frame
+	local slRow = row("")
+	local sl = vgui.Create("DCheckBoxLabel", slRow)
+	sl:Dock(FILL)
+	sl:SetText(L("sa_rd_slowfx"))
+	sl:SetFont("SPeditor.Small")
+	sl:SetTextColor(UI.PAL.TEXT)
+	sl:SetConVar("saeditor_render_slowfx")
+	sl:SetTooltip(L("sa_rd_slowfx_tip"))
+	return qRow, sRow, fRow, bRow, shRow, slRow
 end
 
 ---------------------------------------------------------------------
@@ -1503,7 +1512,7 @@ COMP:Hook("SPeditor_RenderDialog", function(ctx)
 	whole:Dock(FILL)
 	whole:DockMargin(6, 0, 0, 0)
 
-	local qRow, sRow, fRow, bRow, shRow = renderSpeedRows(row)
+	local qRow, sRow, fRow, bRow, shRow, slRow = renderSpeedRows(row)
 
 	-- the cameras of the video
 	local camHead = label(sec, L("sa_rd_cams"), COL.ORANGE)
@@ -1624,7 +1633,7 @@ COMP:Hook("SPeditor_RenderDialog", function(ctx)
 		state = key
 		empty:SetVisible(not animated)
 		emptyBtn:SetVisible(not animated)
-		for _, r in ipairs({ fr, qRow, sRow, fRow, bRow, shRow, camHead, cr }) do r:SetVisible(animated) end
+		for _, r in ipairs({ fr, qRow, sRow, fRow, bRow, shRow, slRow, camHead, cr }) do r:SetVisible(animated) end
 		shots:SetVisible(animated and SA.rdCamera == "cuts")
 		stop:SetVisible(job ~= nil)
 		note:SetVisible(animated)
@@ -1787,6 +1796,13 @@ COMP:AddMenu("edit", function(m)
 	sub:AddOption(L("sa_autokey"), function() SA.autokey = not SA.autokey end):SetChecked(SA.autokey)
 	sub:AddOption(L("sa_bone_keys"), function() SA.ToggleBoneKeys() end):SetChecked(SA.BoneKeysOn())
 	sub:AddOption(L("sa_ghosts"), function() SA.ToggleGhosts() end):SetChecked(SA.GhostsOn())
+	-- a0.8: how new keys move, and the whole animation made continuous at once
+	local em, eo = sub:AddSubMenu(L("sa_new_ease"))
+	if eo and eo.SetIcon then eo:SetIcon("icon16/chart_curve.png") end
+	for _, e in ipairs(SA.NEW_EASES) do
+		em:AddOption(L("sa_ease_" .. e), function() SA.SetNewEase(e) end):SetChecked(SA.NewEase() == e)
+	end
+	sub:AddOption(L("sa_smooth_all"), function() SA.SmoothAll() end):SetIcon("icon16/chart_line.png")
 	sub:AddOption(L("sa_snd_add"), function() SA.OpenSounds() end):SetIcon("icon16/sound_add.png")
 	sub:AddOption(L("sa_crv_title") .. "…", function() SA.OpenCurves() end):SetIcon("icon16/chart_curve.png")
 	sub:AddSpacer()

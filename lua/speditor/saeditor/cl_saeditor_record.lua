@@ -27,6 +27,7 @@ local cvEffects = CreateClientConVar("saeditor_rec_effects", "1", true, false, "
 local cvPhys    = CreateClientConVar("saeditor_rec_phys", "0", true, false,
 	"Recorder: physics of scene ragdolls and props: 0 off, 1 the selected ones, 2 all", 0, 2)
 local cvView    = CreateClientConVar("saeditor_rec_view", "1", true, false, "Recorder: record your view as a scene camera", 0, 1)
+local cvCorpses = CreateClientConVar("saeditor_rec_corpses", "1", true, false, "Recorder: killed NPCs fall as ragdolls (server corpses for the take)", 0, 1)
 
 local COUNTDOWN = 3
 
@@ -67,7 +68,7 @@ function SA.StartRecording()
 	local phys = cvPhys:GetInt()
 	local opts = { step = cvStep:GetInt(), npcs = cvNpcs:GetBool(), radius = cvRadius:GetFloat(), sounds = cvSounds:GetBool(),
 		effects = cvEffects:GetBool(), from = math.floor(SA.frame + 0.5), phys = phys > 0 and physObjects(phys == 2) or nil,
-		view = cvView:GetBool() }
+		view = cvView:GetBool(), corpses = cvCorpses:GetBool() }
 	SA.rec = { pending = opts }
 	if C.active then C.SendToggle(false) else SA.rec.countFrom = RealTime() end
 end
@@ -211,6 +212,8 @@ function SA.OpenRecord()
 	hint:DockMargin(8, 8, 8, 6)
 	UI.Check(body, L("sa_rec_npcs"), cvNpcs:GetBool(), function(v) RunConsoleCommand("saeditor_rec_npcs", v and "1" or "0") end)
 	UI.Slider(body, L("sa_rec_radius"), 200, 6000, 0, cvRadius:GetFloat(), function(v) RunConsoleCommand("saeditor_rec_radius", tostring(math.floor(v))) end)
+	UI.Check(body, L("sa_rec_corpses"), cvCorpses:GetBool(), function(v) RunConsoleCommand("saeditor_rec_corpses", v and "1" or "0") end)
+		:SetTooltip(L("sa_rec_corpses_tip"))
 	UI.Check(body, L("sa_rec_sounds"), cvSounds:GetBool(), function(v) RunConsoleCommand("saeditor_rec_sounds", v and "1" or "0") end)
 	UI.Check(body, L("sa_rec_effects"), cvEffects:GetBool(), function(v) RunConsoleCommand("saeditor_rec_effects", v and "1" or "0") end)
 	UI.Check(body, L("sa_rec_view"), cvView:GetBool(), function(v) RunConsoleCommand("saeditor_rec_view", v and "1" or "0") end)
@@ -291,7 +294,11 @@ end, "playercolor")
 -- usual. Hiding is done by the draw callback for the time of the view: by then the engine has
 -- listed what it draws, so changing NoDraw or the bones would not work (tried in the game).
 ---------------------------------------------------------------------
-local EYE_RADIUS = 10       -- units from the eyes (12 from the head bone of a model without "eyes")
+-- The game's view sits 8-15 units behind the model's eyes (measured on a walking take), so a view
+-- is "inside the head" when it is that close to the eyes and not in front of the face: a close-up
+-- of the face from the front still shows it.
+local EYE_RADIUS = 24       -- units from the eyes (20 from the head bone of a model without "eyes")
+local EYE_FRONT  = 3        -- a view more than this in front of the eyes is a close-up
 local headOf = {}           -- [model] = { att = eyes attachment } | { bone = head bone } | false
 local function eyesOf(ent)
 	local mdl = ent:GetModel() or ""
@@ -315,10 +322,11 @@ local function eyesOf(ent)
 	if not h then return nil end
 	if h.att then
 		local a = ent:GetAttachment(h.att)
-		return a and a.Pos, EYE_RADIUS
+		if a then return a.Pos, EYE_RADIUS, a.Ang:Forward() end
+		return nil
 	end
 	local m = ent:GetBoneMatrix(h.bone)
-	return m and m:GetTranslation(), EYE_RADIUS + 2
+	return m and m:GetTranslation(), EYE_RADIUS - 4
 end
 
 local bodies = {}           -- [ragdoll] = { what it wears or holds } — rescanned twice a second
@@ -361,8 +369,9 @@ local function hide(e)
 end
 
 local function inEyes(ent, eye)
-	local at, radius = eyesOf(ent)
-	return at and at:DistToSqr(eye) < radius * radius
+	local at, radius, fwd = eyesOf(ent)
+	if not at or at:DistToSqr(eye) >= radius * radius then return false end
+	return not fwd or (eye - at):Dot(fwd) < EYE_FRONT
 end
 
 COMP:Hook("PreDrawOpaqueRenderables", function(depth, skybox, sky3d)

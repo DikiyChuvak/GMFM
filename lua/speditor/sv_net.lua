@@ -58,6 +58,6 @@ function S.ReadOwned(ply)
 	return ent
 end
 
-hook.Add("PlayerDisconnected", "SPeditor.NetCleanup", function(ply)
+SPeditor.Hook("PlayerDisconnected", "SPeditor.NetCleanup", function(ply)
 	buckets[ply] = nil
 end)

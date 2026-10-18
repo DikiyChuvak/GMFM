@@ -447,7 +447,7 @@ function E.Hold(job)
 end
 
 -- the editor is closed or reloaded: nothing may be left running in a preview
-hook.Add("SPeditor_StateChanged", "SPeditor.Effects", function()
+SPeditor.Hook("SPeditor_StateChanged", "SPeditor.Effects", function()
 	for _, ent in ipairs(E.All()) do
 		if ent.SPFx then ent.SPFx.preview = nil end
 	end

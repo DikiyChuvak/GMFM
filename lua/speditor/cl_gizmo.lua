@@ -902,7 +902,7 @@ local function onPress(tgt)
 	pickClick()
 end
 
-hook.Add("Think", "SPeditor.GizmoInput", function()
+SPeditor.Hook("Think", "SPeditor.GizmoInput", function()
 	if not C.active or C.exporting then
 		lmbPrev = false
 		C.gizmo.drag = nil
@@ -1047,7 +1047,7 @@ function C.BoneLockMenu(m, ent, bone)
 	end
 end
 
-hook.Add("PostDrawTranslucentRenderables", "SPeditor.Gizmo", function(bDepth, bSkybox)
+SPeditor.Hook("PostDrawTranslucentRenderables", "SPeditor.Gizmo", function(bDepth, bSkybox)
 	if bDepth or bSkybox or not C.active or C.hideUI or C.vpPass == "secondary" then return end
 	local ent = C.selected
 	-- fullbright ignores vertex colour: helpers are drawn with regular lighting
@@ -1075,7 +1075,7 @@ end)
 
 -- Halo only in the main pass: in the nested viewport render it darkens the frame
 local HALO_COL, haloList = Color(255, 200, 60), {}
-hook.Add("PreDrawHalos", "SPeditor.Halo", function()
+SPeditor.Hook("PreDrawHalos", "SPeditor.Halo", function()
 	if not C.active or C.hideUI or C.renderViewEnt or C.vpPass then return end
 	local ent = C.selected
 	if IsValid(ent) and not C.IsLight(ent) and not C.IsEffect(ent) and ent ~= C.camera.viewEnt then
@@ -1084,7 +1084,7 @@ hook.Add("PreDrawHalos", "SPeditor.Halo", function()
 	end
 end)
 
-hook.Add("PostRenderVGUI", "SPeditor.GizmoHUD", function()
+SPeditor.Hook("PostRenderVGUI", "SPeditor.GizmoHUD", function()
 	local d = C.gizmo.drag
 	if not C.active or not d or C.hideUI then return end
 	local mx, my = gui.MousePos()

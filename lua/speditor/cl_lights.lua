@@ -196,7 +196,7 @@ local function build(m)
 end
 
 -- Drawing outside a frame is not allowed: masks are built in the next PreRender
-hook.Add("PreRender", "SPeditor.LightMasks", function()
+SPeditor.Hook("PreRender", "SPeditor.LightMasks", function()
 	if #pending == 0 then return end
 	local list = pending
 	pending = {}

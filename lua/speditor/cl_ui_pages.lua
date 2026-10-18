@@ -91,7 +91,7 @@ function UI.BuildScenePage(host)
 		Derma_Query(string.format(L("load_confirm"), name), "SPeditor",
 			L("load"), function() C.SceneLoad(name) end, L("cancel"), function() end)
 	end
-	hook.Add("SPeditor_SceneList", "SPeditor.ScenePage", refreshScenes)
+	SPeditor.Hook("SPeditor_SceneList", "SPeditor.ScenePage", refreshScenes)
 	refreshScenes()
 	C.SceneRequestList()
 
@@ -130,7 +130,7 @@ function UI.BuildScenePage(host)
 		local ent = C.selected
 		if IsValid(ent) and not C.IsAux(ent) then C.LoadPose(ent, line:GetColumnText(1)) end
 	end
-	hook.Add("SPeditor_PoseListChanged", "SPeditor.ScenePage", refreshPoses)
+	SPeditor.Hook("SPeditor_PoseListChanged", "SPeditor.ScenePage", refreshPoses)
 	refreshPoses()
 
 	rowButton(prow, L("pose_save"), "icon16/disk.png", function()

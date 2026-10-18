@@ -123,7 +123,7 @@ local function envelopeListen(path, t0, t1, done)
 		ch:SetTime(t0)
 		ch:Play()
 		local id = "SAeditor.LipListen" .. path
-		hook.Add("Think", id, function()
+		SPeditor.Hook("Think", id, function()
 			if not IsValid(ch) then hook.Remove("Think", id) done(nil) return end
 			local t = ch:GetTime()
 			local l, r = ch:GetLevel()

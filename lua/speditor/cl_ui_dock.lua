@@ -70,7 +70,7 @@ local function metrics()
 	TAB_H, TOP_Y, BOTTOM_H = S(22), S(24) + 2, S(20)
 end
 metrics()
-hook.Add("SPeditor_FontsCreated", "SPeditor.DockMetrics", metrics)
+SPeditor.Hook("SPeditor_FontsCreated", "SPeditor.DockMetrics", metrics)
 local SIDE_BAND   = 0.28     -- share of a window at its edge = the "split" zone
 local OUTER_BAND  = 16       -- px at the edge of the work area = the "full side" zone
 local OUTER_FRAC  = 0.22     -- what share of the work area such a window takes
@@ -443,7 +443,7 @@ function Dock.DockInto(self, zone)
 	raiseFloating()
 end
 
-hook.Add("PostRenderVGUI", "SPeditor.DockOverlay", function()
+SPeditor.Hook("PostRenderVGUI", "SPeditor.DockOverlay", function()
 	local d = Dock.drag
 	if not d or not d.zone or not IsValid(d.win) then return end
 	local rc = d.zone.rect
@@ -1007,8 +1007,12 @@ vgui.Register("SPeditorDock", PANEL, "EditablePanel")
 ---------------------------------------------------------------------
 function Dock.NewWindow(o)
 	local win = SPeditor.UI.Skin(vgui.Create("SPeditorDock"))
-	win:SetSize(SPeditor.UI.S(o.w or 400), SPeditor.UI.S(o.h or 300))
-	win:SetPos(o.x or 100, o.y or TOP_Y)
+	-- scaled for big interfaces, but never larger than the screen (at 200 % on a 1080p screen a
+	-- dialog's buttons at the bottom ended up below the screen) and never outside it
+	local w = math.min(SPeditor.UI.S(o.w or 400), ScrW() - 20)
+	local h = math.min(SPeditor.UI.S(o.h or 300), ScrH() - TOP_Y - 10)
+	win:SetSize(w, h)
+	win:SetPos(math.Clamp(o.x or 100, 0, math.max(ScrW() - w, 0)), math.Clamp(o.y or TOP_Y, 0, math.max(ScrH() - h, 0)))
 	win:SetDockable(o.dockable ~= false)
 	win.floating = o.floating and true or false
 	win:MakePopup()
@@ -1086,7 +1090,7 @@ local function anyTop()
 	return false
 end
 
-hook.Add("VGUIMousePressed", "SPeditor.DockOnTop", function(pnl)
+SPeditor.Hook("VGUIMousePressed", "SPeditor.DockOnTop", function(pnl)
 	if #Dock.windows == 0 or not anyTop() then return end
 	local win = dockOf(pnl)
 	if win and not win.onTop then raiseTop() end
@@ -1095,7 +1099,7 @@ end)
 -- Safety net: a pinned window under the cursor turned out to be covered by a regular window
 -- (the window was raised by code or the click bypassed the hook) — bring it back up.
 local nextTopCheck = 0
-hook.Add("Think", "SPeditor.DockOnTop", function()
+SPeditor.Hook("Think", "SPeditor.DockOnTop", function()
 	if #Dock.windows == 0 or RealTime() < nextTopCheck then return end
 	nextTopCheck = RealTime() + 0.2
 	if Dock.drag or input.IsMouseDown(MOUSE_LEFT) then return end

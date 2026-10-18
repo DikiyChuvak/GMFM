@@ -186,7 +186,72 @@ function UI.OpenObjectProps(ent)
 		end
 	end
 
-	target.OnSelect = function(_, _, _, data) slot = data end
+	-- the colour of the chosen slot (a0.8, as SFM's material colour): tints that material only
+	local tintHint = UI.Label(scroll, L("props_tint_hint"))
+	tintHint:DockMargin(6, 3, 6, 0)
+	local tintBox = vgui.Create("DPanel", scroll)
+	tintBox:Dock(TOP)
+	tintBox:DockMargin(4, 2, 4, 0)
+	tintBox:SetTall(UI.S(150) + UI.S(24) + UI.S(16))
+	tintBox.Paint = function() end
+	local tintLabel = vgui.Create("DLabel", tintBox)
+	tintLabel:Dock(TOP)
+	tintLabel:SetTall(UI.S(16))
+	tintLabel:SetFont("SPeditor.Small")
+	tintLabel:SetTextColor(COL.TEXT)
+	local tintMixer = vgui.Create("DColorMixer", tintBox)
+	tintMixer:Dock(TOP)
+	tintMixer:SetTall(UI.S(150))
+	tintMixer:SetPalette(false)
+	tintMixer:SetAlphaBar(false)
+	local function slotTint()
+		local t = IsValid(ent) and C.GetLook(ent).tints[tostring(slot)]
+		return t and Color(t[1], t[2], t[3]) or Color(255, 255, 255)
+	end
+	local tintEdit, tintSync = 0, false
+	local function setTint(c)
+		if not IsValid(ent) or slot < 0 then return end
+		local tints = C.GetLook(ent).tints
+		tints[tostring(slot)] = (c.r < 255 or c.g < 255 or c.b < 255) and { c.r, c.g, c.b } or nil
+		C.EditLook(ent, { tints = tints })
+	end
+	tintMixer.ValueChanged = function(_, c)
+		if tintSync then return end
+		tintEdit = RealTime()
+		setTint(c)
+	end
+	tintMixer.Think = function()
+		if not IsValid(ent) or slot < 0 or RealTime() - tintEdit < 1 then return end
+		local c, m = slotTint(), tintMixer:GetColor()
+		if c.r ~= m.r or c.g ~= m.g or c.b ~= m.b then
+			tintSync = true
+			tintMixer:SetColor(c)
+			tintSync = false
+		end
+	end
+	local tintReset = UI.Button(tintBox, L("props_tint_reset"), "icon16/color_wheel.png", function()
+		tintEdit = 0
+		setTint(Color(255, 255, 255))
+	end)
+	tintReset:Dock(TOP)
+	tintReset:DockMargin(0, 2, 0, 0)
+	local function showTint()
+		tintBox:SetVisible(slot >= 0)
+		tintHint:SetVisible(slot < 0)
+		if slot >= 0 then
+			tintLabel:SetText(string.format(L("props_tint_of"), string.GetFileFromFilename(slots[slot + 1] or "") or ""))
+			tintSync = true
+			tintMixer:SetColor(slotTint())
+			tintSync = false
+		end
+		scroll:InvalidateLayout()
+	end
+	showTint()
+
+	target.OnSelect = function(_, _, _, data)
+		slot = data
+		showTint()
+	end
 	current.Think = function(s)
 		local m = currentMaterial()
 		local text = L("props_mat_current") .. ": " .. (m == "" and L("props_mat_original") or (m == WHITE_MAT and L("props_mat_none") or m))

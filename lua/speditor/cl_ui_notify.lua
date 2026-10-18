@@ -54,7 +54,7 @@ local TOP_H    = 24         -- menu bar
 local STATUS_H = 20
 local function metrics() TOP_H, STATUS_H = SPeditor.UI.S(24), SPeditor.UI.S(20) end
 metrics()
-hook.Add("SPeditor_FontsCreated", "SPeditor.NotifyMetrics", metrics)
+SPeditor.Hook("SPeditor_FontsCreated", "SPeditor.NotifyMetrics", metrics)
 local IN_T, OUT_T = 0.25, 0.35
 
 local KINDS = {
@@ -804,10 +804,10 @@ for _, cv in ipairs({ "speditor_notify_pos", "speditor_notify_width", "speditor_
 	end, "SPeditor.Toasts")
 end
 
-hook.Add("SPeditor_StateChanged", "SPeditor.Toasts", function(on)
+SPeditor.Hook("SPeditor_StateChanged", "SPeditor.Toasts", function(on)
 	if not on then UI.ClearToasts() end
 end)
-hook.Add("OnScreenSizeChanged", "SPeditor.Toasts", layout)
+SPeditor.Hook("OnScreenSizeChanged", "SPeditor.Toasts", layout)
 
 -- A sample of every kind (Interface settings → Notifications → Show a test)
 function UI.NotifyDemo()
@@ -857,7 +857,7 @@ function UI.OpenNotifyLog()
 		m:AddOption(L("notify_copy"), function() SetClipboardText(line:GetColumnText(3)) end):SetIcon("icon16/page_copy.png")
 		m:Open()
 	end
-	hook.Add("SPeditor_Notified", "SPeditor.NotifyLog", function()
+	SPeditor.Hook("SPeditor_Notified", "SPeditor.NotifyLog", function()
 		if not IsValid(list) then
 			hook.Remove("SPeditor_Notified", "SPeditor.NotifyLog")
 			return

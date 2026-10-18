@@ -1,9 +1,10 @@
 -- Shared SPeditor settings
 SPeditor = SPeditor or {}
-SPeditor.Version = "a0.7.1"
-SPeditor.VersionBase = "a0.7"   -- the release the patch builds on: About lists its news under the patch's
+SPeditor.Version = "a0.8"
+SPeditor.VersionBase = "a0.8"   -- the release the patch builds on: About lists its news under the patch's
 SPeditor.GitHub  = "https://github.com/DikiyChuvak/SPeditor"     -- address of the addon page (empty: the About window shows a caption instead of a link)
 SPeditor.Wiki    = "https://dikiychuvak.github.io/SPeditor/"     -- player documentation (EN / RU), the About window links to it
+SPeditor.BugsURL = "https://steamcommunity.com/workshop/filedetails/discussion/3817852435/567048683131023614/"   -- "Bug Report and ideas" (Help → Report a problem)
 
 SPeditor.Net = {
 	Toggle        = "SPeditor_Toggle",

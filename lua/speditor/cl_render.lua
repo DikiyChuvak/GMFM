@@ -165,11 +165,11 @@ end
 
 -- anything that changes the picture without moving the view: edits, undo, keys, the frame
 local function lookDirty() look.changed = RealTime() end
-hook.Add("SPeditor_HistoryPushed", "SPeditor.ViewportLook", lookDirty)
-hook.Add("SPeditor_HistoryStep", "SPeditor.ViewportLook", lookDirty)
-hook.Add("SAeditor_Changed", "SPeditor.ViewportLook", lookDirty)
+SPeditor.Hook("SPeditor_HistoryPushed", "SPeditor.ViewportLook", lookDirty)
+SPeditor.Hook("SPeditor_HistoryStep", "SPeditor.ViewportLook", lookDirty)
+SPeditor.Hook("SAeditor_Changed", "SPeditor.ViewportLook", lookDirty)
 
-hook.Add("PostRender", "SPeditor.ViewportLook", function()
+SPeditor.Hook("PostRender", "SPeditor.ViewportLook", function()
 	local req = look.req
 	look.req = nil
 	if not req or not cvLook:GetBool() or not C.active or C.hideUI or C.exporting or R.busy then return end
@@ -426,7 +426,7 @@ function R.EngineView()
 	return c.src.origin, c.src.angles, math.Clamp(math.deg(2 * math.atan(t)), 1, 175)
 end
 
-hook.Add("PreRender", "SPeditor.EngineFrame", function()
+SPeditor.Hook("PreRender", "SPeditor.EngineFrame", function()
 	if not C.active then
 		E.want, E.cur = nil, nil
 		return
@@ -459,7 +459,7 @@ local function endLighting(c)
 		render.SetLightingMode(0)
 	end
 end
-hook.Add("PreDrawHUD", "SPeditor.EngineFrame", function() endLighting(E.cur) end)
+SPeditor.Hook("PreDrawHUD", "SPeditor.EngineFrame", function() endLighting(E.cur) end)
 
 -- Take the shot frame from the screen. Called from PostRender (before the interface is drawn)
 -- by everyone who uses the frame; a repeated call in the same frame does nothing.
@@ -481,7 +481,7 @@ function R.FinishEngineFrame()
 	local bg = SPeditor.UI and SPeditor.UI.PAL and SPeditor.UI.PAL.BORDER
 	render.Clear(bg and bg.r or 34, bg and bg.g or 32, bg and bg.b or 33, 255, true, true)
 end
-hook.Add("PostRender", "SPeditor.EngineFrame", function() R.FinishEngineFrame() end)
+SPeditor.Hook("PostRender", "SPeditor.EngineFrame", function() R.FinishEngineFrame() end)
 
 -- Size of the screen part from which a frame with the proportions aspect is taken
 function R.EngineCropSize(aspect)

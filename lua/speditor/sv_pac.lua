@@ -110,7 +110,7 @@ function S.PACRestore(ent, saved)
 end
 
 -- a player who joins later gets the outfits of every editor object
-hook.Add("PlayerInitialSpawn", "SPeditor.PAC", function(ply)
+SPeditor.Hook("PlayerInitialSpawn", "SPeditor.PAC", function(ply)
 	timer.Simple(5, function()
 		if not IsValid(ply) then return end
 		for _, objs in pairs(S.Owned) do

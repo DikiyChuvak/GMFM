@@ -56,7 +56,7 @@ elseif next(C.hudHide) == nil and hudRestoreValue() then
 	RunConsoleCommand("cl_drawhud", hudRestoreValue())
 	file.Delete(HUD_FILE)
 end
-hook.Add("ShutDown", "SPeditor.RestoreHUD", function()
+SPeditor.Hook("ShutDown", "SPeditor.RestoreHUD", function()
 	if next(C.hudHide) ~= nil then
 		C.hudHide = {}
 		RunConsoleCommand("cl_drawhud", hudRestoreValue() or "1")
@@ -80,13 +80,13 @@ local function setLocalShadows(hide)
 end
 
 local nextShadowFix = 0
-hook.Add("Think", "SPeditor.NoPlayerShadow", function()
+SPeditor.Hook("Think", "SPeditor.NoPlayerShadow", function()
 	if not C.active or RealTime() < nextShadowFix then return end
 	nextShadowFix = RealTime() + 1.5
 	setLocalShadows(true)
 end)
 
-hook.Add("SPeditor_StateChanged", "SPeditor.Entry", function(on)
+SPeditor.Hook("SPeditor_StateChanged", "SPeditor.Entry", function(on)
 	setLocalShadows(on)
 	if on then
 		C.InitCamera()
@@ -107,7 +107,7 @@ end)
 ---------------------------------------------------------------------
 -- Q menu: a separate SPeditor category (next to Tools)
 ---------------------------------------------------------------------
-hook.Add("PopulateToolMenu", "SPeditor.QMenu", function()
+SPeditor.Hook("PopulateToolMenu", "SPeditor.QMenu", function()
 	-- 16x16 tab icon: materials/speditor/icon16.png
 	spawnmenu.AddToolTab("SPeditor", "SPeditor", "speditor/icon16.png")
 
@@ -162,18 +162,18 @@ list.Set("DesktopWindows", "SPeditor", {
 	end,
 })
 
-hook.Add("PlayerBindPress", "SPeditor.BlockUndo", function(_, bind)
+SPeditor.Hook("PlayerBindPress", "SPeditor.BlockUndo", function(_, bind)
 	if not C.active then return end
 	if bind == "gmod_undo" or bind == "undo" then return true end
 end)
 
-hook.Add("ShouldDrawLocalPlayer", "SPeditor.HideLocalPlayer", function()
+SPeditor.Hook("ShouldDrawLocalPlayer", "SPeditor.HideLocalPlayer", function()
 	if C.active then return false end
 end)
-hook.Add("PrePlayerDraw", "SPeditor.HidePlayerModel", function(ply)
+SPeditor.Hook("PrePlayerDraw", "SPeditor.HidePlayerModel", function(ply)
 	if C.active and ply == LocalPlayer() then return true end
 end)
-hook.Add("PreDrawViewModel", "SPeditor.HideViewModel", function()
+SPeditor.Hook("PreDrawViewModel", "SPeditor.HideViewModel", function()
 	if C.active then return true end
 end)
 
@@ -182,12 +182,12 @@ local HIDE = {
 	CHudSecondaryAmmo = true, CHudWeaponSelection = true, CHudDamageIndicator = true,
 	CHudZoom = true, CHudSuitPower = true, CHudHistoryResource = true,
 }
-hook.Add("HUDShouldDraw", "SPeditor.HideHUD", function(name)
+SPeditor.Hook("HUDShouldDraw", "SPeditor.HideHUD", function(name)
 	if C.active and HIDE[name] then return false end
 end)
 
 C.spawnHistory = C.spawnHistory or {}
-hook.Add("SPeditor_ObjectSpawned", "SPeditor.TrackSpawn", function(ent)
+SPeditor.Hook("SPeditor_ObjectSpawned", "SPeditor.TrackSpawn", function(ent)
 	if IsValid(ent) then
 		table.insert(C.spawnHistory, ent)
 	end
@@ -233,7 +233,7 @@ local ACTIONS = {
 	list_paste = function() C.PasteObjects() end,
 }
 
-hook.Add("Think", "SPeditor.Hotkeys", function()
+SPeditor.Hook("Think", "SPeditor.Hotkeys", function()
 	if not C.active then return end
 	-- every key is polled each frame, so that a press made while typing does not fire later
 	local fired = {}

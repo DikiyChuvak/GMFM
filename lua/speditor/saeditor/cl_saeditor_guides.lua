@@ -148,6 +148,8 @@ UI.AddGuide({ id = "sa_keys", order = 10, icon = "icon16/key.png", title = { en 
 		"Изменили позу, а она откатилась, когда головка сдвинулась? На кадре не было ключа: без автоключа правка между ключами не сохраняется. Нажмите K (или включите автоключ) до того, как двигать головку." },
 	{ "result", "Motion from a few poses; the timeline shows where every object has its keys.",
 		"Движение из нескольких поз; таймлайн показывает, где у каждого объекта ключи." },
+	{ "see", "first_anim", "a first animation from start to video", "первая анимация от начала до видео" },
+	{ "see", "sa_curves", "how objects move between keys, smooth motion", "как объект движется между ключами, плавность" },
 } })
 
 UI.AddGuide({ id = "sa_curves", order = 11, icon = "icon16/chart_curve.png", title = { en = "How objects move between keys (curves)", ru = "Как объект движется между ключами (кривые)" }, blocks = {
@@ -163,6 +165,18 @@ UI.AddGuide({ id = "sa_curves", order = 11, icon = "icon16/chart_curve.png", tit
 		ru = { "ПКМ по ключу на таймлайне → Движение к следующему ключу, или выделите ключ в редакторе кривых и нажмите одну из кнопок вверху.",
 			"«Непрерывно» (сплайн, так ставится каждый новый ключ) проходит ключи не останавливаясь — движение перетекает из позы в позу, как в SFM и Blender. «Плавно» останавливается на каждом ключе; «Равномерно» — механизмам и панорамам камеры; «Разгон» — падению, броску; «Торможение» — приходу, приземлению; «Скачком» — склейкам и переключениям.",
 			"В «Ещё…» — выразительные виды: «С замахом» (замах и перелёт), «Упруго» (пружина), «С подскоками» (мяч об пол), «Мягко» и «Резко»." } },
+	{ "h", "Smooth motion without stops", "Плавное движение без остановок" },
+	{ "p", "If a character stops at every pose and only then goes on, its keys have the motion Ease (stops at keys) — older scenes and some ready moves use it. Two commands fix it in Edit → Animation:",
+		"Если персонаж останавливается в каждой позе и только потом едет дальше, у его ключей движение «Плавно, с остановкой» — так сделаны старые сцены и некоторые готовые движения. В Правка → Анимация это исправляют две команды:" },
+	{ "steps",
+		en = { "Make the whole animation smooth (continuous keys): every key of every object becomes Continuous at once. Hold keys (jump cuts) stay. One Ctrl + Z takes it back.",
+			"New keys move → Continuous / Ease / Linear / Hold: what every new key gets. Continuous is the default; a key that is already there keeps its own motion when you key it again." },
+		ru = { "«Сделать всю анимацию плавной (непрерывные ключи)»: все ключи всех объектов разом становятся «Непрерывно». Ключи «Скачком» (резкие склейки) остаются. Одно Ctrl + Z возвращает всё.",
+			"«Движение новых ключей» → Непрерывно / Плавно, с остановкой / Равномерно / Скачком: что получает каждый новый ключ. По умолчанию — «Непрерывно»; ключ, который уже есть, при повторной установке сохраняет своё движение." } },
+	{ "img", "speditor/help/smooth_menu.jpg", "Edit → Animation: New keys move and Make the whole animation smooth.",
+		"Правка → Анимация: «Движение новых ключей» и «Сделать всю анимацию плавной»." },
+	{ "tip", "Continuous keys follow the poses around them, so a key far from the others can make the motion swing past it. Add a key in between, or give that one key Ease.",
+		"Непрерывные ключи учитывают соседние позы, поэтому ключ, далёкий от остальных, может дать заброс движения мимо него. Добавьте ключ посередине или дайте этому ключу «Плавно, с остановкой»." },
 	{ "h", "The curve editor", "Редактор кривых" },
 	{ "img", "speditor/help/curves.jpg", "Every line is one value of the selected bone or object over time (X Y Z — place, P Yw R — turn). Here a recorded hand: with Continuous keys the lines pass through the points without breaks. The strip at the bottom shows how the selected key moves, in words and with a ball.",
 		"Каждая линия — одно значение выделенной кости или объекта во времени (X Y Z — место, P Yw R — поворот). Здесь записанная кисть: с непрерывными ключами линии проходят через точки без изломов. Полоса внизу показывает, как движется выбранный ключ — словами и шариком." },
@@ -177,6 +191,8 @@ UI.AddGuide({ id = "sa_curves", order = 11, icon = "icon16/chart_curve.png", tit
 		"Своя кривая: ручка выше верхней линии (следующего ключа) даёт перелёт — хорошо для удара, поворота головы, упругой остановки." },
 	{ "result", "Motion with weight: slow starts, soft stops and overshoots where you want them.",
 		"Движение с весом: медленный старт, мягкие остановки и перелёты там, где нужно." },
+	{ "see", "sa_motion", "change a whole stretch at once", "правка целого отрезка" },
+	{ "see", "sa_bones", "a rhythm of its own for every bone", "свой ритм для каждой кости" },
 	{ "try", "Open the Curve editor", "Открыть редактор кривых", fn = function() SA.OpenCurves() end },
 } })
 
@@ -234,6 +250,7 @@ UI.AddGuide({ id = "sa_motion", order = 11.5, icon = "icon16/time.png", title = 
 		"Одна правка меняет секунды анимации и мягко вплетается в то, что вокруг." },
 	{ "p", "See it in the example scene demo_a07 (Help → How to use → Example scenes): the hero's head turn to the ball is one such edit.",
 		"Посмотрите в сцене-примере demo_a07 (Справка → Как пользоваться → Сцены-примеры): поворот головы героя к мячу — одна такая правка." },
+	{ "see", "sa_curves", "how the motion between keys is shaped", "как движение между ключами получает форму" },
 	{ "try", "Open the time selection menu", "Открыть меню выделения времени", fn = function() SA.TimeSelMenu(math.floor(SA.frame + 0.5)) end },
 } })
 
@@ -256,6 +273,8 @@ UI.AddGuide({ id = "sa_bones", order = 12, icon = "icon16/arrow_branch.png", tit
 		"Призраки включены: рука на ключе перед головкой полупрозрачная синяя, на ключе после неё — зелёная. Внизу — строка выделенной кости." },
 	{ "p", "The grey figure button of the timeline shows the selected character at its previous and next keys, so you see where the motion comes from and goes to without scrubbing.",
 		"Кнопка с серой фигурой на таймлайне показывает выделенного персонажа на предыдущем и следующем ключах — видно, откуда и куда идёт движение, без перемотки." },
+	{ "see", "sa_keys", "keys and the timeline", "ключи и таймлайн" },
+	{ "see", "posing", "IK, stretch, locks", "IK, растяжение, замки" },
 	{ "result", "Layered animation: separate rhythms for the arms, the head and the body, and the neighbouring poses always in sight.",
 		"Слоёная анимация: свой ритм у рук, головы и тела, а соседние позы всегда перед глазами." },
 } })
@@ -287,6 +306,8 @@ UI.AddGuide({ id = "sa_cuts", order = 13, icon = "icon16/camera_go.png", title =
 	{ "h", "Walking around the scene", "Ходить по сцене" },
 	{ "p", "The eye button of the timeline (File → Watch in the game → Walk around the scene): the animation plays while you walk around it yourself, with your HUD and weapon, and look at it from any side. Backspace stops it.",
 		"Кнопка с глазом на таймлайне (Файл → Смотреть в игре → Ходить по сцене): анимация идёт, а вы сами ходите вокруг неё, с HUD и оружием, и смотрите с любой стороны. Backspace — стоп." },
+	{ "see", "camera", "cameras, look-at, recording a camera", "камеры, слежение, запись камеры" },
+	{ "see", "sa_render", "render the shots to a video", "рендер планов в видео" },
 	{ "result", "The animation watched in the game as a finished film, with its camera changes — and rendered to video the same way.",
 		"Анимация смотрится в игре как готовый фильм со сменами камер — и так же рендерится в видео." },
 } })
@@ -309,8 +330,31 @@ UI.AddGuide({ id = "sa_rec", order = 12.5, icon = "icon16/webcam.png", title = {
 			"Правьте как любую анимацию: удалите лишние ключи, поправьте позу (с ключами костей — одну руку), добавьте камеры и смены камер, запишите поверх ещё один дубль." } },
 	{ "img", "speditor/help/rec_result.jpg", "A recorded take: the player with a crowbar and a citizen with an SMG, keyed every 2 frames; the tracer and the explosion are effect objects, the shot is a sound from the player.",
 		"Записанный дубль: игрок с монтировкой и гражданин с SMG, ключ каждые 2 кадра; трассер и взрыв — объекты-эффекты, выстрел — звук от игрока." },
-	{ "p", "What is not recorded: fingers (the hands keep their rest grip), the faces of the actors, effects the engine draws by itself (bullet holes, the muzzle flashes of HL2 weapons), and an NPC whose body the game removes on death is simply hidden after its last frame. Ragdolls of dead NPCs that stay on the server are followed.",
-		"Что не записывается: пальцы (кисти остаются в исходном хвате), лица актёров, эффекты, которые движок рисует сам (следы от пуль, вспышки выстрелов оружия HL2), а NPC, чьё тело игра убирает после смерти, просто скрывается после своего последнего кадра. Рэгдоллы убитых NPC, которые остаются на сервере, записываются дальше." },
+	{ "p", "What is not recorded: fingers (the hands keep their rest grip), the faces of the actors, and effects the engine draws by itself (bullet holes, the muzzle flashes of HL2 weapons).",
+		"Что не записывается: пальцы (кисти остаются в исходном хвате), лица актёров и эффекты, которые движок рисует сам (следы от пуль, вспышки выстрелов оружия HL2)." },
+	{ "h", "NPC wars: deaths are recorded as falling ragdolls", "Войны NPC: смерти записываются падающими рэгдоллами" },
+	{ "img", "speditor/help/rec_death.jpg", "A citizen shot during a take: frame 240 alive, 248 he folds, 256 the hit throws him back, 290 he lies where he fell — all of it keys of the animation.",
+		"Гражданин, застреленный во время дубля: кадр 240 жив, 248 оседает, 256 удар отбрасывает его, 290 он лежит там, где упал, — всё это ключи анимации." },
+	{ "steps",
+		en = { "Spawn the two sides: for example Combine soldiers and rebels (spawn menu → NPCs), far enough apart, and give them weapons (the weapon choice of the NPCs tab of the spawn menu).",
+			"Stand where you can see the fight. In Record gameplay keep Record the NPCs around and Killed NPCs fall as ragdolls on; set the radius so that everybody is inside it (the radius is around you).",
+			"Start recording and let them fight (you can join in). Every NPC that dies keeps going as a ragdoll: the fall, the roll down the stairs, where the body ends up.",
+			"Stop with Backspace. Each NPC is a ragdoll of the scene with its weapon; after its death the same ragdoll plays the fall. Re-shoot the fight from scene cameras, add camera cuts, render.",
+			"Too many NPCs make the game slow, and the take with them: start with 4–8 per side." },
+		ru = { "Заспавньте две стороны: например, солдат Альянса и повстанцев (меню спавна → NPC) на расстоянии друг от друга и дайте им оружие (выбор оружия на вкладке NPC меню спавна).",
+			"Встаньте так, чтобы видеть бой. В «Записи игры» оставьте включёнными «Записывать NPC вокруг» и «Убитые NPC падают рэгдоллами»; радиус выберите такой, чтобы все были внутри (радиус — вокруг вас).",
+			"Начните запись и дайте им сражаться (можно и самому). Каждый погибший NPC продолжает двигаться как рэгдолл: падение, кувырок по лестнице, место, где осталось тело.",
+			"Остановите Backspace. Каждый NPC — рэгдолл сцены со своим оружием; после смерти тот же рэгдолл проигрывает падение. Переснимите бой камерами сцены, добавьте смены камер, отрендерите.",
+			"Слишком много NPC замедляет игру, а с ней и дубль: начните с 4–8 на сторону." } },
+	{ "p", "How it works: normally Garry's Mod makes the body of a killed NPC only on your screen (a client ragdoll), and the editor cannot see it — such an NPC used to just disappear after its death. For the take the editor switches Keep corpses (ai_serverragdolls) on, so the bodies are real ragdolls of the server, records them and afterwards puts the setting back and removes the extra bodies from the map — the scene has its own copies. Turn Killed NPCs fall as ragdolls off to get the old behaviour.",
+		"Как это работает: обычно Garry's Mod создаёт тело убитого NPC только на вашем экране (клиентский рэгдолл), и редактор его не видит — раньше такой NPC просто исчезал после смерти. На время дубля редактор включает Keep corpses (ai_serverragdolls), тела становятся настоящими рэгдоллами сервера, записываются, а потом настройка возвращается, а лишние тела убираются с карты — у сцены есть свои копии. Выключите «Убитые NPC падают рэгдоллами», чтобы было как раньше." },
+	{ "tip", "An NPC dissolved by a combine ball leaves no body at all; it is hidden after its last frame.",
+		"NPC, растворённый энергошаром Альянса, не оставляет тела вовсе — он скрывается после своего последнего кадра." },
+	{ "h", "Your view as a camera, doors", "Ваш вид как камера, двери" },
+	{ "img", "speditor/help/rec_view.jpg", "Left: the camera DikiyChuvak view (rec) — what the player saw, the door opening in front of him; right: a scene camera shows the recorded player at the same frame. The door was spawned with a tool and opens in the animation as it did in the game.",
+		"Слева: камера DikiyChuvak view (rec) — то, что видел игрок, дверь открывается перед ним; справа: камера сцены показывает записанного игрока на том же кадре. Дверь заспавнена инструментом и открывается в анимации так же, как в игре." },
+	{ "p", "Record my view as a camera is on by default. Your look, turns and zoom become keys of the camera <your name> view (rec); with no camera cuts yet the video goes through it at once, so you can render right after the take. Your body, what you hold and PAC3 outfits are not drawn in that camera, as in the game; from other cameras they are seen as usual. Doors, lifts and buttons you used — of the map or spawned by tools and addons — move in the animation at the same moments.",
+		"«Записать мой вид как камеру» включено по умолчанию. Взгляд, повороты и зум становятся ключами камеры <ваш ник> view (rec); если смен камер ещё нет, видео сразу идёт через неё — можно рендерить сразу после дубля. Ваше тело, то, что в руках, и наряды PAC3 в этой камере не рисуются, как в игре; с других камер всё видно как обычно. Двери, лифты и кнопки, которыми вы пользовались, — карты или заспавненные инструментами и аддонами, — двигаются в анимации в те же моменты." },
 	{ "h", "Physics of ragdolls and props", "Физика регдоллов и пропов" },
 	{ "steps",
 		en = { "Record physics only: select ragdolls or props (nothing selected — all of them), put the playhead where the fall starts and press Record physics only (stay in the editor). They are let go and fall, roll and collide; Stop (or Backspace) writes their keys from that frame on.",
@@ -321,6 +365,8 @@ UI.AddGuide({ id = "sa_rec", order = 12.5, icon = "icon16/webcam.png", title = {
 			"Ключи пишутся на сами объекты (их прежние ключи внутри дубля заменяются). Закреплённые и привязанные объекты не двигаются." } },
 	{ "result", "A scene that plays like your gameplay, ready to be re-shot from scene cameras and rendered.",
 		"Сцена, которая играет как ваша игра, — её можно переснять камерами сцены и отрендерить." },
+	{ "see", "sa_cuts", "re-shoot the take with scene cameras", "переснять дубль камерами сцены" },
+	{ "see", "sa_render", "render it to a video", "отрендерить в видео" },
 	{ "try", "Open Record gameplay", "Открыть «Запись игры»", fn = function() SA.OpenRecord() end },
 } })
 
@@ -337,6 +383,7 @@ UI.AddGuide({ id = "sa_face", order = 14, icon = "icon16/emoticon_smile.png", ti
 			"ПКМ по полосе звука → Липсинк → для персонажа.",
 			"Рот следует фонемам, записанным в файле (они есть у голосов игр Valve), или громкости звука. Ключи ложатся на строку «Лицо»; остальное лицо не трогается.",
 			"Слишком сильно или слабо: Липсинк → Насколько открывается рот, затем повторите." } },
+	{ "see", "sa_keys", "keys and the timeline", "ключи и таймлайн" },
 	{ "result", "A talking character in one click per line.", "Говорящий персонаж за один щелчок на реплику." },
 } })
 
@@ -351,6 +398,8 @@ UI.AddGuide({ id = "sa_import", order = 15, icon = "icon16/film_add.png", title 
 			"Импорт анимации модели… (кнопка с плёнкой): все анимации модели и моделей игрока, с поиском. Ключ каждые N кадров; Повторов; Скорость; Двигать персонажа — персонаж действительно идёт.",
 			"Запечённые ключи правятся как любые другие: измените позу на ключе, удалите ключи, согните кривые." } },
 	{ "img", "speditor/help/import.jpg", "Import model animation.", "Импорт анимации модели." },
+	{ "see", "sa_curves", "make imported motion smoother or sharper", "сделать импортированное движение плавнее или резче" },
+	{ "see", "sa_motion", "adjust an imported stretch at once", "поправить импортированный отрезок разом" },
 	{ "result", "A living character in seconds, ready to be fine-tuned.", "Живой персонаж за секунды, которого остаётся только подправить." },
 } })
 
@@ -363,6 +412,7 @@ UI.AddGuide({ id = "sa_proc", order = 16, icon = "icon16/heart.png", title = { e
 			"Move the sliders; Play to see it.", "Switch off removes it." },
 		ru = { "ПКМ по объекту → Анимация → Процедурное движение… (или кнопка с сердцем на таймлайне).",
 			"Двигайте ползунки; «Запустить, чтобы увидеть» — посмотреть.", "«Выключить» убирает его." } },
+	{ "see", "sa_face", "faces and lip sync", "лица и липсинк" },
 	{ "result", "Characters that never freeze between keys.", "Персонажи, которые не застывают между ключами." },
 } })
 
@@ -390,6 +440,18 @@ UI.AddGuide({ id = "sa_render", order = 17, icon = "icon16/film_save.png", title
 			"Окно следует за загруженной сценой: после загрузки другой сцены кадры, камеры видео и имя файла (если его поле пустое) — уже её; закрывать окно или перезаходить на карту не нужно." } },
 	{ "img", "speditor/help/render_anim.jpg", "The Animation tab of the Render window: frames, the video file, video settings, motion blur and the four shots of demo_a07.",
 		"Вкладка «Анимация» окна «Рендер»: кадры, видеофайл, настройки видео, размытие движения и четыре плана demo_a07." },
+	{ "h", "When the render is done", "Когда рендер готов" },
+	{ "img", "speditor/help/render_done.jpg", "The Render finished window: the path of the file with Copy path, what to do with .avi.dat, and Where are my files.",
+		"Окно «Рендер готов»: путь к файлу с кнопкой «Копировать путь», что делать с .avi.dat и «Где мои файлы»." },
+	{ "steps",
+		en = { "Copy path puts the path into the clipboard. In Steam: Library → Garry's Mod → right click → Manage → Browse local files, then open garrysmod/data/speditor/renders.",
+			"Rename <name>.avi.dat to <name>.avi (in Windows turn on View → File name extensions to see the .dat). VLC plays the file even with .dat.",
+			"Don't want the window after every render? Untick Show after every render — the notification and File → Where are my files stay." },
+		ru = { "«Копировать путь» кладёт путь в буфер обмена. В Steam: Библиотека → Garry's Mod → ПКМ → Управление → Просмотреть локальные файлы, затем откройте garrysmod/data/speditor/renders.",
+			"Переименуйте <имя>.avi.dat в <имя>.avi (в Windows включите Вид → Расширения имён файлов, чтобы видеть .dat). VLC играет файл и с .dat.",
+			"Не нужно окно после каждого рендера? Снимите «Показывать после каждого рендера» — уведомление и Файл → «Где мои файлы» останутся." } },
+	{ "tip", "A scene with effects: keep Slow the game down for effects on (the Animation tab). The game then runs slowed during the render, so particles are exact in every frame instead of twitching, and Emitter / Lua effects keep the speed of the video. The game speed comes back by itself when the render ends.",
+		"Сцена с эффектами: оставьте включённым «Замедлять игру для эффектов» (вкладка «Анимация»). Тогда на время рендера игра замедляется, и частицы точны в каждом кадре, а не дёргаются, а эффекты Emitter / Lua идут со скоростью видео. Скорость игры возвращается сама, когда рендер заканчивается." },
 	{ "result", "garrysmod/data/speditor/renders/<name>.avi.dat (or garrysmod/videos/<name>.webm) — the finished film.", "garrysmod/data/speditor/renders/<имя>.avi.dat (или garrysmod/videos/<имя>.webm) — готовый фильм." },
 	{ "try", "Open the Render window", "Открыть окно «Рендер»", fn = function() UI.OpenRenderDialog() end },
 } })
@@ -405,5 +467,6 @@ UI.AddGuide({ id = "sa_smh", order = 18, icon = "icon16/arrow_switch.png", title
 		ru = { "Файл → Stop Motion Helper…: перечислены сохранения игры и аддонов.",
 			"Выделите объект сцены, выберите сохранение и объект в нём; «Взять на объект».",
 			"«Записать сохранение SMH» записывает выделенные объекты как сохранение, которое загрузит SMH." } },
+	{ "see", "adopt", "your dupes and saves", "свои дупы и сейвы" },
 	{ "result", "Old SMH animations continue in SAeditor, and back.", "Старые анимации SMH продолжаются в SAeditor — и обратно." },
 } })

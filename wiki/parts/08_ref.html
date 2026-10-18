@@ -82,7 +82,7 @@
 
 <!-- ============================================================ LANGUAGES -->
 <section class="page" id="pg-languages" data-group="files" data-en="Languages" data-ru="Языки">
-  <h1><span class="l-en">Interface languages</span><span class="l-ru">Языки интерфейса</span> <span class="badge new">new</span></h1>
+  <h1><span class="l-en">Interface languages</span><span class="l-ru">Языки интерфейса</span></h1>
   <p class="lede l-en">English and Russian are built in. Other languages come from the community as language packs: small addons that anyone can make and share in the Workshop.</p>
   <p class="lede l-ru">Английский и русский встроены. Другие языки делает сообщество — это языковые пакеты: небольшие аддоны, которые может сделать и выложить в Workshop кто угодно.</p>
   <ul class="l-en">
@@ -170,8 +170,8 @@
     <tr><th><span class="l-en">Command</span><span class="l-ru">Команда</span></th><th><span class="l-en">Action</span><span class="l-ru">Действие</span></th></tr>
     <tr><td><code>speditor_toggle</code></td><td class="wrap"><span class="l-en">Open or close the editor</span><span class="l-ru">Открыть или закрыть редактор</span></td></tr>
     <tr><td><code>speditor_render</code></td><td class="wrap"><span class="l-en">Render with the current settings</span><span class="l-ru">Рендер с текущими настройками</span></td></tr>
-    <tr><td><code>speditor_lang_template &lt;code&gt;</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Write a translation template to data/speditor/lang (<a href="#languages">languages</a>)</span><span class="l-ru">Записать шаблон перевода в data/speditor/lang (<a href="#languages">языки</a>)</span></td></tr>
-    <tr><td><code>speditor_lang_missing &lt;code&gt;</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">List the strings a language has not translated yet</span><span class="l-ru">Показать строки, которые язык ещё не перевёл</span></td></tr>
+    <tr><td><code>speditor_lang_template &lt;code&gt;</code></td><td class="wrap"><span class="l-en">Write a translation template to data/speditor/lang (<a href="#languages">languages</a>)</span><span class="l-ru">Записать шаблон перевода в data/speditor/lang (<a href="#languages">языки</a>)</span></td></tr>
+    <tr><td><code>speditor_lang_missing &lt;code&gt;</code></td><td class="wrap"><span class="l-en">List the strings a language has not translated yet</span><span class="l-ru">Показать строки, которые язык ещё не перевёл</span></td></tr>
     <tr><td><code>saeditor_record</code> · <code>saeditor_record_stop</code></td><td class="wrap"><span class="l-en">Start / stop recording gameplay</span><span class="l-ru">Начать / остановить запись игры</span></td></tr>
     <tr><td><code>saeditor_show</code> [<code>eyes</code>] · <code>_stop</code> · <code>_toggle</code></td><td class="wrap"><span class="l-en">Play the animation in the game (the player; <code>eyes</code> — walk around the scene)</span><span class="l-ru">Проиграть анимацию в игре (плеер; <code>eyes</code> — прогулка по сцене)</span></td></tr>
   </table></div>
@@ -201,17 +201,23 @@
     <tr><td><code>speditor_ase_tree</code> · <code>speditor_ase_nonphys</code> · <code>speditor_ase_merged</code></td><td class="wrap"><span class="l-en">Object tree: groups / skeleton / objects only; the skeleton shows bones without physics, bonemerged models</span><span class="l-ru">Дерево объектов: группы / скелет / только объекты; скелет показывает кости без физики, модели на бонмёрдже</span></td></tr>
     <tr><td><code>speditor_browser_sort</code></td><td class="wrap"><span class="l-en">Order of the addons in the Model Browser</span><span class="l-ru">Порядок аддонов в браузере моделей</span></td></tr>
     <tr><td><code>speditor_ragdoll_guard</code></td><td class="wrap"><span class="l-en">Server: hold the pose of the editor's ragdolls against addons that unfreeze them (1 / 0)</span><span class="l-ru">Сервер: держать позу рэгдоллов редактора против аддонов, которые их размораживают (1 / 0)</span></td></tr>
-    <tr><td><code>speditor_ik</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">IK keeps the feet planted (1 by default)</span><span class="l-ru">IK держит стопы на месте (по умолчанию 1)</span></td></tr>
-    <tr><td><code>speditor_stretch</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Stretch: Move takes a bone away from its parent (T)</span><span class="l-ru">Растяжение: перемещение уводит кость от родителя (T)</span></td></tr>
-    <tr><td><code>speditor_vp_look</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Render look of the Primary Viewport</span><span class="l-ru">Вид рендера в основном вьюпорте</span></td></tr>
-    <tr><td><code>speditor_ssao</code> · <code>_radius</code> · <code>_strength</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Ambient occlusion, its radius and strength</span><span class="l-ru">Затенение окружения, его радиус и сила</span></td></tr>
-    <tr><td><code>speditor_shadow_onlylights</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Scene objects keep only the shadows of the editor's lights (1 by default)</span><span class="l-ru">Объекты сцены отбрасывают только тени от света редактора (по умолчанию 1)</span></td></tr>
-    <tr><td><code>speditor_ui_snd_click</code> · <code>_back</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Your own interface click and window-close sounds</span><span class="l-ru">Свои звуки клика и закрытия окна</span></td></tr>
-    <tr><td><code>saeditor_render_video</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Video file: avi / webm (Windows)</span><span class="l-ru">Видеофайл: avi / webm (Windows)</span></td></tr>
-    <tr><td><code>saeditor_rec_phys</code> · <code>saeditor_rec_view</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Record gameplay: physics of the scene (0 off, 1 selected, 2 all); your view as a camera (0/1)</span><span class="l-ru">Запись игры: физика сцены (0 выкл., 1 выделенные, 2 все); ваш вид как камера (0/1)</span></td></tr>
+    <tr><td><code>speditor_report</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Open Report a problem: a report for the developer to copy</span><span class="l-ru">Открыть «Сообщить о проблеме»: отчёт для разработчика</span></td></tr>
+    <tr><td><code>speditor_selftest</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Self-test: the editor tries its main tools by itself (empty scene, about 2 minutes)</span><span class="l-ru">Самопроверка: редактор сам пробует основные инструменты (пустая сцена, около 2 минут)</span></td></tr>
+    <tr><td><code>speditor_render_done_window</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Show the Render finished window after a render (1 by default)</span><span class="l-ru">Показывать окно «Рендер готов» после рендера (по умолчанию 1)</span></td></tr>
+    <tr><td><code>saeditor_ease_new</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Motion of new keys: spline / ease / linear / hold</span><span class="l-ru">Движение новых ключей: spline / ease / linear / hold</span></td></tr>
+    <tr><td><code>saeditor_render_slowfx</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Slow the game down while an animation with effects renders (1 by default)</span><span class="l-ru">Замедлять игру при рендере анимации с эффектами (по умолчанию 1)</span></td></tr>
+    <tr><td><code>saeditor_rec_corpses</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Record gameplay: killed NPCs fall as ragdolls (1 by default)</span><span class="l-ru">Запись игры: убитые NPC падают рэгдоллами (по умолчанию 1)</span></td></tr>
+    <tr><td><code>speditor_ik</code></td><td class="wrap"><span class="l-en">IK keeps the feet planted (1 by default)</span><span class="l-ru">IK держит стопы на месте (по умолчанию 1)</span></td></tr>
+    <tr><td><code>speditor_stretch</code></td><td class="wrap"><span class="l-en">Stretch: Move takes a bone away from its parent (T)</span><span class="l-ru">Растяжение: перемещение уводит кость от родителя (T)</span></td></tr>
+    <tr><td><code>speditor_vp_look</code></td><td class="wrap"><span class="l-en">Render look of the Primary Viewport</span><span class="l-ru">Вид рендера в основном вьюпорте</span></td></tr>
+    <tr><td><code>speditor_ssao</code> · <code>_radius</code> · <code>_strength</code></td><td class="wrap"><span class="l-en">Ambient occlusion, its radius and strength</span><span class="l-ru">Затенение окружения, его радиус и сила</span></td></tr>
+    <tr><td><code>speditor_shadow_onlylights</code></td><td class="wrap"><span class="l-en">Scene objects keep only the shadows of the editor's lights (1 by default)</span><span class="l-ru">Объекты сцены отбрасывают только тени от света редактора (по умолчанию 1)</span></td></tr>
+    <tr><td><code>speditor_ui_snd_click</code> · <code>_back</code></td><td class="wrap"><span class="l-en">Your own interface click and window-close sounds</span><span class="l-ru">Свои звуки клика и закрытия окна</span></td></tr>
+    <tr><td><code>saeditor_render_video</code></td><td class="wrap"><span class="l-en">Video file: avi / webm (Windows)</span><span class="l-ru">Видеофайл: avi / webm (Windows)</span></td></tr>
+    <tr><td><code>saeditor_rec_phys</code> · <code>saeditor_rec_view</code></td><td class="wrap"><span class="l-en">Record gameplay: physics of the scene (0 off, 1 selected, 2 all); your view as a camera (0/1)</span><span class="l-ru">Запись игры: физика сцены (0 выкл., 1 выделенные, 2 все); ваш вид как камера (0/1)</span></td></tr>
     <tr><td><code>saeditor_render_mode</code> · <code>_quality</code> · <code>_samples</code> · <code>_settle</code></td><td class="wrap"><span class="l-en">Animation render: anim / frame (the tab of the Render window), video size, passes, longest wait for the scene</span><span class="l-ru">Рендер анимации: anim / frame (вкладка окна рендера), размер видео, проходы, максимальное ожидание сцены</span></td></tr>
     <tr><td><code>saeditor_render_fps</code></td><td class="wrap"><span class="l-en">Video frame rate (0 — as the animation)</span><span class="l-ru">Частота кадров видео (0 — как у анимации)</span></td></tr>
-    <tr><td><code>saeditor_render_mblur</code> · <code>_shutter</code> <span class="badge new">new</span></td><td class="wrap"><span class="l-en">Motion blur: moments a frame (0 — off), the part of a frame the shutter is open (0.5 = 180°)</span><span class="l-ru">Размытие движения: моментов на кадр (0 — выкл.), доля кадра, когда затвор открыт (0,5 = 180°)</span></td></tr>
+    <tr><td><code>saeditor_render_mblur</code> · <code>_shutter</code></td><td class="wrap"><span class="l-en">Motion blur: moments a frame (0 — off), the part of a frame the shutter is open (0.5 = 180°)</span><span class="l-ru">Размытие движения: моментов на кадр (0 — выкл.), доля кадра, когда затвор открыт (0,5 = 180°)</span></td></tr>
     <tr><td><code>saeditor_bone_keys</code> · <code>saeditor_ghosts</code></td><td class="wrap"><span class="l-en">Bone keys; ghosts of the pose at the keys around the playhead (0/1)</span><span class="l-ru">Ключи костей; призраки позы на ключах вокруг указателя (0/1)</span></td></tr>
     <tr><td><code>saeditor_lip_strength</code></td><td class="wrap"><span class="l-en">Lip sync: how wide the mouth opens (0.2 … 2)</span><span class="l-ru">Липсинк: насколько широко открывается рот (0,2 … 2)</span></td></tr>
     <tr><td><code>saeditor_rec_npcs</code> · <code>_sounds</code> · <code>_effects</code> · <code>_radius</code> · <code>_step</code></td><td class="wrap"><span class="l-en">Record gameplay: NPCs, sounds, effects, radius, a key every N frames</span><span class="l-ru">Запись игры: NPC, звуки, эффекты, радиус, ключ каждые N кадров</span></td></tr>
@@ -225,17 +231,33 @@
   <p class="lede l-en">Collected from the questions players ask in the Workshop comments.</p>
   <p class="lede l-ru">Собрано из вопросов игроков в комментариях Workshop.</p>
 
+  <h3><span class="l-en">How do I report a bug so that it gets fixed?</span><span class="l-ru">Как сообщить об ошибке, чтобы её исправили?</span> <span class="badge new">new</span></h3>
+  <p class="l-en"><span class="ui">Help → Report a problem…</span>: write what you did and what happened, press <em>Copy report</em>, then <em>Open the discussion</em> and paste it into the Bug Report thread. Run <span class="ui">Help → Self-test</span> first: its result goes into the report too (<a href="#menus">more</a>).</p>
+  <p class="l-ru"><span class="ui">Help → Report a problem…</span>: напишите, что делали и что произошло, нажмите <em>Copy report</em>, затем <em>Open the discussion</em> и вставьте отчёт в ветку Bug Report. Сначала запустите <span class="ui">Help → Self-test</span>: её результат тоже попадёт в отчёт (<a href="#menus">подробнее</a>).</p>
+  <h3><span class="l-en">Where is my video? What is .avi.dat?</span><span class="l-ru">Где моё видео? Что такое .avi.dat?</span> <span class="badge new">new</span></h3>
+  <p class="l-en">In <code>garrysmod/data/speditor/renders</code>; since a0.8 a window after the render shows the path with a copy button. The game lets addons write only a few file endings, so the video is <code>name.avi.dat</code>: rename it to <code>name.avi</code> (VLC plays it as it is). On Windows <em>Video file → WebM</em> writes a ready <code>garrysmod/videos/name.webm</code> (<a href="#sa-render">more</a>).</p>
+  <p class="l-ru">В <code>garrysmod/data/speditor/renders</code>; с a0.8 окно после рендера показывает путь с кнопкой копирования. Игра разрешает аддонам писать файлы лишь с несколькими окончаниями, поэтому видео — <code>имя.avi.dat</code>: переименуйте его в <code>имя.avi</code> (VLC играет его и так). На Windows <em>Video file → WebM</em> пишет готовый <code>garrysmod/videos/имя.webm</code> (<a href="#sa-render">подробнее</a>).</p>
+  <h3><span class="l-en">The character stops at every key</span><span class="l-ru">Персонаж останавливается на каждом ключе</span> <span class="badge new">new</span></h3>
+  <p class="l-en">Its keys have <em>Ease (stops at keys)</em>. <span class="ui">Edit → Animation → Make the whole animation smooth</span> makes every key continuous at once (<a href="#sa-curves">more</a>).</p>
+  <p class="l-ru">У его ключей движение <em>Ease (stops at keys)</em>. <span class="ui">Edit → Animation → Make the whole animation smooth</span> разом делает все ключи непрерывными (<a href="#sa-curves">подробнее</a>).</p>
+  <h3><span class="l-en">Killed NPCs vanish in my recording</span><span class="l-ru">Убитые NPC исчезают в записи</span> <span class="badge new">new</span></h3>
+  <p class="l-en">Since a0.8 they fall as ragdolls: keep <em>Killed NPCs fall as ragdolls</em> on in Record gameplay (<a href="#sa-record">more</a>).</p>
+  <p class="l-ru">С a0.8 они падают рэгдоллами: оставьте включённым <em>Killed NPCs fall as ragdolls</em> в записи игры (<a href="#sa-record">подробнее</a>).</p>
+  <h3><span class="l-en">Particle effects twitch in the video</span><span class="l-ru">Частицы в видео дёргаются</span> <span class="badge new">new</span></h3>
+  <p class="l-en">Fixed in a0.8: the game is slowed down during the render so that every frame shows the effect at its exact moment. MP4 or AVI has nothing to do with it (<a href="#sa-render">more</a>).</p>
+  <p class="l-ru">Исправлено в a0.8: на время рендера игра замедляется, и каждый кадр показывает эффект точно в его момент. MP4 или AVI тут ни при чём (<a href="#sa-render">подробнее</a>).</p>
+
   <h3><span class="l-en">The interface is huge / windows overlap on my screen</span><span class="l-ru">Интерфейс огромный / окна налезают друг на друга</span></h3>
   <p class="l-en">On screens narrower than ~1430 px the default layout of a0.3 broke. Fixed in a0.4. Until then: <span class="ui">Windows → Layout → No bottom panel</span> or arrange the windows yourself and <em>Save layout as…</em>.</p>
   <p class="l-en">Since a0.6 the size of the whole interface is set in <span class="ui">View → Interface settings → Appearance → Interface scale</span>: 50 % to 200 %, by default by the screen. The windows keep their places when it changes.</p>
   <p class="l-ru">На экранах уже ~1430 px стандартная раскладка a0.3 ломалась. Исправлено в a0.4. До тех пор: <span class="ui">Windows → Layout → No bottom panel</span> или расставьте окна сами и сохраните через <em>Save layout as…</em>.</p>
   <p class="l-ru">С a0.6 размер всего интерфейса задаётся в <span class="ui">View → Interface settings → Appearance → Interface scale</span>: от 50 % до 200 %, по умолчанию — по экрану. При смене масштаба окна остаются на своих местах.</p>
 
-  <h3><span class="l-en">Far objects look blurry in the viewport</span><span class="l-ru">Дальние объекты во вьюпорте мыльные</span> <span class="badge new">new</span></h3>
+  <h3><span class="l-en">Far objects look blurry in the viewport</span><span class="l-ru">Дальние объекты во вьюпорте мыльные</span></h3>
   <p class="l-en">Before a0.7.1 the viewports were drawn into a picture of at most 1280 × 1024 and stretched, which blurred small far objects on 1440p / 4K screens and in an enlarged viewport — fixed. If the photo button (Render look) of the viewport bar is on, the blur is the depth of field: turn it off, or move the focus.</p>
   <p class="l-ru">До a0.7.1 вьюпорты рисовались в картинку не больше 1280 × 1024 и растягивались, из-за чего мелкие дальние объекты мылились на экранах 1440p / 4K и в развёрнутом вьюпорте — исправлено. Если на панели вьюпорта включена кнопка с фотографией (вид рендера), размытие — это глубина резкости: выключите её или перенесите фокус.</p>
 
-  <h3><span class="l-en">The door I opened is not in the recorded animation</span><span class="l-ru">Открытой двери нет в записанной анимации</span> <span class="badge new">new</span></h3>
+  <h3><span class="l-en">The door I opened is not in the recorded animation</span><span class="l-ru">Открытой двери нет в записанной анимации</span></h3>
   <p class="l-en">Until a0.7.1 Record gameplay took only the doors of the map itself; doors spawned by tools and addons are recorded since a0.7.1. The door must be within the radius of the take.</p>
   <p class="l-ru">До a0.7.1 запись игры брала только двери самой карты; двери, заспавненные инструментами и аддонами, записываются с a0.7.1. Дверь должна быть в радиусе записи.</p>
 
@@ -323,7 +345,30 @@
 <!-- ============================================================ CHANGELOG -->
 <section class="page" id="pg-changelog" data-group="ref" data-en="What's new" data-ru="Что нового">
   <h1><span class="l-en">What's new</span><span class="l-ru">Что нового</span></h1>
-  <h2>a0.7.1 <span class="badge new">new</span></h2>
+  <h2>a0.8 <span class="badge new">new</span></h2>
+  <p class="l-en">Made from the Workshop comments and the Bug Report discussion, with the editor tested by itself in single player and on a multiplayer server.</p>
+  <p class="l-ru">Сделано по комментариям Workshop и обсуждению Bug Report; редактор проверен самопроверкой в одиночной игре и на мультиплеерном сервере.</p>
+  <ul class="l-en">
+    <li><strong>How to use, clearer and in more detail:</strong> sections, a search, contents, previous / next, numbered pictures, tips and <em>See also</em> links; new guides — the editor at a glance, a step-by-step film, attaching, an object's look, words of the editor, problems and answers (<a href="#menus">more</a>).</li>
+    <li><strong>NPC wars:</strong> Record gameplay keeps every killed NPC as a falling ragdoll instead of hiding it (<a href="#sa-record">more</a>).</li>
+    <li><strong>Steady particle effects in videos:</strong> the game is slowed down during the render, so every frame shows an effect at its exact moment (<a href="#sa-render">more</a>).</li>
+    <li><strong>Reliability:</strong> Report a problem (one report to copy and paste), a Self-test, and hooks that no longer break each other or other addons on an error (<a href="#menus">more</a>).</li>
+    <li><strong>Colour of one material</strong> as in SFM — clothes, hair, skin each in its own colour (<a href="#objects">more</a>).</li>
+    <li><strong>Smooth animation:</strong> <em>Make the whole animation smooth</em> and <em>New keys move</em>; <em>Smooth</em> is now called <em>Ease (stops at keys)</em> (<a href="#sa-curves">more</a>).</li>
+    <li>The <strong>Render finished</strong> window with the path of the file and what to do with .avi.dat; <em>Attach to…</em> is named <em>Attach (lock) to…</em>.</li>
+    <li>Fixed: in multiplayer, objects of a loaded scene (or a restored one) could be on the map but missing from the editor; windows grew past the edges of the screen at a big interface scale; your own body could show in the recorded view camera when the game's view sat a little behind the eyes.</li>
+  </ul>
+  <ul class="l-ru">
+    <li><strong>«Как пользоваться» понятнее и подробнее:</strong> разделы, поиск, оглавления, переходы «назад / далее», номерные метки на картинках, советы и ссылки «См. также»; новые статьи — редактор с первого взгляда, ролик шаг за шагом, привязка, вид объекта, словарь редактора, вопросы и проблемы (<a href="#menus">подробнее</a>).</li>
+    <li><strong>Войны NPC:</strong> запись игры сохраняет каждого убитого NPC падающим рэгдоллом, а не прячет его (<a href="#sa-record">подробнее</a>).</li>
+    <li><strong>Стабильные частицы в видео:</strong> на время рендера игра замедляется, и каждый кадр показывает эффект точно в его момент (<a href="#sa-render">подробнее</a>).</li>
+    <li><strong>Надёжность:</strong> «Сообщить о проблеме» (один отчёт — скопировать и вставить), самопроверка и хуки, которые при ошибке больше не ломают друг друга и другие аддоны (<a href="#menus">подробнее</a>).</li>
+    <li><strong>Цвет одного материала</strong> как в SFM — одежда, волосы, кожа каждая своим цветом (<a href="#objects">подробнее</a>).</li>
+    <li><strong>Плавная анимация:</strong> <em>Make the whole animation smooth</em> и <em>New keys move</em>; <em>Smooth</em> теперь называется <em>Ease (stops at keys)</em> (<a href="#sa-curves">подробнее</a>).</li>
+    <li>Окно <strong>Render finished</strong> с путём к файлу и подсказкой про .avi.dat; <em>Attach to…</em> теперь называется <em>Attach (lock) to…</em>.</li>
+    <li>Исправлено: в мультиплеере объекты загруженной (или восстановленной) сцены могли стоять на карте, но пропадать из редактора; окна вылезали за края экрана при крупном масштабе интерфейса; ваше тело могло попадать в записанную камеру вида, когда вид игры стоял чуть позади глаз.</li>
+  </ul>
+  <h2>a0.7.1</h2>
   <p class="l-en">A small patch made from players' comments.</p>
   <p class="l-ru">Небольшой патч по комментариям игроков.</p>
   <ul class="l-en">

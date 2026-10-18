@@ -20,7 +20,7 @@
   <p class="l-en">Switch a light between the two kinds with its <em>Type</em> control in the Animation Set Editor.</p>
   <p class="l-ru">Тип источника переключается полем <em>Type</em> в Animation Set Editor.</p>
 
-  <h3><span class="l-en">Shadows of a point light</span><span class="l-ru">Тени точечного света</span> <span class="badge new">new</span></h3>
+  <h3><span class="l-en">Shadows of a point light</span><span class="l-ru">Тени точечного света</span></h3>
   <div class="row">
     <figure class="fit"><img src="img/a07_point_shadows.jpg" alt="A point light casting shadows" style="--w:560px"></figure>
     <div style="flex:1 1 260px;min-width:0">
@@ -103,7 +103,7 @@
   <h2><span class="l-en">Shadows from spot and point lights</span><span class="l-ru">Тени от прожекторов и точечного света</span></h2>
   <dl class="defs l-en">
     <dt>Lights cast shadows</dt><dd>The master switch.</dd>
-    <dt>Objects: shadows only from spot and point lights <span class="badge new">new</span></dt><dd>On by default: while the editor is open, props and characters of the scene drop no grey blob from the map's sun, only the real shadows of your lights.</dd>
+    <dt>Objects: shadows only from spot and point lights</dt><dd>On by default: while the editor is open, props and characters of the scene drop no grey blob from the map's sun, only the real shadows of your lights.</dd>
     <dt>Shadow map quality</dt><dd>Low, Medium, High, Ultra. The engine reads it at start: after a change you may need <code>vid_restart</code> or the launch option <code>+r_flashlightdepthres 2048</code>.</dd>
     <dt>Max shadow-casting lights</dt><dd>Only the N lights nearest to the camera cast shadows. The line below shows how many cast now.</dd>
     <dt>Shadow draw distance</dt><dd>A light whose lit area is farther than this casts no shadow (0 = unlimited). Saves FPS in large scenes.</dd>
@@ -112,7 +112,7 @@
   </dl>
   <dl class="defs l-ru">
     <dt>Lights cast shadows</dt><dd>Общий выключатель.</dd>
-    <dt>Objects: shadows only from spot and point lights <span class="badge new">new</span></dt><dd>Включено по умолчанию: пока редактор открыт, пропы и персонажи сцены не бросают серое пятно от солнца карты — только настоящие тени ваших источников.</dd>
+    <dt>Objects: shadows only from spot and point lights</dt><dd>Включено по умолчанию: пока редактор открыт, пропы и персонажи сцены не бросают серое пятно от солнца карты — только настоящие тени ваших источников.</dd>
     <dt>Shadow map quality</dt><dd>Low, Medium, High, Ultra. Движок читает значение при запуске: после изменения может понадобиться <code>vid_restart</code> или параметр запуска <code>+r_flashlightdepthres 2048</code>.</dd>
     <dt>Max shadow-casting lights</dt><dd>Тени отбрасывают только N ближайших к камере источников. Строка ниже показывает, сколько их сейчас.</dd>
     <dt>Shadow draw distance</dt><dd>Источник, освещённая область которого дальше этого расстояния, теней не даёт (0 — без ограничения). Экономит FPS в больших сценах.</dd>
@@ -149,7 +149,7 @@
     <li>Двигайте и вращайте её гизмо, как любой объект.</li>
   </ul>
 
-  <h2><span class="l-en">Recording a camera</span><span class="l-ru">Запись камеры</span> <span class="badge new">new</span></h2>
+  <h2><span class="l-en">Recording a camera</span><span class="l-ru">Запись камеры</span></h2>
   <p class="l-en">A camera can record its own moves into SAeditor keys: right-click it → <em>Record this camera's moves (keys)</em>, or press the red dot on the Primary Viewport bar while you look through it. From then on every move, turn and zoom sets a key at the current frame, even with Auto key off — play the animation and fly the camera, or step through frames and frame each shot. <em>● REC</em> blinks beside its name in the viewport header. The same menu item stops it; the choice is saved with the scene.</p>
   <p class="l-ru">Камера может записывать свои движения в ключи SAeditor: ПКМ по ней → <em>Record this camera's moves (keys)</em> или красная точка на панели Primary Viewport, пока вы смотрите через неё. Теперь каждый перенос, поворот и зум ставит ключ на текущем кадре даже без Auto key — запустите анимацию и ведите камеру или шагайте по кадрам и выстраивайте каждый план. Рядом с её именем в заголовке вьюпорта мигает <em>● REC</em>. Тот же пункт меню выключает запись; выбор сохраняется со сценой.</p>
 

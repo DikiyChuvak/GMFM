@@ -58,7 +58,7 @@ end
 -- The server has to know where the editor looks from: by this point it decides which
 -- objects to send to the client (see "Visibility" in sv_speditor.lua).
 local sentPos, nextSend = nil, 0
-hook.Add("Think", "SPeditor.ViewPos", function()
+SPeditor.Hook("Think", "SPeditor.ViewPos", function()
 	if not C.active then
 		sentPos = nil
 		return
@@ -74,7 +74,7 @@ hook.Add("Think", "SPeditor.ViewPos", function()
 	net.SendToServer()
 end)
 
-hook.Add("CalcView", "SPeditor.CalcView", function()
+SPeditor.Hook("CalcView", "SPeditor.CalcView", function()
 	if not C.active then return end
 	local pos, ang, fov = C.GetView()
 	-- "engine frame": the main game frame is shot by the camera chosen in the Render window
@@ -91,7 +91,7 @@ end)
 -- Returning true cancels drawing of the world and the HUD; the interface (VGUI) is drawn as usual.
 -- The exception is the "engine frame" (cl_render.lua): in that frame the engine draws the
 -- scene, with all addon shaders, and the editor takes it from the screen.
-hook.Add("RenderScene", "SPeditor.SkipMainScene", function()
+SPeditor.Hook("RenderScene", "SPeditor.SkipMainScene", function()
 	if not C.active then return end
 	local R = SPeditor.Render
 	if R and R.BeginEngineFrame and R.BeginEngineFrame() then return end
@@ -100,14 +100,14 @@ hook.Add("RenderScene", "SPeditor.SkipMainScene", function()
 	return true
 end)
 
-hook.Add("CreateMove", "SPeditor.CreateMove", function(cmd)
+SPeditor.Hook("CreateMove", "SPeditor.CreateMove", function(cmd)
 	if not C.active then return end
 	cmd:ClearMovement()
 	cmd:ClearButtons()
 	cmd:SetImpulse(0)
 end)
 
-hook.Add("InputMouseApply", "SPeditor.MouseLook", function(_, x, y)
+SPeditor.Hook("InputMouseApply", "SPeditor.MouseLook", function(_, x, y)
 	if not C.active or not C.camMode then return end
 	C.navDx = (C.navDx or 0) + x
 	C.navDy = (C.navDy or 0) + y
@@ -183,7 +183,7 @@ local function anglesChanged(a, b)
 	return math.abs(a.p - b.p) + math.abs(a.y - b.y) + math.abs(a.r - b.r) > 0.001
 end
 
-hook.Add("Think", "SPeditor.CameraUpdate", function()
+SPeditor.Hook("Think", "SPeditor.CameraUpdate", function()
 	if not C.active then
 		C.camMode = nil
 		return
@@ -402,7 +402,7 @@ end
 -- While a navigation button is held (flight, pan, orbit), the mouse is off for the
 -- interface and the wheel arrives as a bind; over the viewport the frame panel gets it
 -- (cl_ui_main.lua).
-hook.Add("PlayerBindPress", "SPeditor.Wheel", function(_, bind, pressed)
+SPeditor.Hook("PlayerBindPress", "SPeditor.Wheel", function(_, bind, pressed)
 	if not C.active then return end
 	if bind ~= "invnext" and bind ~= "invprev" then return end
 	if pressed and (C.camMode or C.MouseInViewport()) then
@@ -575,7 +575,7 @@ function C.GetSceneMeta()
 	}) or ""
 end
 
-hook.Add("SPeditor_SceneLoaded", "SPeditor.CameraMeta", function(meta)
+SPeditor.Hook("SPeditor_SceneLoaded", "SPeditor.CameraMeta", function(meta)
 	C.StopViewCamera()
 	C.Select(nil)
 	C.camRecord = {}

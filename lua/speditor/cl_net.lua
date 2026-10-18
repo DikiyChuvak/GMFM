@@ -82,7 +82,7 @@ function C.FlushQueue()
 	lastSend = RealTime()
 end
 
-hook.Add("Think", "SPeditor.NetQueue", function()
+SPeditor.Hook("Think", "SPeditor.NetQueue", function()
 	if next(queue) == nil then return end
 	if RealTime() < lastSend + INTERVAL then return end
 	C.FlushQueue()
@@ -167,13 +167,22 @@ function C.GetStretch(ent)
 	return IsValid(ent) and ent:GetNW2Vector("SPeditor_Stretch", ONE) or Vector(1, 1, 1)
 end
 
+-- the colours of material slots (S.ApplyLook): { ["slot"] = { r, g, b } }
+function C.GetTints(ent)
+	local out = {}
+	for idx, r, g, b in string.gmatch(ent:GetNW2String("SPeditor_Tints", ""), "(%d+):(%d+),(%d+),(%d+)") do
+		out[idx] = { tonumber(r), tonumber(g), tonumber(b) }
+	end
+	return out
+end
+
 function C.GetLook(ent)
 	local p = lookPending[ent]
 	if p and RealTime() < p.t then
 		local l = table.Copy(p.look)
 		l.color, l.material, l.submats = l.color or { 255, 255, 255, 255 }, l.material or "", l.submats or {}
 		l.stretch, l.noshadow = l.stretch or { 1, 1, 1 }, l.noshadow or false
-		l.locks = l.locks or {}
+		l.locks, l.tints = l.locks or {}, l.tints or {}
 		return l
 	end
 	local c = ent:GetColor()
@@ -184,6 +193,7 @@ function C.GetLook(ent)
 		stretch = { st.x, st.y, st.z }, locks = {},
 	}
 	for b, t in string.gmatch(ent:GetNW2String("SPeditor_Locks", ""), "(%d+):(%d+)") do look.locks[b] = tonumber(t) end
+	look.tints = C.GetTints(ent)
 	-- the base pose of a model without physics (prop_dynamic): its animation and moment
 	if ent:GetClass() == "prop_dynamic" then
 		look.seq, look.cycle = ent:GetSequenceName(ent:GetSequence()), math.max(ent:GetNW2Float("SPeditor_Cycle", 0), 0)
@@ -591,7 +601,7 @@ function C.SpawnLightKind(kind)
 		kind.radius, kind.brightness, kind.fov)
 end
 
-hook.Add("SPeditor_ObjectSpawned", "SPeditor.LightKind", function(ent)
+SPeditor.Hook("SPeditor_ObjectSpawned", "SPeditor.LightKind", function(ent)
 	local p = pendingKind
 	if not p or not C.IsLight(ent) then return end
 	pendingKind = nil

@@ -17,7 +17,7 @@ local drawTexturedRect = surface.DrawTexturedRect
 
 local scrW = ScrW()
 local scrH = ScrH()
-hook.Add("OnScreenSizeChanged", "SPeditor.Steam2004.ScreenSize", function()
+SPeditor.Hook("OnScreenSizeChanged", "SPeditor.Steam2004.ScreenSize", function()
 	scrW = ScrW()
 	scrH = ScrH()
 end)

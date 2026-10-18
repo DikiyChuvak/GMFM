@@ -231,7 +231,7 @@ local function applyStretch(ent)
 	end
 end
 
-hook.Add("PreDrawOpaqueRenderables", "SPeditor.Stretch", function()
+SPeditor.Hook("PreDrawOpaqueRenderables", "SPeditor.Stretch", function()
 	for _, ent in ipairs(ragdolls) do
 		if IsValid(ent) then
 			ent:SetupBones()

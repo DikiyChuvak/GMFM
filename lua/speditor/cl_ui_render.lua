@@ -76,7 +76,7 @@ local function previewLevel(panel, aspect)
 end
 
 -- pv = { panel, camera = function() -> "primary" | "work" | Entity, base, rt, key, next, soon, samples }
-hook.Add("PostRender", "SPeditor.RenderPreview", function()
+SPeditor.Hook("PostRender", "SPeditor.RenderPreview", function()
 	local pv = UI.RenderPreview
 	if not pv or not IsValid(pv.panel) or not C.active or C.hideUI or C.exporting then return end
 	if SPeditor.Export.pending or not cvPreview:GetBool() or not UI.PageShown("render") then return end

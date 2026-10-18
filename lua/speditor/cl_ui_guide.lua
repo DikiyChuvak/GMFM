@@ -16,6 +16,15 @@ Blocks, each text given in both languages:
                                           a live demonstration: draw is called every frame
                                           inside the block, t — seconds since it was shown
   { "try", en, ru, fn = function() end }  a button that opens the tool or does the step
+  { "tip", en, ru }                       a hint in a box with a lamp
+  { "see", "guide_id", en, ru }           a link to another guide (with a few words why)
+  { "keys", { { "K", en, ru }, … }, w = px } a table of keys (or words) and what they do; w — the
+                                          width of the left column (120 by default)
+  { "img", path, en, ru, marks = { { x, y }, … } }
+                                          numbered circles on the picture (x, y — 0..1 of its
+                                          size); the steps after it are numbered the same
+A guide may name its part of the list: section = "start" | "pose" | "look" | "anim" | "render"
+| "help" (SECTION_OF below gives the older guides theirs).
   { "video", atlas = "speditor/help/video/x_%02d.jpg", count = frames, fps = 12, cols = 4,
     rows = 4, w = frame width, h = frame height, sound = "sound/…/x.ogg", en, ru }
                                           a rendered video: its frames packed cols x rows into
@@ -90,7 +99,14 @@ local function helpMat(path)
 	return m or nil
 end
 
-local function imageBlock(parent, path, caption)
+-- a numbered circle on a picture
+local function drawMark(x, y, n, r)
+	draw.RoundedBox(r, x - r, y - r, r * 2, r * 2, Color(0, 0, 0, 200))
+	draw.RoundedBox(r - 2, x - r + 2, y - r + 2, r * 2 - 4, r * 2 - 4, COL.ORANGE)
+	draw.SimpleTextOutlined(tostring(n), "SPeditor.Bold", x, y, color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER, 1, Color(0, 0, 0, 200))
+end
+
+local function imageBlock(parent, path, caption, marks)
 	local mat = helpMat(path)
 	if not mat then return end
 	local tex = mat:GetTexture("$basetexture")
@@ -107,6 +123,7 @@ local function imageBlock(parent, path, caption)
 		surface.DrawTexturedRect(x, 0, dw, dh)
 		surface.SetDrawColor(COL.BORDER)
 		surface.DrawOutlinedRect(x, 0, dw, dh)
+		for i, m in ipairs(marks or {}) do drawMark(x + m[1] * dw, m[2] * dh, i, UI.S(9)) end
 	end
 	p.PerformLayout = function(s, w)
 		local dh = math.floor(math.min(w, iw) * ih / iw)
@@ -127,6 +144,7 @@ local function imageBlock(parent, path, caption)
 			surface.SetDrawColor(255, 255, 255, 255)
 			surface.SetMaterial(mat)
 			surface.DrawTexturedRect((w - dw) / 2, (h - dh) / 2, dw, dh)
+			for i, m in ipairs(marks or {}) do drawMark((w - dw) / 2 + m[1] * dw, (h - dh) / 2 + m[2] * dh, i, UI.S(12)) end
 		end
 		f.OnMousePressed = function(s) s:Remove() end
 		f.OnKeyCodePressed = function(s) s:Remove() end
@@ -411,7 +429,7 @@ local function videoBlock(parent, b)
 		fp.OpenFull, fp.CloseFull = openFull, closeFull
 		fullPanel = f
 		-- Esc also opens the game menu: close the player instead
-		hook.Add("OnPauseMenuShow", f, function()
+		SPeditor.Hook("OnPauseMenuShow", f, function()
 			if IsValid(fullPanel) then
 				closeFull()
 				return false
@@ -459,7 +477,7 @@ local function videoBlock(parent, b)
 		return SPeditor.Client.active
 	end
 	local last = RealTime()
-	hook.Add("Think", holder, function()
+	SPeditor.Hook("Think", holder, function()
 		local now = RealTime()
 		local on = shown()
 		if st.playing and on then
@@ -480,16 +498,178 @@ local function videoBlock(parent, b)
 	if cap ~= "" then textBlock(parent, cap, "SPeditor.Small", COL.DIM) end
 end
 
-local function buildBlocks(scroll, g)
+-- the parts of the guide list (a0.8): a guide names its own (g.section) or gets one here
+local SECTIONS = {
+	{ id = "start",  en = "Getting started",           ru = "С чего начать" },
+	{ id = "pose",   en = "Objects and posing",        ru = "Объекты и позы" },
+	{ id = "look",   en = "Light and cameras",         ru = "Свет и камеры" },
+	{ id = "anim",   en = "Animation",                 ru = "Анимация" },
+	{ id = "render", en = "Render: pictures and video", ru = "Рендер: картинки и видео" },
+	{ id = "help",   en = "Problems and settings",     ru = "Проблемы и настройки" },
+}
+local SECTION_OF = {
+	interface = "start", start = "start", first_anim = "start", examples = "start", adopt = "start",
+	posing = "pose", select = "pose", attach = "pose", wear = "pose", pac3 = "pose", props = "pose",
+	lights = "look", camera = "look",
+	sa_keys = "anim", sa_curves = "anim", sa_motion = "anim", sa_bones = "anim", sa_rec = "anim", sa_cuts = "anim",
+	sa_face = "anim", sa_import = "anim", sa_proc = "anim", sa_smh = "anim",
+	render = "render", sa_render = "render",
+	faq = "help", own_sounds = "help",
+}
+local function sectionOf(g)
+	local sec = g.section or SECTION_OF[g.id]
+	for _, s in ipairs(SECTIONS) do if s.id == sec then return sec end end
+	return "help"
+end
+
+-- the guides in the order of the list: by section, then by their order
+local function listed()
+	local out = {}
+	local all = sorted()
+	for _, sec in ipairs(SECTIONS) do
+		for _, g in ipairs(all) do
+			if sectionOf(g) == sec.id then out[#out + 1] = g end
+		end
+	end
+	return out
+end
+
+-- lower case for the search, Cyrillic too (string.lower knows only Latin letters)
+local function lowerU(str)
+	str = string.lower(str or "")
+	str = string.gsub(str, "\208([\144-\159])", function(c) return "\208" .. string.char(string.byte(c) + 32) end)
+	str = string.gsub(str, "\208([\160-\175])", function(c) return "\209" .. string.char(string.byte(c) - 32) end)
+	return (string.gsub(str, "\208\129", "\209\145"))
+end
+
+-- every word of a guide in the editor's language (for the search)
+local searchText = {}
+local function textOf(g)
+	local lang = GetConVarString("speditor_language")
+	local key = g.id .. "|" .. lang
+	if searchText[key] then return searchText[key] end
+	local parts = { T(g.title.en, g.title.ru) }
+	for _, b in ipairs(g.blocks or {}) do
+		if b[1] == "steps" then
+			local list = T(b.en, b.ru)
+			for _, st in ipairs(istable(list) and list or {}) do parts[#parts + 1] = (list == b.en) and T(st) or st end
+		elseif b[1] == "keys" then
+			for _, k in ipairs(b[2] or {}) do parts[#parts + 1] = k[1] .. " " .. (k[4] or "") .. " " .. T(k[2], k[3]) end
+		elseif b[1] == "img" or b[1] == "see" then
+			parts[#parts + 1] = T(b[3], b[4])
+		elseif isstring(b[2]) then
+			parts[#parts + 1] = T(b[2], b[3])
+		end
+	end
+	searchText[key] = lowerU(table.concat(parts, "\n"))
+	return searchText[key]
+end
+
+-- a box with a coloured edge (result, tip)
+local function boxBlock(parent, text, edge, label)
+	local holder = vgui.Create("DPanel", parent)
+	holder:Dock(TOP)
+	holder:DockMargin(10, 6, 10, 4)
+	holder:DockPadding(10, 4, 6, 4)
+	holder.Paint = function(_, w, h)
+		surface.SetDrawColor(COL.ROW_B)
+		surface.DrawRect(0, 0, w, h)
+		surface.SetDrawColor(edge)
+		surface.DrawRect(0, 0, 3, h)
+	end
+	local l = textBlock(holder, label .. "  " .. text)
+	l:DockMargin(0, 0, 0, 0)
+	holder.PerformLayout = function(s) s:SizeToChildren(false, true) end
+	return holder
+end
+
+-- a line of text that works as a link
+local function linkLine(parent, text, fn, indent)
+	local b = vgui.Create("DButton", parent)
+	b:Dock(TOP)
+	b:DockMargin(indent or 18, 1, 10, 1)
+	b:SetTall(UI.S(18))
+	b:SetText("")
+	b:SetCursor("hand")
+	b.Paint = function(s, w, h)
+		local col = s:IsHovered() and COL.ORANGE or COL.BLUE
+		draw.SimpleText(text, "SPeditor.Small", 0, h / 2, col, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		if s:IsHovered() then
+			surface.SetFont("SPeditor.Small")
+			local tw = surface.GetTextSize(text)
+			surface.SetDrawColor(col)
+			surface.DrawRect(0, h - 3, tw, 1)
+		end
+	end
+	b.DoClick = fn
+	return b
+end
+
+-- rows of "key — what it does" (or "word — what it means"); the text of a row wraps
+local function keysBlock(parent, list, keyW)
+	local box = vgui.Create("DPanel", parent)
+	box:Dock(TOP)
+	box:DockMargin(10, 4, 10, 4)
+	box.Paint = function() end
+	local kw = UI.S(keyW or 120)
+	for i, k in ipairs(list) do
+		local row = vgui.Create("DPanel", box)
+		row:Dock(TOP)
+		row:DockPadding(kw + 8, 2, 6, 2)
+		local key = k[4] and T(k[1], k[4]) or k[1]     -- k[4]: the Russian name of a word
+		row.Paint = function(_, w, h)
+			surface.SetDrawColor(i % 2 == 0 and COL.ROW_A or COL.ROW_B)
+			surface.DrawRect(0, 0, w, h)
+			surface.SetFont("SPeditor.Bold")
+			local tw, th = surface.GetTextSize(key)
+			draw.RoundedBox(3, 6, 2, math.min(tw + 10, kw), th + 2, COL.CTRL)
+			draw.SimpleText(key, "SPeditor.Bold", 11, 3, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+		end
+		local l = vgui.Create("DLabel", row)
+		l:Dock(TOP)
+		l:SetFont("SPeditor.Small")
+		l:SetTextColor(COL.TEXT)
+		l:SetWrap(true)
+		l:SetAutoStretchVertical(true)
+		l:SetText(T(k[2], k[3]))
+		row.PerformLayout = function(s) s:SizeToChildren(false, true) end
+	end
+	box.PerformLayout = function(s) s:SizeToChildren(false, true) end
+end
+
+-- nav = { open = function(id), prev = guide, next = guide }
+local function buildBlocks(scroll, g, nav)
 	scroll:Clear()
 	textBlock(scroll, T(g.title.en, g.title.ru), "SPeditor.Time", COL.TEXT)
+	-- "In this guide": the headings, each a jump to its place
+	local heads = {}
 	for _, b in ipairs(g.blocks or {}) do
+		if b[1] == "h" then heads[#heads + 1] = b end
+	end
+	local headPanels = {}
+	-- after the first paragraph (the introduction), or at the very top
+	local tocDone = #heads < 2
+	local function toc()
+		tocDone = true
+		local l = textBlock(scroll, L("guide_toc"), "SPeditor.Small", COL.DIM)
+		l:DockMargin(10, 6, 10, 0)
+		for _, b in ipairs(heads) do
+			linkLine(scroll, "•  " .. T(b[2], b[3]), function()
+				local pnl = headPanels[b]
+				if IsValid(pnl) then scroll:ScrollToChild(pnl) end
+			end)
+		end
+	end
+	if not tocDone and (g.blocks[1] or {})[1] ~= "p" then toc() end
+	for i, b in ipairs(g.blocks or {}) do
 		local kind = b[1]
+		if i == 2 and not tocDone then toc() end
 		if kind == "p" then
 			textBlock(scroll, T(b[2], b[3]))
 		elseif kind == "h" then
 			local l = textBlock(scroll, T(b[2], b[3]), "SPeditor.Bold", COL.ORANGE)
 			l:DockMargin(10, 12, 10, 2)
+			headPanels[b] = l
 		elseif kind == "steps" then
 			local list = T(b.en, b.ru)
 			for i, s in ipairs(istable(list) and list or {}) do
@@ -497,21 +677,20 @@ local function buildBlocks(scroll, g)
 				textBlock(scroll, i .. ".  " .. (list == b.en and T(s) or s), "SPeditor.Small", COL.TEXT, 18)
 			end
 		elseif kind == "img" then
-			imageBlock(scroll, b[2], T(b[3], b[4]))
+			imageBlock(scroll, b[2], T(b[3], b[4]), b.marks)
 		elseif kind == "result" then
-			local holder = vgui.Create("DPanel", scroll)
-			holder:Dock(TOP)
-			holder:DockMargin(10, 6, 10, 4)
-			holder:DockPadding(10, 4, 6, 4)
-			holder.Paint = function(_, w, h)
-				surface.SetDrawColor(COL.ROW_B)
-				surface.DrawRect(0, 0, w, h)
-				surface.SetDrawColor(COL.ORANGE)
-				surface.DrawRect(0, 0, 3, h)
+			boxBlock(scroll, T(b[2], b[3]), COL.ORANGE, L("guide_result"))
+		elseif kind == "tip" then
+			boxBlock(scroll, T(b[2], b[3]), COL.BLUE, L("guide_tip"))
+		elseif kind == "keys" then
+			keysBlock(scroll, b[2] or {}, b.w)
+		elseif kind == "see" then
+			local other = UI.Guides[b[2]]
+			if other then
+				local why = T(b[3], b[4])
+				linkLine(scroll, "→  " .. T(other.title.en, other.title.ru) .. (why ~= "" and ("  —  " .. why) or ""),
+					function() if nav and nav.open then nav.open(other.id) else UI.OpenGuide(other.id) end end, 10)
 			end
-			local l = textBlock(holder, L("guide_result") .. "  " .. T(b[2], b[3]))
-			l:DockMargin(0, 0, 0, 0)
-			holder.PerformLayout = function(s) s:SizeToChildren(false, true) end
 		elseif kind == "demo" then
 			demoBlock(scroll, b)
 		elseif kind == "video" then
@@ -524,6 +703,29 @@ local function buildBlocks(scroll, g)
 			btn:DockMargin(10, 6, 10, 2)
 		end
 	end
+	-- previous / next guide
+	if nav and (nav.prev or nav.next) then
+		local bar = vgui.Create("DPanel", scroll)
+		bar:Dock(TOP)
+		bar:DockMargin(10, 14, 10, 0)
+		bar:SetTall(UI.S(26))
+		bar.Paint = function(_, w, h)
+			surface.SetDrawColor(COL.BORDER)
+			surface.DrawRect(0, 0, w, 1)
+		end
+		local function navButton(gd, dock, prefix, suffix)
+			local b = vgui.Create("DButton", bar)
+			b:Dock(dock)
+			b:DockMargin(0, 4, 0, 0)
+			b:SetText(prefix .. T(gd.title.en, gd.title.ru) .. suffix)
+			b:SetFont("SPeditor.Small")
+			b:SizeToContentsX(UI.S(16))
+			UI.StyleButton(b, nil, 3)
+			b.DoClick = function() nav.open(gd.id) end
+		end
+		if nav.prev then navButton(nav.prev, LEFT, "←  ", "") end
+		if nav.next then navButton(nav.next, RIGHT, "", "  →") end
+	end
 	local pad = vgui.Create("DPanel", scroll)
 	pad:Dock(TOP)
 	pad:SetTall(UI.S(16))
@@ -531,31 +733,40 @@ local function buildBlocks(scroll, g)
 end
 
 ---------------------------------------------------------------------
--- The window
+-- The window: the list of guides by section with a search on the left, the guide on the right
 ---------------------------------------------------------------------
 function UI.OpenGuide(id)
 	local win = Dock.ByKey("guide")
 	if not IsValid(win) then
-		local W, H = math.min(940, ScrW() - 80), math.min(680, ScrH() - 120)
+		local W, H = math.min(UI.S(1040), ScrW() - 80), math.min(UI.S(760), ScrH() - 120)
 		local body
 		win, body = Dock.Create({ key = "guide", id = "guide", title = L("guide_title"), w = W, h = H,
 				x = math.floor(ScrW() / 2 - W / 2), y = 70, dockable = false, icon = "icon16/help.png" })
-		win.minW, win.minH = UI.S(520), UI.S(320)
+		win.minW, win.minH = UI.S(560), UI.S(340)
 		local baseRemove = win.OnRemove
 		win.OnRemove = function(s)
 			if baseRemove then baseRemove(s) end
 			Dock.pages.guide = nil
 		end
 
-		local list = vgui.Create("DListView", body)
-
-		UI.StyleListView(list)
-		list:Dock(LEFT)
-		list:SetWide(UI.S(230))
-		list:SetMultiSelect(false)
-		list:SetHideHeaders(true)
-		list:AddColumn("")
-		if list.SetBackgroundColor then list:SetBackgroundColor(COL.LIST_BG) end
+		local side = vgui.Create("DPanel", body)
+		side:Dock(LEFT)
+		side:SetWide(UI.S(290))
+		side.Paint = function(_, w, h)
+			surface.SetDrawColor(COL.LIST_BG or COL.BG)
+			surface.DrawRect(0, 0, w, h)
+			surface.SetDrawColor(COL.BORDER)
+			surface.DrawRect(w - 1, 0, 1, h)
+		end
+		local search = vgui.Create("DTextEntry", side)
+		search:Dock(TOP)
+		search:DockMargin(6, 6, 7, 4)
+		search:SetTall(UI.S(22))
+		search:SetFont("SPeditor.Small")
+		search:SetPlaceholderText(L("guide_search"))
+		search:SetUpdateOnType(true)
+		local list = vgui.Create("DScrollPanel", side)
+		list:Dock(FILL)
 
 		local scroll = vgui.Create("DScrollPanel", body)
 		scroll:Dock(FILL)
@@ -564,23 +775,93 @@ function UI.OpenGuide(id)
 			surface.DrawRect(0, 0, w, h)
 		end
 
-		local lines = {}
-		for _, g in ipairs(sorted()) do
-			local line = list:AddLine(T(g.title.en, g.title.ru))
-			line.SPGuide = g.id
-			lines[g.id] = line
+		local current
+		local rowOf = {}
+		local function show(gid)
+			local order = listed()
+			local g, idx
+			for i, x in ipairs(order) do
+				if x.id == gid then g, idx = x, i end
+			end
+			g, idx = g or order[1], idx or 1
+			if not g then return end
+			current = g.id
+			buildBlocks(scroll, g, { open = show, prev = order[idx - 1], next = order[idx + 1] })
+			scroll:GetVBar():SetScroll(0)
+			-- the guide's line in the list in sight (after the list has its layout)
+			timer.Simple(0, function()
+				local row = rowOf[g.id]
+				if IsValid(row) and IsValid(list) then list:ScrollToChild(row) end
+			end)
 		end
-		list.OnRowSelected = function(_, _, line)
-			local g = UI.Guides[line.SPGuide]
-			if g then
-				buildBlocks(scroll, g)
-				scroll:GetVBar():SetScroll(0)
+
+		local function fill(query)
+			list:Clear()
+			rowOf = {}
+			query = lowerU(string.Trim(query or ""))
+			local any = false
+			for _, sec in ipairs(SECTIONS) do
+				local rows = {}
+				for _, g in ipairs(listed()) do
+					if sectionOf(g) == sec.id and (query == "" or string.find(textOf(g), query, 1, true)) then rows[#rows + 1] = g end
+				end
+				if #rows > 0 then
+					any = true
+					local hdr = list:Add("DLabel")
+					hdr:Dock(TOP)
+					hdr:DockMargin(8, 8, 6, 2)
+					hdr:SetFont("SPeditor.Bold")
+					hdr:SetTextColor(COL.ORANGE)
+					hdr:SetText(T(sec.en, sec.ru))
+					hdr:SizeToContentsY()
+					for _, g in ipairs(rows) do
+						local b = list:Add("DButton")
+						b:Dock(TOP)
+						b:DockMargin(4, 0, 4, 0)
+						b:SetTall(UI.S(22))
+						b:SetText("")
+						local title = T(g.title.en, g.title.ru)
+						local icon = g.icon and Material(g.icon) or nil
+						b:SetTooltip(title)
+						b.Paint = function(s, w, h)
+							if current == g.id then
+								surface.SetDrawColor(COL.SEL)
+								surface.DrawRect(0, 0, w, h)
+							elseif s:IsHovered() then
+								surface.SetDrawColor(COL.HOVER)
+								surface.DrawRect(0, 0, w, h)
+							end
+							local x = 6
+							if icon and not icon:IsError() then
+								local is = UI.IconSize and UI.IconSize(h) or 16
+								surface.SetDrawColor(255, 255, 255, 255)
+								surface.SetMaterial(icon)
+								surface.DrawTexturedRect(x, (h - is) / 2, is, is)
+								x = x + is + 6
+							else
+								x = x + 22
+							end
+							draw.SimpleText(title, "SPeditor.Small", x, h / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+						end
+						b.DoClick = function() show(g.id) end
+						rowOf[g.id] = b
+					end
+				end
+			end
+			if not any then
+				local l = list:Add("DLabel")
+				l:Dock(TOP)
+				l:DockMargin(8, 8, 6, 2)
+				l:SetFont("SPeditor.Small")
+				l:SetTextColor(COL.DIM)
+				l:SetWrap(true)
+				l:SetAutoStretchVertical(true)
+				l:SetText(L("guide_nothing"))
 			end
 		end
-		win.SPShow = function(gid)
-			local line = lines[gid] or lines[(sorted()[1] or {}).id]
-			if IsValid(line) then list:ClearSelection() list:SelectItem(line) end
-		end
+		search.OnValueChange = function(_, v) fill(v) end
+		fill("")
+		win.SPShow = function(gid) show(gid) end
 	else
 		Dock.ShowPage("guide")
 	end

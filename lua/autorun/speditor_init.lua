@@ -3,13 +3,13 @@ SPeditor = SPeditor or {}
 
 local BASE = "speditor/"
 
-local SHARED = { "sh_config", "sh_util", "sh_lang", "sh_component" }
+local SHARED = { "sh_config", "sh_errors", "sh_util", "sh_lang", "sh_component" }
 local SERVER_FILES = { "sv_net", "sv_speditor", "sv_persistence", "sv_adopt", "sv_pac" }
 local CLIENT_FILES = {
 	"cl_net", "cl_pac", "cl_keys", "cl_scene", "cl_history", "cl_camera", "cl_gizmo",
 	"cl_bone_manip", "cl_flex", "cl_ik", "cl_shadows", "cl_lights", "cl_effects", "cl_tools", "cl_shaders", "cl_postfx", "cl_render", "cl_ssao", "cl_export",
 	"cl_ui_theme", "cl_ui_notify", "cl_ui_notify_custom", "cl_ui_themes", "cl_ui_userthemes", "cl_ui_settings", "cl_ui_dock", "cl_ui_soundpick", "cl_ui_main", "cl_ui_ase", "cl_ui_ev", "cl_ui_pages",
-	"cl_ui_model_list", "cl_ui_props", "cl_ui_pac", "cl_ui_adopt", "cl_ui_render", "cl_ui_shaders", "cl_ui_effects", "cl_ui_about", "cl_ui_guide", "cl_guides", "cl_ui_lang",
+	"cl_ui_model_list", "cl_ui_props", "cl_ui_pac", "cl_ui_adopt", "cl_ui_render", "cl_ui_shaders", "cl_ui_effects", "cl_ui_about", "cl_ui_report", "cl_selftest", "cl_ui_guide", "cl_guides", "cl_ui_lang",
 	"cl_speditor",
 }
 

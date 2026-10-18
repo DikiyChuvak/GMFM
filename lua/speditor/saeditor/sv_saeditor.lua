@@ -853,7 +853,7 @@ end
 
 -- face = true: a key of the object's face track; parts — a bone key: only these parts of the
 -- object are keyed (a key already at the frame gets them, the rest of it stays)
-local function setKey(ply, ent, frame, ease, face, parts)
+local function setKey(ply, ent, frame, ease, face, parts, def)
 	local a = anim(ply)
 	local uid = ent.SPeditor_UID
 	if not uid then return false end
@@ -869,7 +869,7 @@ local function setKey(ply, ent, frame, ease, face, parts)
 	end
 	if not tr.keys[frame] and #tr.order >= SA.MAX_KEYS then return false end
 	local old = tr.keys[frame]
-	local e = ease or (old and old.e) or "spline"
+	local e = ease or (old and old.e) or def or "spline"
 	local st
 	if face then
 		st = captureFace(ent)
@@ -1221,7 +1221,10 @@ COMP:NetReceive("Key", function(ply)
 		local ent = S.FindUID(ply, face and (uid - SA.FACE) or uid)
 		-- str — the easing of the new key (the client asks for "linear" when it plays an effect)
 		local ease = (str ~= "bezier" and SA.ValidEase(str)) and str or nil
-		if IsValid(ent) and not setKey(ply, ent, frame, ease, face, parts) then S.Notice(ply, "#sa_keys_limit", 1) end
+		-- "def:<ease>": what a NEW key gets (the client's choice, a0.8); a key there keeps its own
+		local def = string.match(str, "^def:(.+)$")
+		def = (def and def ~= "bezier" and SA.ValidEase(def)) and def or nil
+		if IsValid(ent) and not setKey(ply, ent, frame, ease, face, parts, def) then S.Notice(ply, "#sa_keys_limit", 1) end
 	elseif action == OP.MOTION then
 		local face = SA.IsFaceTrack(uid)
 		local ent = S.FindUID(ply, face and (uid - SA.FACE) or uid)
@@ -2543,4 +2546,34 @@ COMP:NetReceive("SMH", function(ply)
 		local err, n = smhExport(ply, fileName, ents)
 		S.Notice(ply, err or ("#sa_smh_exported|" .. n .. "|garrysmod/data/smh/" .. fileName .. ".txt"), err and 1 or 2)
 	end
+end)
+
+---------------------------------------------------------------------
+-- Slowed game time while an animation with effects renders (a0.8, cl_saeditor_video.lua).
+-- Single player only. The client repeats its request every few seconds; when it stops asking
+-- (the render ended badly, the game lost the client) the time goes back to what it was.
+---------------------------------------------------------------------
+local slow = { base = nil, untilT = 0 }
+COMP:NetReceive("Slow", function(ply)
+	local ts = net.ReadFloat()
+	if not game.SinglePlayer() or ts ~= ts then return end
+	ts = math.Clamp(ts, 0.02, 1)
+	if ts >= 1 then
+		if slow.base then game.SetTimeScale(slow.base) end
+		slow.base = nil
+		return
+	end
+	slow.base = slow.base or game.GetTimeScale()
+	slow.untilT = RealTime() + 30       -- a heavy frame (4K, many passes) may take long
+	game.SetTimeScale(ts)
+end)
+
+SPeditor.Hook("Think", "SPeditor.saeditor.Slow", function()
+	if slow.base and RealTime() > slow.untilT then
+		game.SetTimeScale(slow.base)
+		slow.base = nil
+	end
+end)
+SPeditor.Hook("ShutDown", "SPeditor.saeditor.Slow", function()
+	if slow.base then game.SetTimeScale(slow.base) end
 end)

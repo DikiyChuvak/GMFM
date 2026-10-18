@@ -88,8 +88,8 @@ local function depthFog()
 	render.FogColor(255, 255, 255)
 	return true
 end
-hook.Add("SetupWorldFog", "SPeditor.SSAO", depthFog)
-hook.Add("SetupSkyboxFog", "SPeditor.SSAO", function(scale)
+SPeditor.Hook("SetupWorldFog", "SPeditor.SSAO", depthFog)
+SPeditor.Hook("SetupSkyboxFog", "SPeditor.SSAO", function(scale)
 	if not depthPass then return end
 	render.FogMode(MATERIAL_FOG_LINEAR)
 	render.FogStart(0)
@@ -99,16 +99,16 @@ hook.Add("SetupSkyboxFog", "SPeditor.SSAO", function(scale)
 	return true
 end)
 -- the model override must be set inside the view (one set before RenderView is dropped)
-hook.Add("PreDrawOpaqueRenderables", "SPeditor.SSAO", function()
+SPeditor.Hook("PreDrawOpaqueRenderables", "SPeditor.SSAO", function()
 	if depthPass then render.MaterialOverride(matDepthModel) end
 end)
-hook.Add("PreDrawTranslucentRenderables", "SPeditor.SSAO", function()
+SPeditor.Hook("PreDrawTranslucentRenderables", "SPeditor.SSAO", function()
 	if depthPass then return true end
 end)
-hook.Add("PreDrawSkyBox", "SPeditor.SSAO", function()
+SPeditor.Hook("PreDrawSkyBox", "SPeditor.SSAO", function()
 	if depthPass then return true end
 end)
-hook.Add("PreDrawEffects", "SPeditor.SSAO", function()
+SPeditor.Hook("PreDrawEffects", "SPeditor.SSAO", function()
 	if depthPass then return true end
 end)
 

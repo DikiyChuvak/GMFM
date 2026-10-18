@@ -328,6 +328,52 @@ end
 --          samples = percent of soft shadow / depth of field passes,
 --          fps = frames a second of the video (nil — saeditor_render_fps),
 --          onDone = function(ok, path, count) }
+---------------------------------------------------------------------
+-- Slowed game time while the animation renders (a0.8). The engine runs a particle system
+-- one game frame at a time; a frame of the unfocused game is 0.05 s, a frame of the video
+-- 0.042 s (24 fps), so the moment of an effect in the video was off by up to half a game frame
+-- and jumped back and forth (measured: ±0.025 s, some moments shown twice) — "the particles are
+-- not stable". With the game slowed, a game frame is a few milliseconds of game time and the
+-- system lands on the moment of every video frame; effects that play by themselves (Emitter
+-- tool, Lua effects) also run at about the speed of the video instead of several times faster.
+-- Single player only (it slows the whole server); the server puts the time back by itself if
+-- the client stops asking (sv_saeditor.lua).
+---------------------------------------------------------------------
+local cvSlowFx = CreateClientConVar("saeditor_render_slowfx", "1", true, false, "SAeditor: slow the game down while an animation with effects renders", 0, 1)
+SA.SLOW_STEPS = 8          -- game frames per moment of the video
+local function sendSlow(ts)
+	COMP:NetStart("Slow")
+	net.WriteFloat(ts)
+	net.SendToServer()
+end
+
+local function hasEffects()
+	for _, e in ipairs(C.Objects()) do
+		if C.IsEffect(e) and SA.tracks[SA.UID(e)] then return true end
+	end
+	return false
+end
+
+local function updateSlow(job)
+	if not job.slow then return end
+	local now = RealTime()
+	if now < (job.slowNext or 0) then return end
+	job.slowNext = now + 0.5
+	-- the real length of a game frame (RealFrameTime is not scaled), smoothed
+	local real = math.Clamp(RealFrameTime(), 0.002, 0.25)
+	job.realFt = job.realFt and (job.realFt * 0.7 + real * 0.3) or real
+	local moment = 1 / job.fps / math.max(job.blur > 1 and job.blur or 1, 1)
+	local want = math.Clamp(moment / (SA.SLOW_STEPS * job.realFt), 0.02, 1)
+	want = math.Round(want, 3)
+	if not job.ts or math.abs(want - job.ts) / job.ts > 0.15 or now > (job.slowSent or 0) + 5 then
+		job.ts, job.slowSent = want, now
+		sendSlow(want)
+	end
+end
+SA.UpdateRenderSlow = updateSlow
+
+function SA.RenderSlowOn() return cvSlowFx:GetBool() end
+
 function SA.RenderSequence(opts)
 	if SA.rendering then
 		SPeditor.Notify("#sa_rnd_busy", 1)
@@ -368,7 +414,9 @@ function SA.RenderSequence(opts)
 	for _, e in ipairs(C.Objects()) do
 		if C.IsEffect(e) and SPeditor.Effects.IsLive(e) and SA.tracks[SA.UID(e)] then nLive = nLive + 1 end
 	end
-	if nLive > 0 then SPeditor.Notify("#sa_rnd_fx_live|" .. nLive, 0) end
+	job.slow = game.SinglePlayer() and cvSlowFx:GetBool() and hasEffects()
+	if nLive > 0 and not job.slow then SPeditor.Notify("#sa_rnd_fx_live|" .. nLive, 0) end
+	if job.slow then SPeditor.Notify("#sa_rnd_slow", 0) end
 	SA.rendering = job
 	SA.playing = false
 	SA.Audio.StopAll()
@@ -381,6 +429,7 @@ function SA.StopRender(ok)
 	if not job then return end
 	SA.rendering = nil
 	SPeditor.Render.busy = false
+	if job.ts then sendSlow(1) end
 	local path = "garrysmod/data/" .. RENDER_DIR .. "/" .. job.name
 	if job.webm then
 		pcall(job.webm.Finish, job.webm)
@@ -401,6 +450,11 @@ function SA.StopRender(ok)
 	if ok and job.format == "webm" then
 		SPeditor.Notify("#sa_rnd_done_webm|" .. job.count .. "|" .. path .. "|" .. job.webmW .. "|" .. job.webmH, 2)
 		if job.wavPath and job.count > 0 then SPeditor.Notify("#sa_rnd_webm_wav|garrysmod/data/" .. job.wavPath, 0) end
+		if SPeditor.UI.ShowRenderDone then
+			local notes = { COMP:L("sa_rdone_webm", job.count, job.webmW, job.webmH) }
+			if job.wavPath and job.count > 0 then notes[2] = COMP:L("sa_rdone_wav", "garrysmod/data/" .. job.wavPath) end
+			SPeditor.UI.ShowRenderDone({ path = path, notes = notes })
+		end
 		if job.mix and #job.mix.skipped > 0 then
 			SPeditor.Notify("#sa_snd_skipped|" .. table.concat(job.mix.skipped, ", ", 1, math.min(#job.mix.skipped, 6)), 1)
 		end
@@ -410,6 +464,11 @@ function SA.StopRender(ok)
 		SPeditor.Notify("#sa_rnd_size|" .. string.format("%.1f", mb) .. "|" .. string.format("%.2f", mb / math.max(job.count / job.fps, 0.04))
 			.. "|" .. (job.repeats or 0), 0)
 		print("[SAeditor] " .. COMP:L("sa_rnd_mp4", job.name .. ".avi.dat", job.name))
+		if SPeditor.UI.ShowRenderDone then
+			local notes = { COMP:L("sa_rdone_avi", job.count), COMP:L("sa_rdone_dat") }
+			if (job.part or 1) > 1 then notes[#notes + 1] = COMP:L("sa_rdone_parts", job.part) end
+			SPeditor.UI.ShowRenderDone({ path = path, notes = notes })
+		end
 		if job.mix and #job.mix.skipped > 0 then
 			SPeditor.Notify("#sa_snd_skipped|" .. table.concat(job.mix.skipped, ", ", 1, math.min(#job.mix.skipped, 6)), 1)
 		end
@@ -465,6 +524,7 @@ COMP:Hook("Think", function()
 		SA.StopRender(false)
 		return
 	end
+	updateSlow(job)
 	if job.state == "seek" then
 		seek(job)
 	elseif job.state == "wait_ack" then

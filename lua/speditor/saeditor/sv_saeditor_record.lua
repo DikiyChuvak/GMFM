@@ -86,6 +86,13 @@ local function addSubject(rec, ent, kind)
 		name = kind == "player" and ent:Nick() or (ent:GetClass() or "npc"),
 	}
 	for i = 0, ent:GetNumBodyGroups() - 1 do rec.subjects[ent].groups[i] = ent:GetBodygroup(i) end
+	-- the game reads "Keep corpses" when an NPC spawns: one that was there before the take is told
+	-- by itself (see corpsesOn below)
+	if kind == "npc" and rec.corpsesOn and ent.SetShouldServerRagdoll then
+		ent:SetShouldServerRagdoll(true)
+		rec.serverRag = rec.serverRag or {}
+		rec.serverRag[ent] = true
+	end
 end
 
 local function frameNow(rec) return rec.f0 + (CurTime() - rec.t0) * rec.fps end
@@ -297,6 +304,48 @@ local function hookEffects(on)
 end
 
 ---------------------------------------------------------------------
+-- Killed NPCs as ragdolls (a0.8). By default the game makes the body of a killed NPC on the
+-- clients only: the server never sees it, so the take could only hide the NPC after its death.
+-- For the take the recorder turns ai_serverragdolls ("Keep corpses") on: the body is a server
+-- ragdoll, CreateEntityRagdoll hands it over, and the fall goes on in the animation. Afterwards
+-- the setting goes back, and the corpses that exist only because of it are removed (the scene
+-- has its own keyed copies of them).
+---------------------------------------------------------------------
+local corpses = { set = false, users = 0 }
+local function corpsesOn(rec)
+	local cv = GetConVar("ai_serverragdolls")
+	if not cv then return end
+	corpses.users = corpses.users + 1
+	rec.corpsesOn = true
+	if cv:GetInt() == 0 and not corpses.set then
+		corpses.set = true
+		RunConsoleCommand("ai_serverragdolls", "1")
+	end
+end
+local function corpsesOff(rec)
+	if not rec.corpsesOn then return end
+	rec.corpsesOn = nil
+	corpses.users = math.max(corpses.users - 1, 0)
+	if corpses.set then
+		-- bodies that are there only because of the take; the NPCs that lived through it go back
+		-- to bodies on the clients
+		for rag in pairs(rec.corpse or {}) do
+			if IsValid(rag) then rag:Remove() end
+		end
+		for npc in pairs(rec.serverRag or {}) do
+			if IsValid(npc) and npc.SetShouldServerRagdoll then npc:SetShouldServerRagdoll(false) end
+		end
+		if corpses.users == 0 then
+			corpses.set = false
+			RunConsoleCommand("ai_serverragdolls", "0")
+		end
+	end
+end
+SPeditor.Hook("ShutDown", "SPeditor.saeditor.Corpses", function()
+	if corpses.set then RunConsoleCommand("ai_serverragdolls", "0") end
+end)
+
+---------------------------------------------------------------------
 -- Start and stop
 ---------------------------------------------------------------------
 function SA.StartRecord(ply, opts)
@@ -312,6 +361,8 @@ function SA.StartRecord(ply, opts)
 		view = (opts.view and not opts.noPlayer) and {} or nil,
 	}
 	R[ply] = rec
+	-- a setting of the whole server: on someone else's server only an admin may change it for a take
+	if rec.npcs and opts.corpses ~= false and (game.SinglePlayer() or ply:IsListenServerHost() or ply:IsAdmin()) then corpsesOn(rec) end
 	if rec.moversOn then addMovers(rec, ply:GetPos()) end
 	if not opts.noPlayer then addSubject(rec, ply, "player") end
 	-- scene objects whose physics is recorded: unfrozen for the take
@@ -620,6 +671,7 @@ function SA.StopRecord(ply)
 		end
 	end
 
+	corpsesOff(rec)
 	R[ply] = nil
 	SA.SendSummary(ply)
 	SA.ApplyAll(ply, rec.f0)
@@ -646,6 +698,7 @@ COMP:Hook("PlayerDisconnected", function(ply)
 		for e in pairs(R[ply].movers or {}) do
 			if IsValid(e) then e.SPeditor_WorldRec = nil end
 		end
+		corpsesOff(R[ply])
 		R[ply] = nil
 		hookEffects(false)
 	end

@@ -282,6 +282,85 @@ function UI.OpenFileLocations()
 end
 
 ---------------------------------------------------------------------
+-- A render is done (a0.8): people could not find their videos — a notification fades away, so
+-- the path stays in a small window with a copy button and what to do with the file.
+-- info = { title, path = "garrysmod/…", notes = { text, … } }
+---------------------------------------------------------------------
+local cvRenderDone = CreateClientConVar("speditor_render_done_window", "1", true, false)
+function UI.ShowRenderDone(info)
+	if not cvRenderDone:GetBool() then return end
+	local old = Dock.ByKey("renderdone")
+	if IsValid(old) then old:Remove() end
+	local W = 560
+	local win, body = Dock.Create({ key = "renderdone", id = "renderdone", title = info.title or L("rdone_title"), w = W, h = 270,
+			x = math.floor(ScrW() / 2 - W / 2), y = 160, dockable = false, icon = "icon16/film_save.png" })
+	win.minW, win.minH = UI.S(420), UI.S(240)
+	local baseRemove = win.OnRemove
+	win.OnRemove = function(s)
+		if baseRemove then baseRemove(s) end
+		Dock.pages.renderdone = nil
+	end
+
+	local foot = vgui.Create("DPanel", body)
+	foot:Dock(BOTTOM)
+	foot:SetTall(UI.S(34))
+	foot.Paint = function() end
+	local close = vgui.Create("DButton", foot)
+	close:Dock(RIGHT)
+	close:DockMargin(4, 5, 8, 5)
+	close:SetWide(UI.S(110))
+	close:SetText(L("about_close"))
+	UI.StyleButton(close, nil, 3)
+	close.DoClick = function() win:Remove() end
+	local where = vgui.Create("DButton", foot)
+	where:Dock(LEFT)
+	where:DockMargin(8, 5, 4, 5)
+	where:SetWide(UI.S(180))
+	where:SetText(L("files_title") .. "…")
+	UI.StyleButton(where, nil, 3)
+	where.DoClick = function() UI.OpenFileLocations() end
+	local again = vgui.Create("DCheckBoxLabel", foot)
+	again:Dock(LEFT)
+	again:DockMargin(8, 9, 4, 5)
+	again:SetText(L("rdone_again"))
+	again:SetTextColor(COL.TEXT)
+	again:SetFont("SPeditor.Small")
+	again:SetConVar("speditor_render_done_window")
+	again:SizeToContents()
+
+	local scroll = vgui.Create("DScrollPanel", body)
+	scroll:Dock(FILL)
+	scroll.Paint = function(_, w, h)
+		surface.SetDrawColor(COL.BG)
+		surface.DrawRect(0, 0, w, h)
+	end
+	text(scroll, L("rdone_file"), COL.TEXT, nil, 10)
+	local row = vgui.Create("DPanel", scroll)
+	row:Dock(TOP)
+	row:DockMargin(12, 4, 12, 0)
+	row:SetTall(UI.S(26))
+	row.Paint = function() end
+	local copy = vgui.Create("DButton", row)
+	copy:Dock(RIGHT)
+	copy:DockMargin(4, 0, 0, 0)
+	copy:SetWide(UI.S(96))
+	copy:SetText(L("files_copy"))
+	UI.StyleButton(copy, nil, 3)
+	copy.DoClick = function()
+		SetClipboardText(info.path)
+		SPeditor.Notify("#path_copied|" .. info.path, 0)
+	end
+	local entry = vgui.Create("DTextEntry", row)
+	entry:Dock(FILL)
+	entry:SetFont("SPeditor.Small")
+	entry:SetText(info.path)
+	entry.AllowInput = function() return true end     -- read only, but the text can be selected
+	for _, n in ipairs(info.notes or {}) do text(scroll, n, COL.TEXT, nil, 10) end
+	text(scroll, L("files_steam"), COL.DIM, nil, 12)
+	return win
+end
+
+---------------------------------------------------------------------
 -- Work camera settings
 ---------------------------------------------------------------------
 function UI.OpenCameraSettings()
@@ -313,7 +392,7 @@ function UI.OpenCameraSettings()
 	for _, s in ipairs({ speed, wheel, smooth, fov }) do s:DockMargin(8, 3, 8, 3) end
 
 	-- FOV is changed both by the wheel (Alt + wheel) and by loading a scene: the slider follows
-	hook.Add("SPeditor_WorkFOVChanged", "SPeditor.CamSettings", function(v)
+	SPeditor.Hook("SPeditor_WorkFOVChanged", "SPeditor.CamSettings", function(v)
 		if not IsValid(fov) then
 			hook.Remove("SPeditor_WorkFOVChanged", "SPeditor.CamSettings")
 			return

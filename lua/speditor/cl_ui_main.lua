@@ -23,7 +23,7 @@ local COL  = UI.PAL
 local MENU_H, STATUS_H = 24, 20
 local function metrics() MENU_H, STATUS_H = UI.S(24), UI.S(20) end
 metrics()
-hook.Add("SPeditor_FontsCreated", "SPeditor.MainMetrics", metrics)
+SPeditor.Hook("SPeditor_FontsCreated", "SPeditor.MainMetrics", metrics)
 
 ---------------------------------------------------------------------
 -- Keyboard: windows receive input only while a text field is active
@@ -40,10 +40,10 @@ local function restoreCursor()
 	if IsValid(wp) then wp:SetCursor("arrow") end
 end
 
-hook.Add("OnTextEntryGetFocus", "SPeditor.TextFocus", function()
+SPeditor.Hook("OnTextEntryGetFocus", "SPeditor.TextFocus", function()
 	if C.active then setKeyboardInput(true) end
 end)
-hook.Add("OnTextEntryLoseFocus", "SPeditor.TextFocus", function()
+SPeditor.Hook("OnTextEntryLoseFocus", "SPeditor.TextFocus", function()
 	if C.active then setKeyboardInput(false) end
 end)
 
@@ -93,7 +93,7 @@ function UI.PageShown(id)
 	return pg ~= nil and IsValid(pg.panel) and pg.panel:IsVisible() and IsValid(pg.win) and pg.win:IsVisible()
 end
 
-hook.Add("HUDPaintBackground", "SPeditor.Blackout", function()
+SPeditor.Hook("HUDPaintBackground", "SPeditor.Blackout", function()
 	if not C.active or C.hideUI then return end
 	if not UI.PageShown("primary") then return end
 	surface.SetDrawColor(0, 0, 0, 255)
@@ -351,7 +351,7 @@ function UI.OpenHotkeys()
 	end
 	fill()
 	-- keys changed in Interface settings: the list follows (the hook goes away with the list)
-	hook.Add("SPeditor_KeysChanged", list, function() fill() end)
+	SPeditor.Hook("SPeditor_KeysChanged", list, function() fill() end)
 	-- the keys are changed in Interface settings
 	local foot = vgui.Create("DPanel", body)
 	foot:Dock(BOTTOM)
@@ -543,6 +543,9 @@ function UI.Open()
 		m:AddOption(L("help_hotkeys"), function() UI.OpenHotkeys() end):SetIcon("icon16/keyboard.png")
 		m:AddOption(L("cam_settings") .. "…", function() UI.OpenCameraSettings() end):SetIcon("icon16/camera_edit.png")
 		m:AddOption(L("files_title") .. "…", function() UI.OpenFileLocations() end):SetIcon("icon16/folder_explore.png")
+		local nErr = #(SPeditor.Errors and SPeditor.Errors.list or {})
+		m:AddOption(L("rep_title") .. (nErr > 0 and (" (" .. nErr .. ")") or "") .. "…", function() UI.OpenReport() end):SetIcon("icon16/bug.png")
+		m:AddOption(L("st_menu"), function() SPeditor.SelfTest.Run() end):SetIcon("icon16/tick.png")
 		-- the interface language: the editor is rebuilt in it at once
 		local lang, lo = m:AddSubMenu(L("qmenu_language"))
 		if lo and lo.SetIcon then lo:SetIcon("icon16/world.png") end
@@ -616,7 +619,7 @@ function UI.Open()
 	left:SelectPage("ase")
 	bottom:SelectPage("scene")
 
-	hook.Add("Think", "SPeditor.ComboRefresh", function()
+	SPeditor.Hook("Think", "SPeditor.ComboRefresh", function()
 		if not C.active then return end
 		if IsValid(UI.PrimaryVP) then refreshCombo(UI.PrimaryVP, true) end
 		if IsValid(UI.SecondaryVP) then refreshCombo(UI.SecondaryVP, false) end
@@ -683,7 +686,7 @@ function UI.Open()
 	UI.StyleButton(restore, true, 3)
 	restore.DoClick = function() Dock.Reset("default") end
 	UI.EmptyHint = empty
-	hook.Add("Think", "SPeditor.EmptyHint", function()
+	SPeditor.Hook("Think", "SPeditor.EmptyHint", function()
 		if not IsValid(empty) then
 			hook.Remove("Think", "SPeditor.EmptyHint")
 			return

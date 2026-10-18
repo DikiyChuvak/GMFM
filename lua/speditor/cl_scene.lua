@@ -92,7 +92,7 @@ function C.IsLocked(e) return IsValid(e) and e:GetNW2Bool("SPeditor_Locked", fal
 
 -- Hidden models are not drawn (NoDraw on the client); everything comes back when the editor is left.
 local nextVis = 0
-hook.Add("Think", "SPeditor.ApplyVisibility", function()
+SPeditor.Hook("Think", "SPeditor.ApplyVisibility", function()
 	if RealTime() < nextVis then return end
 	nextVis = RealTime() + 0.3
 	for _, e in ipairs(C.Objects()) do
@@ -115,8 +115,112 @@ local ONE = Vector(1, 1, 1)
 local looked, nextLookScan = {}, 0
 local STUDIO_SHADOWDEPTH = STUDIO_SHADOWDEPTHTEXTURE or 0x40000000
 
+-- Colours of material slots (a0.8, look.tints): the slot is drawn with a copy of its material
+-- whose $color2 ($color for unlit shaders) is multiplied by the colour. The copy is made from
+-- the text of the .vmt (a "patch" material is merged into the one it includes): the values the
+-- engine reports for a loaded material include its internal flags and defaults, which do not
+-- make a working material again.
+local tintCache = {}
+local function readVMT(path, depth)
+	local raw = file.Read("materials/" .. path .. ".vmt", "GAME")
+	if not raw then return nil end
+	local shader = string.match(raw, "^%s*\"?([%w_]+)\"?")
+	local kv = util.KeyValuesToTable(raw)
+	if not shader or not istable(kv) then return nil end
+	if string.lower(shader) == "patch" and (depth or 0) < 3 then
+		local inc = kv.include
+		if not isstring(inc) then return nil end
+		inc = string.gsub(string.gsub(string.lower(inc), "^materials/", ""), "%.vmt$", "")
+		local bshader, bkv = readVMT(inc, (depth or 0) + 1)
+		if not bshader then return nil end
+		for _, part in ipairs({ kv.insert, kv.replace }) do
+			if istable(part) then for k, v in pairs(part) do bkv[k] = v end end
+		end
+		return bshader, bkv
+	end
+	kv.include, kv.insert, kv.replace = nil, nil, nil
+	return shader, kv
+end
+
+local function vec3(v)
+	if isnumber(v) then return v, v, v end
+	if isstring(v) then
+		local a, b, c = string.match(v, "([%d%.%-]+)%s+([%d%.%-]+)%s+([%d%.%-]+)")
+		if a then
+			local x, y, z = tonumber(a), tonumber(b), tonumber(c)
+			-- {255 128 0} is in 0..255
+			if string.find(v, "{", 1, true) then return x / 255, y / 255, z / 255 end
+			return x, y, z
+		end
+		local n = tonumber(v)
+		if n then return n, n, n end
+	end
+	return 1, 1, 1
+end
+
+function C.TintMaterial(path, col)
+	if not isstring(path) or path == "" then return nil end
+	path = string.lower(string.gsub(path, "\\", "/"))
+	local key = string.format("%s|%d,%d,%d", path, col[1], col[2], col[3])
+	local m = tintCache[key]
+	if m ~= nil then return m or nil end
+	tintCache[key] = false
+	local shader, kv = readVMT(path)
+	if not shader then return nil end
+	local unlit = string.find(string.lower(shader), "unlit", 1, true) ~= nil
+	local field = unlit and "$color" or "$color2"
+	-- player models: a proxy writes the player colour into $color2, and $blendtintbybasealpha
+	-- applies $color2 only to the masked part — the colour must cover the whole material
+	if istable(kv.proxies) then
+		for name, p in pairs(kv.proxies) do
+			if string.lower(tostring(name)) == "playercolor" or (istable(p) and isstring(p.resultvar)
+				and string.lower(p.resultvar) == field and string.lower(tostring(p.srcvar1 or "")) ~= field) then
+				kv.proxies[name] = nil
+			end
+		end
+	end
+	local masked = tonumber(kv["$blendtintbybasealpha"]) == 1
+	kv["$blendtintbybasealpha"] = nil
+	local x, y, z = vec3(kv[field])
+	if masked then x, y, z = 1, 1, 1 end
+	kv[field] =string.format("[%.4f %.4f %.4f]", x * col[1] / 255, y * col[2] / 255, z * col[3] / 255)
+	local ok, mat = pcall(CreateMaterial, "speditor_tint3_" .. util.CRC(key), shader, kv)
+	if not ok or not mat or mat:IsError() then return nil end
+	tintCache[key] = mat
+	return mat
+end
+
+-- { [slot] = material } for an object with slot colours (nil when it has none)
+local function tintMats(e)
+	local str = e:GetNW2String("SPeditor_Tints", "")
+	if str == "" then return nil end
+	local slots = e:GetMaterials() or {}
+	local whole = e:GetMaterial() or ""
+	local out
+	for idx, r, g, b in string.gmatch(str, "(%d+):(%d+),(%d+),(%d+)") do
+		idx = tonumber(idx)
+		local sub = e:GetSubMaterial(idx)
+		local path = (sub and sub ~= "") and sub or (whole ~= "" and whole or slots[idx + 1])
+		local mat = C.TintMaterial(path, { tonumber(r), tonumber(g), tonumber(b) })
+		if mat then
+			out = out or {}
+			out[idx] = mat
+		end
+	end
+	return out
+end
+
+-- the draw of an object with a look of its own: no shadow in the spot lights' shadow maps,
+-- coloured material slots
 local function noShadowDraw(self, flags)
-	if flags and bit.band(flags, STUDIO_SHADOWDEPTH) ~= 0 then return end
+	if self.SPNoShadow and flags and bit.band(flags, STUDIO_SHADOWDEPTH) ~= 0 then return end
+	local t = self.SPTintMats
+	if t then
+		for idx, mat in pairs(t) do render.MaterialOverrideByIndex(idx, mat) end
+		self:DrawModel(flags)
+		render.MaterialOverrideByIndex()
+		return
+	end
 	self:DrawModel(flags)
 end
 
@@ -151,9 +255,20 @@ local function applyLook(e)
 		e.SPBlob = blob
 		e:DrawShadow(blob)
 	end
-	if e.SPNoShadow ~= ns then
-		e.SPNoShadow = ns
-		if ns then
+	local tints = e:GetNW2String("SPeditor_Tints", "")
+	local tintKey = tints
+	if tints ~= "" then
+		tintKey = tints .. "|" .. (e:GetMaterial() or "") .. "|" .. (e:GetModel() or "")
+		for idx in string.gmatch(tints, "(%d+):") do tintKey = tintKey .. "|" .. (e:GetSubMaterial(tonumber(idx)) or "") end
+	end
+	if e.SPTintKey ~= tintKey then
+		e.SPTintKey = tintKey
+		e.SPTintMats = tints ~= "" and tintMats(e) or nil
+	end
+	local own = ns or e.SPTintMats ~= nil
+	if e.SPNoShadow ~= ns or e.SPOwnDraw ~= own then
+		e.SPNoShadow, e.SPOwnDraw = ns, own
+		if own then
 			if not e.SPWorn then e.RenderOverride = noShadowDraw end
 		elseif e.RenderOverride == noShadowDraw then
 			e.RenderOverride = nil
@@ -170,7 +285,7 @@ local function drawNothing() end
 local function dropWorn(e)
 	if IsValid(e.SPWorn) then e.SPWorn:Remove() end
 	e.SPWorn = nil
-	if e.RenderOverride == drawNothing then e.RenderOverride = e.SPNoShadow and noShadowDraw or nil end
+	if e.RenderOverride == drawNothing then e.RenderOverride = e.SPOwnDraw and noShadowDraw or nil end
 end
 
 local function applyWorn(e)
@@ -206,7 +321,8 @@ local function applyWorn(e)
 	if csm:GetMaterial() ~= e:GetMaterial() then csm:SetMaterial(e:GetMaterial()) end
 	csm:SetNoDraw(e:GetNoDraw() or parent:GetNoDraw())
 	csm:DrawShadow(e.SPBlob ~= false)
-	csm.RenderOverride = e.SPNoShadow and noShadowDraw or nil
+	csm.SPNoShadow, csm.SPTintMats = e.SPNoShadow, e.SPTintMats
+	csm.RenderOverride = e.SPOwnDraw and noShadowDraw or nil
 	-- bone offsets of the worn object (its own bones the wearer lacks: hair, coat tails,
 	-- straps; the merged ones follow the wearer anyway)
 	if e:HasBoneManipulations() or csm.SPManip then
@@ -232,7 +348,7 @@ local function applyWorn(e)
 	end
 end
 
-hook.Add("Think", "SPeditor.ApplyLook", function()
+SPeditor.Hook("Think", "SPeditor.ApplyLook", function()
 	if RealTime() >= nextLookScan then
 		nextLookScan = RealTime() + 0.5
 		looked = {}
@@ -474,7 +590,7 @@ local function resolvePendingMulti()
 	if #found > 1 then hook.Run("SPeditor_MultiChanged") end
 end
 
-hook.Add("Think", "SPeditor.SelectionWatch", function()
+SPeditor.Hook("Think", "SPeditor.SelectionWatch", function()
 	if C.dupBatch and RealTime() >= C.dupBatch.untilT then C.FinishDuplicate() end
 	if C.pendingMulti then resolvePendingMulti() end
 	if C.selected ~= nil and not IsValid(C.selected) then

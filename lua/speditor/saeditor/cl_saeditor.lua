@@ -305,7 +305,8 @@ function SA.SetKey(ents, frame, quiet, parts)
 		if uid ~= 0 and ts and not parts then
 			sendKey(id, OP.MOTION, uid, frame, 0, SA.TimeSelString(ts))
 		elseif uid ~= 0 then
-			sendKey(id, OP.SET, uid, frame, 0, parts and ("parts:" .. parts) or nil)
+			local def = "def:" .. SA.NewEase()
+			sendKey(id, OP.SET, uid, frame, 0, parts and ("parts:" .. parts .. "|" .. def) or def)
 		end
 	end
 	pushHistory("sa key", id)
@@ -338,7 +339,7 @@ function SA.SetFaceKey(ents, frame, quiet)
 		if uid ~= 0 and ts then
 			sendKey(id, OP.MOTION, SA.FaceTrack(uid), frame, 0, SA.TimeSelString(ts))
 		elseif uid ~= 0 then
-			sendKey(id, OP.SET, SA.FaceTrack(uid), frame)
+			sendKey(id, OP.SET, SA.FaceTrack(uid), frame, 0, "def:" .. SA.NewEase())
 		end
 	end
 	pushHistory("sa face key", id)
@@ -431,6 +432,33 @@ function SA.SetEaseMany(list, ease)
 	local id = nextOp()
 	for _, g in pairs(byTrack(list)) do sendKey(id, OP.EASE, g.uid, 0, 0, ease .. "|" .. table.concat(g.frames, ",")) end
 	pushHistory("sa ease", id)
+end
+
+-- The motion new keys get (a0.8; "spline" — continuous — by default): a key already there keeps
+-- its own. Sent as "def:<ease>" so that the server does not take it for a chosen easing.
+local cvNewEase = CreateClientConVar("saeditor_ease_new", "spline", true, false, "SAeditor: the motion of new keys")
+SA.NEW_EASES = { "spline", "ease", "linear", "hold" }
+function SA.NewEase()
+	local e = cvNewEase:GetString()
+	return table.HasValue(SA.NEW_EASES, e) and e or "spline"
+end
+function SA.SetNewEase(e) RunConsoleCommand("saeditor_ease_new", e) end
+
+-- Every key of the animation (but the jump cuts, "hold") made continuous: the objects pass
+-- through their keys without stopping. One step of undo.
+function SA.SmoothAll()
+	local list = {}
+	for uid, keys in pairs(SA.tracks or {}) do
+		for _, k in ipairs(keys) do
+			if k.e ~= "hold" and k.e ~= "spline" then list[#list + 1] = { uid = uid, f = k.f } end
+		end
+	end
+	if #list == 0 then
+		SPeditor.Notify("#sa_smooth_none", 0)
+		return
+	end
+	SA.SetEaseMany(list, "spline")
+	SPeditor.Notify("#sa_smooth_done|" .. #list, 2)
 end
 
 function SA.SetEase(uid, frame, ease)

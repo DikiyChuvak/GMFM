@@ -153,7 +153,7 @@ local function engineFrame(job, src, W, H)
 	end)
 end
 
-hook.Add("PostRender", "SPeditor.Export", function()
+SPeditor.Hook("PostRender", "SPeditor.Export", function()
 	local job = SPeditor.Export.pending
 	if not job then return end
 	if not C.active then
@@ -247,7 +247,12 @@ hook.Add("PostRender", "SPeditor.Export", function()
 		ensureDir(dir)
 		local path = dir .. "/" .. job.name .. ((job.format == "jpeg") and ".jpg" or ".png")
 		file.Write(path, data)
-		if not job.silent then SPeditor.Notify(string.format(L("render_saved"), path, W, H), 2) end
+		if not job.silent then
+			SPeditor.Notify(string.format(L("render_saved"), path, W, H), 2)
+			if SPeditor.UI.ShowRenderDone and not job.steam then
+				SPeditor.UI.ShowRenderDone({ path = "garrysmod/data/" .. path, notes = { string.format(L("rdone_picture"), W, H) } })
+			end
+		end
 		if job.steam then SPeditor.Export.ToSteam(path) end
 		done(true, path)
 	else
@@ -274,7 +279,7 @@ function SPeditor.Export.ToSteam(path)
 	local tex = mat:GetTexture("$basetexture")
 	local iw, ih = tex and tex:Width() or ScrW(), tex and tex:Height() or ScrH()
 	local n = 0
-	hook.Add("PostRenderVGUI", "SPeditor.SteamShot", function()
+	SPeditor.Hook("PostRenderVGUI", "SPeditor.SteamShot", function()
 		n = n + 1
 		local sw, sh = ScrW(), ScrH()
 		local k = math.min(sw / iw, sh / ih)

@@ -125,7 +125,7 @@ local function rescan()
 	end
 end
 
-hook.Add("Think", "SPeditor.ShadowScan", function()
+SPeditor.Hook("Think", "SPeditor.ShadowScan", function()
 	if RealTime() < nextScan then return end
 	nextScan = RealTime() + 0.25
 	rescan()
@@ -206,7 +206,7 @@ end
 
 -- Own values are in effect while the editor is open: they are applied again on entering
 -- (after a map change the shadow_control entity is a different one)
-hook.Add("SPeditor_StateChanged", "SPeditor.MapShadow", function(on)
+SPeditor.Hook("SPeditor_StateChanged", "SPeditor.MapShadow", function(on)
 	if on and Map.IsCustom() then timer.Simple(0.5, function() send(false) end) end
 end)
 

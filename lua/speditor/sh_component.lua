@@ -79,7 +79,7 @@ end
 
 -- hook.Add with a name unique to the component: loading the file again replaces the handler
 function COMP:Hook(event, fn, name)
-	hook.Add(event, "SPeditor." .. self.id .. (name and ("." .. name) or ""), fn)
+	SPeditor.Hook(event, "SPeditor." .. self.id .. (name and ("." .. name) or ""), fn)
 end
 
 function COMP:NetName(name) return "SPeditor_" .. self.id .. "_" .. name end

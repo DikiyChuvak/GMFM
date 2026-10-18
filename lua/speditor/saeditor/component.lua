@@ -6,7 +6,7 @@
 return {
 	name   = "SAeditor",
 	net    = { "Config", "Seek", "Play", "Key", "Restore", "Bake", "Sync", "Summary", "Frame", "Sounds",
-		"Proc", "Curve", "CurveData", "SMH", "Lip", "Show", "Cam", "Ghost", "Cuts", "Rec" },
+		"Proc", "Curve", "CurveData", "SMH", "Lip", "Show", "Cam", "Ghost", "Cuts", "Rec", "Slow" },
 	shared = { "sh_saeditor.lua" },
 	server = { "sv_saeditor.lua", "sv_saeditor_record.lua" },
 	client = { "cl_saeditor.lua", "cl_saeditor_sound.lua", "cl_saeditor_video.lua", "cl_saeditor_ui.lua",

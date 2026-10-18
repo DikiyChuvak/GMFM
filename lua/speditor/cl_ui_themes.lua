@@ -388,7 +388,7 @@ end, "SPeditor.Theme")
 
 -- Dialogs, tooltips and other parentless panels take the default skin:
 -- while the editor is open, that is the theme skin.
-hook.Add("ForceDermaSkin", "SPeditor.Theme", function()
+SPeditor.Hook("ForceDermaSkin", "SPeditor.Theme", function()
 	local C = SPeditor.Client
 	if C and C.active and UI.SkinName then return UI.SkinName end
 end)
@@ -406,6 +406,6 @@ function derma.GetDefaultSkin()
 	return UI.OrigDefaultSkin()
 end
 
-hook.Add("SPeditor_StateChanged", "SPeditor.ThemeSkin", function(on)
+SPeditor.Hook("SPeditor_StateChanged", "SPeditor.ThemeSkin", function(on)
 	if not on then derma.RefreshSkins() end
 end)

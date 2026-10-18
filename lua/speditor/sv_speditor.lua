@@ -66,6 +66,50 @@ function S.SetUID(ent, uid)
 	ent:SetNW2Int("SPeditor_UID", uid)
 end
 
+-- Multiplayer (found by the a0.8 self-test on a listen server): an entity that gets the index of
+-- an entity removed a moment ago (clearing and loading a scene, undo) does not send the NW2
+-- values that equal the old entity's — the server takes them for sent, while the client starts
+-- the new entity from defaults. The scene then lost "this is an editor object" and "whose it is",
+-- so objects vanished from the editor after loading. Every SPeditor_* value of a new object is
+-- therefore sent once more: first a different value, a moment later the real one.
+local NW2_SET = { Bool = "SetNW2Bool", Int = "SetNW2Int", Float = "SetNW2Float", String = "SetNW2String",
+	Entity = "SetNW2Entity", Vector = "SetNW2Vector", Angle = "SetNW2Angle" }
+local function otherValue(kind, v)
+	if kind == "Bool" then return not v end
+	if kind == "Int" then return v + 1 end
+	if kind == "Float" then return v + 0.001 end
+	if kind == "String" then return v .. " " end
+	if kind == "Entity" then return IsValid(v) and NULL or nil end
+	if kind == "Vector" then return v + Vector(0.001, 0, 0) end
+	if kind == "Angle" then return v + Angle(0.001, 0, 0) end
+end
+
+function S.ResendNW2(ent, delay)
+	if game.SinglePlayer() then return end
+	timer.Simple(delay or 0.1, function()
+		if not IsValid(ent) then return end
+		local real = {}
+		for key, t in pairs(ent:GetNW2VarTable() or {}) do
+			local set = istable(t) and NW2_SET[t.type]
+			if set and isstring(key) and string.StartWith(key, "SPeditor_") then
+				local other = otherValue(t.type, t.value)
+				if other ~= nil then
+					real[key] = { set = set, value = t.value, other = other }
+					ent[set](ent, key, other)
+				end
+			end
+		end
+		timer.Simple(0.1, function()
+			if not IsValid(ent) then return end
+			for key, r in pairs(real) do
+				-- changed meanwhile by the editor itself: that value stands
+				local now = ent:GetNW2VarTable()[key]
+				if now and now.value == r.other then ent[r.set](ent, key, r.value) end
+			end
+		end)
+	end)
+end
+
 function S.Track(ply, ent)
 	ent.SPeditor_Owner = ply
 	ent:SetNW2Bool("SPeditor_Ent", true)
@@ -74,6 +118,9 @@ function S.Track(ply, ent)
 	S.NextUID[ply] = uid
 	S.SetUID(ent, uid)
 	table.insert(S.List(ply), ent)
+	-- twice: values set right after spawning (a loaded scene's names, looks, attachments) too
+	S.ResendNW2(ent, 0.1)
+	S.ResendNW2(ent, 1)
 end
 
 function S.FindUID(ply, uid)
@@ -142,13 +189,13 @@ local function setPlayerGhost(ply, ghost)
 	end
 end
 
-hook.Add("WeaponEquip", "SPeditor.GhostWeapon", function(wep, ply)
+SPeditor.Hook("WeaponEquip", "SPeditor.GhostWeapon", function(wep, ply)
 	if IsValid(ply) and S.Active[ply] then
 		timer.Simple(0, function() if IsValid(wep) then wep:DrawShadow(false) end end)
 	end
 end)
 
-hook.Add("PlayerSpawn", "SPeditor.GhostRespawn", function(ply)
+SPeditor.Hook("PlayerSpawn", "SPeditor.GhostRespawn", function(ply)
 	if S.Active[ply] then timer.Simple(0.1, function() setPlayerGhost(ply, true) end) end
 end)
 
@@ -311,7 +358,7 @@ end
 -- hand slid away from it a quarter of a second after every edit, and in an animation it sat
 -- in one place during playback and in another in a paused frame. Two ticks awake are enough
 -- for the new pose to reach the client.
-hook.Add("Think", "SPeditor.RagdollRest", function()
+SPeditor.Hook("Think", "SPeditor.RagdollRest", function()
 	for _, list in pairs(S.Owned) do
 		for _, ent in ipairs(list) do
 			if IsValid(ent) and ent:GetClass() == "prop_ragdoll" then
@@ -452,7 +499,7 @@ function S.AttachFollow()
 	end
 	S.AimFollow()
 end
-hook.Add("Think", "SPeditor.AttachFollow", function() S.AttachFollow() end)
+SPeditor.Hook("Think", "SPeditor.AttachFollow", function() S.AttachFollow() end)
 
 ---------------------------------------------------------------------
 -- Look-at (a0.7): a camera or a light keeps turning to an object — the head of a character
@@ -527,7 +574,7 @@ end
 local cvGuard = CreateConVar("speditor_ragdoll_guard", "1", FCVAR_ARCHIVE,
 	"SPeditor: keep the bodies of editor ragdolls frozen when other addons unfreeze them")
 
-hook.Add("Think", "SPeditor.RagdollGuard", function()
+SPeditor.Hook("Think", "SPeditor.RagdollGuard", function()
 	if not cvGuard:GetBool() then return end
 	for ply, list in pairs(S.Owned) do
 		if S.Active[ply] then
@@ -699,6 +746,25 @@ function S.ApplyLook(ent, d)
 			end
 		end
 	end
+
+	-- a colour per material slot (a0.8, as SFM's material colour): the client draws the slot
+	-- with a tinted copy of its material (cl_scene.lua). The client reads "slot:r,g,b;…".
+	local tints = {}
+	if type(d.tints) == "table" then
+		for k, v in pairs(d.tints) do
+			local idx = math.floor(SPeditor.Num(k, -1))
+			if idx >= 0 and idx < MAX_SUBMATS and type(v) == "table" then
+				local r, g, b = math.Round(SPeditor.Clamp(v[1], 0, 255, 255)), math.Round(SPeditor.Clamp(v[2], 0, 255, 255)),
+					math.Round(SPeditor.Clamp(v[3], 0, 255, 255))
+				if r < 255 or g < 255 or b < 255 then
+					look.tints = look.tints or {}
+					look.tints[tostring(idx)] = { r, g, b }
+					tints[#tints + 1] = string.format("%d:%d,%d,%d", idx, r, g, b)
+				end
+			end
+		end
+	end
+	ent:SetNW2String("SPeditor_Tints", table.concat(tints, ";"))
 
 	local noshadow = d.noshadow and true or false
 	ent:DrawShadow(not noshadow)
@@ -1679,7 +1745,7 @@ S.Receive("ViewPos", function(ply)
 	if SPeditor.ValidVec(pos) then ply.SPeditor_ViewPos = pos end
 end)
 
-hook.Add("SetupPlayerVisibility", "SPeditor.EditorPVS", function(ply)
+SPeditor.Hook("SetupPlayerVisibility", "SPeditor.EditorPVS", function(ply)
 	if not S.Active[ply] then return end
 	if ply.SPeditor_ViewPos then AddOriginToPVS(ply.SPeditor_ViewPos) end
 	local n = 0
@@ -1711,18 +1777,18 @@ S.Receive("PoseApply", function(ply)
 	S.ApplyPose(ent, pose)
 end)
 
-hook.Add("PlayerDisconnected", "SPeditor.Cleanup", function(ply)
+SPeditor.Hook("PlayerDisconnected", "SPeditor.Cleanup", function(ply)
 	S.CleanupPlayer(ply)
 	S.Owned[ply]  = nil
 	S.Active[ply] = nil
 end)
 
 -- Other players cannot move or edit editor objects with the physgun / toolgun
-hook.Add("PhysgunPickup", "SPeditor.NoPhysgun", function(ply, ent)
+SPeditor.Hook("PhysgunPickup", "SPeditor.NoPhysgun", function(ply, ent)
 	if SPeditor.IsEditable(ent) and ent.SPeditor_Owner ~= ply then return false end
 end)
 
-hook.Add("CanTool", "SPeditor.NoTool", function(ply, tr)
+SPeditor.Hook("CanTool", "SPeditor.NoTool", function(ply, tr)
 	local ent = tr and tr.Entity
 	if SPeditor.IsEditable(ent) and ent.SPeditor_Owner ~= ply then return false end
 end)

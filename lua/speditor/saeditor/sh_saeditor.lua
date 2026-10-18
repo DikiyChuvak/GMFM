@@ -395,7 +395,7 @@ if SERVER then
 		if #q == 0 and job.n == 1 then sendPart(ply, job) return end
 		q[#q + 1] = job
 	end
-	hook.Add("Tick", "SAeditor.SendParts", function()
+	SPeditor.Hook("Tick", "SAeditor.SendParts", function()
 		for ply, q in pairs(queue) do
 			if not IsValid(ply) then
 				queue[ply] = nil
@@ -565,7 +565,7 @@ COMP:Lang("en", {
 	sa_import = "Import model animation…", sa_render = "Render animation…",
 	sa_menu = "Animation", sa_clear_track = "Remove animation of this object", sa_clear_all = "Remove all animation",
 	sa_clear_all_q = "Remove all keys of all objects, the sounds and the camera cuts?",
-	sa_ease = "Motion to the next key", sa_ease_ease = "Smooth", sa_ease_linear = "Linear", sa_ease_hold = "Hold (stepped)",
+	sa_ease = "Motion to the next key", sa_ease_ease = "Ease (stops at keys)", sa_ease_linear = "Linear", sa_ease_hold = "Hold (stepped)",
 	sa_ease_spline = "Continuous (spline)", sa_ease_sine = "Gentle (sine)", sa_ease_expo = "Sharp (expo)", sa_ease_back = "With a swing (back)",
 	sa_ease_elastic = "Springy (elastic)", sa_ease_bounce = "Bouncing (bounce)", sa_ease_more = "More",
 	sa_ew_spline = "Continuous: passes through the keys without stopping, its speed follows from the keys around",
@@ -673,6 +673,20 @@ COMP:Lang("en", {
 	sa_rd_q_50 = "Smaller by 65%: JPEG 50", sa_rd_q_30 = "Smallest, by 80%: JPEG 30",
 	sa_rnd_size = "Video: %.1f MB, %.2f MB per second. Frames repeated without change: %d.",
 	sa_rnd_mp4 = "The game can only write MJPEG video. To make it several times smaller without visible loss: ffmpeg -i %s -c:v libx264 -crf 18 -pix_fmt yuv420p -c:a aac %s.mp4",
+	-- a0.8: the window after a render
+	sa_new_ease = "New keys move", sa_smooth_all = "Make the whole animation smooth (continuous keys)",
+	sa_smooth_done = "%d keys are continuous now: objects pass through them without stopping (Ctrl + Z undoes it)",
+	sa_smooth_none = "Every key is continuous already (jump cuts — Hold — are left as they are)",
+	sa_rdone_avi = "The animation is rendered: %d frames, an AVI video with sound.",
+	sa_rdone_dat = "The game may only write files with a few endings, so the video is named .avi.dat. Rename it to .avi (remove .dat at the end) — then any player or video editor opens it. VLC plays it even with .dat.",
+	sa_rdone_parts = "The video was too big for one file: it is split into %d parts (name_2, name_3…).",
+	sa_rdone_webm = "The animation is rendered: %d frames, a WebM video %d x %d. It opens in a browser, VLC and video editors.",
+	sa_rdone_wav = "The sound is in a separate file: %s — put it under the video in a video editor.",
+	sa_rec_corpses = "Killed NPCs fall as ragdolls",
+	sa_rec_corpses_tip = "For the take the game keeps the bodies of killed NPCs on the server (Keep corpses, ai_serverragdolls 1): the fall, the roll and where the body ends up are recorded. Off: an NPC is hidden after the frame it dies on. The setting and the extra bodies are put back after the take.",
+	sa_rnd_slow = "The scene has effects: the game runs slowed down during the render, so that every frame shows them at its exact moment",
+	sa_rd_slowfx = "Slow the game down for effects",
+	sa_rd_slowfx_tip = "While the video renders, the game time is slowed down so that particle effects reach the exact moment of every frame and effects of the Emitter tool and Lua play at the speed of the video. The render takes longer. Single player only.",
 })
 
 COMP:Lang("ru", {
@@ -805,7 +819,7 @@ COMP:Lang("ru", {
 	sa_import = "Импорт анимации модели…", sa_render = "Рендер анимации…",
 	sa_menu = "Анимация", sa_clear_track = "Убрать анимацию этого объекта", sa_clear_all = "Убрать всю анимацию",
 	sa_clear_all_q = "Удалить все ключи всех объектов, звуки и переключения камер?",
-	sa_ease = "Движение к следующему ключу", sa_ease_ease = "Плавно", sa_ease_linear = "Равномерно", sa_ease_hold = "Скачком (ступенька)",
+	sa_ease = "Движение к следующему ключу", sa_ease_ease = "Плавно, с остановкой", sa_ease_linear = "Равномерно", sa_ease_hold = "Скачком (ступенька)",
 	sa_ease_spline = "Непрерывно (сплайн)", sa_ease_sine = "Мягко (синус)", sa_ease_expo = "Резко (экспонента)", sa_ease_back = "С замахом (back)",
 	sa_ease_elastic = "Упруго (elastic)", sa_ease_bounce = "С подскоками (bounce)", sa_ease_more = "Ещё",
 	sa_ew_spline = "Непрерывно: проходит через ключи не останавливаясь, скорость берётся из соседних ключей",
@@ -913,4 +927,18 @@ COMP:Lang("ru", {
 	sa_rd_q_50 = "Меньше на 65%: JPEG 50", sa_rd_q_30 = "Самое маленькое, на 80%: JPEG 30",
 	sa_rnd_size = "Видео: %.1f МБ, %.2f МБ в секунду. Кадров, повторённых без изменений: %d.",
 	sa_rnd_mp4 = "Игра умеет писать только видео MJPEG. Сделать его в несколько раз меньше без видимых потерь: ffmpeg -i %s -c:v libx264 -crf 18 -pix_fmt yuv420p -c:a aac %s.mp4",
+	-- a0.8: окно после рендера
+	sa_new_ease = "Движение новых ключей", sa_smooth_all = "Сделать всю анимацию плавной (непрерывные ключи)",
+	sa_smooth_done = "Ключей стало непрерывными: %d — объекты проходят их не останавливаясь (Ctrl + Z отменяет)",
+	sa_smooth_none = "Все ключи уже непрерывные (резкие переходы — «Удержание» — не трогаются)",
+	sa_rdone_avi = "Анимация отрендерена: кадров — %d, видео AVI со звуком.",
+	sa_rdone_dat = "Игра может записывать файлы только с некоторыми окончаниями, поэтому видео называется .avi.dat. Переименуйте его в .avi (уберите .dat в конце) — тогда его откроет любой плеер и видеоредактор. VLC играет его и с .dat.",
+	sa_rdone_parts = "Видео не поместилось в один файл: оно разбито на части — %d (имя_2, имя_3…).",
+	sa_rdone_webm = "Анимация отрендерена: кадров — %d, видео WebM %d x %d. Открывается в браузере, VLC и видеоредакторах.",
+	sa_rdone_wav = "Звук — в отдельном файле: %s — подложите его под видео в видеоредакторе.",
+	sa_rec_corpses = "Убитые NPC падают рэгдоллами",
+	sa_rec_corpses_tip = "На время дубля игра оставляет тела убитых NPC на сервере (Keep corpses, ai_serverragdolls 1): записываются падение, перекаты и то, где тело осталось. Выключено: NPC скрывается после кадра своей смерти. Настройка и лишние тела возвращаются после дубля.",
+	sa_rnd_slow = "В сцене есть эффекты: на время рендера игра замедлена, чтобы каждый кадр показывал их точно в свой момент",
+	sa_rd_slowfx = "Замедлять игру для эффектов",
+	sa_rd_slowfx_tip = "Пока рендерится видео, время игры замедлено, чтобы эффекты частиц попадали точно в момент каждого кадра, а эффекты инструмента Emitter и Lua шли со скоростью видео. Рендер идёт дольше. Только в одиночной игре.",
 })

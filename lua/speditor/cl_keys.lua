@@ -297,7 +297,7 @@ local function finish(bind)
 	if c and c.done then c.done(bind) end
 end
 
-hook.Add("Think", "SPeditor.KeyCapture", function()
+SPeditor.Hook("Think", "SPeditor.KeyCapture", function()
 	local c = K.capturing
 	if not c then return end
 	local ctrl, shift, alt = K.Mods()
@@ -337,7 +337,7 @@ hook.Add("Think", "SPeditor.KeyCapture", function()
 end)
 
 -- Esc cancels the capture and must not open the game menu
-hook.Add("OnPauseMenuShow", "SPeditor.KeyCapture", function()
+SPeditor.Hook("OnPauseMenuShow", "SPeditor.KeyCapture", function()
 	if K.capturing or RealTime() < escUntil then
 		escUntil = RealTime() + 0.3
 		return false
@@ -345,6 +345,6 @@ hook.Add("OnPauseMenuShow", "SPeditor.KeyCapture", function()
 end)
 
 -- the editor is closed while a key is being waited for
-hook.Add("SPeditor_StateChanged", "SPeditor.KeyCapture", function(on)
+SPeditor.Hook("SPeditor_StateChanged", "SPeditor.KeyCapture", function(on)
 	if not on and K.capturing then K.CancelCapture() end
 end)

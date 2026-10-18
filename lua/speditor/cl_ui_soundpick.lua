@@ -48,7 +48,7 @@ local CLICKABLE = { DButton = true, DImageButton = true, DCheckBox = true, DChec
 	DMenuOption = true, DComboBox = true, DTab = true, DCollapsibleCategory = true }
 
 -- a theme without sounds of its own: the sounds of one's own are played here
-hook.Add("VGUIMousePressed", "SPeditor.UISounds", function(pnl, code)
+SPeditor.Hook("VGUIMousePressed", "SPeditor.UISounds", function(pnl, code)
 	local C = SPeditor.Client
 	if code ~= MOUSE_LEFT or not C or not C.active or not IsValid(pnl) then return end
 	local skin = UI.SkinName and derma.GetNamedSkin(UI.SkinName)

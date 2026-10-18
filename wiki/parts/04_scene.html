@@ -174,6 +174,7 @@
       <dl class="defs l-en">
         <dt>Colour</dt><dd>Tint and opacity (the fourth field is alpha: below 255 the object becomes see-through). <em>Reset colour</em> returns white.</dd>
         <dt>Material</dt><dd>Replace textures for the <em>Whole model</em> or one material slot. Pick a material from the grid or type a path such as <code>models/shiny</code>. <em>Remove textures</em> makes the model plain white so it takes the object colour; <em>Restore original textures</em> undoes it.</dd>
+        <dt>Colour of the material <span class="badge new">new</span></dt><dd>With a slot chosen in <em>Apply to</em>, a colour picker colours that material only — the clothes, the hair, the skin — as SFM's material colour. <em>Original colour of this material</em> takes it back.</dd>
         <dt>Size</dt><dd>Props only: overall scale and stretching in length (X), width (Y) and height (Z). The Scale tool <kbd>4</kbd> does the same with the mouse.</dd>
         <dt>Shadow</dt><dd><em>Cast shadow</em> off removes the object from shadow maps — useful for an object in front of a lamp.</dd>
         <dt>Reset appearance</dt><dd>Everything back to the original.</dd>
@@ -181,12 +182,14 @@
       <dl class="defs l-ru">
         <dt>Colour</dt><dd>Оттенок и прозрачность (четвёртое поле — альфа: ниже 255 объект становится прозрачным). <em>Reset colour</em> возвращает белый.</dd>
         <dt>Material</dt><dd>Замена текстур для всей модели (<em>Whole model</em>) или одного слота материала. Выберите материал из сетки или введите путь, например <code>models/shiny</code>. <em>Remove textures</em> делает модель белой, и она принимает цвет объекта; <em>Restore original textures</em> возвращает текстуры.</dd>
+        <dt>Цвет материала <span class="badge new">new</span></dt><dd>Если в <em>Apply to</em> выбран слот, палитра красит только этот материал — одежду, волосы, кожу, — как цвет материала в SFM. <em>Original colour of this material</em> возвращает исходный.</dd>
         <dt>Size</dt><dd>Только пропы: общий масштаб и растяжение по длине (X), ширине (Y) и высоте (Z). Инструмент масштаба <kbd>4</kbd> делает то же мышью.</dd>
         <dt>Shadow</dt><dd>Выключенный <em>Cast shadow</em> убирает объект из теней — полезно для предмета перед лампой.</dd>
         <dt>Reset appearance</dt><dd>Вернуть всё как было.</dd>
       </dl>
     </div>
   </div>
+  <figure class="fit"><img src="img/a08_props_tint.jpg" alt="Colour of one material" style="--w:900px"><figcaption class="l-en"><b>Colour of one material</b> (a0.8): <em>Apply to</em> → slot 5 (the clothes of the model) and red for that material only; the face and the hair keep theirs. Saved with the scene, undone with Ctrl + Z.</figcaption><figcaption class="l-ru"><b>Цвет одного материала</b> (a0.8): <em>Apply to</em> → слот 5 (одежда модели) и красный только для этого материала; лицо и волосы остаются своими. Сохраняется со сценой, отменяется Ctrl + Z.</figcaption></figure>
 
   <h2>Element Viewer</h2>
   <div class="row">
@@ -245,10 +248,10 @@
   <p class="l-ru">Выделите любую кость и нажмите <kbd>4</kbd> (или строку <em>- scale</em>): большая голова, длинные руки, огромная кисть. В a0.3 масштаб работал только на костях без физики (пальцах), а на кисти или голове молча превращался в перемещение; в a0.4 масштабируется любая кость.</p>
 
   <h3><span class="l-en">IK keeps the feet planted</span><span class="l-ru">IK держит стопы на месте</span></h3>
-  <p class="l-en">With IK on, moving or turning the pelvis keeps both feet where they stand and bends the knees: a character crouches, leans or shifts its weight in one drag. Switch it off with <span class="ui">View → IK: keep the feet planted when the body moves</span>. <span class="badge new">new</span> Since a0.7 IK is on from the start, and the editor remembers your choice.</p>
-  <p class="l-ru">С включённым IK движение или поворот таза оставляет обе стопы на месте и сгибает колени: персонаж приседает, наклоняется или переносит вес одним движением. Выключается через <span class="ui">View → IK: keep the feet planted when the body moves</span>. <span class="badge new">new</span> С a0.7 IK включён с самого начала, и редактор запоминает ваш выбор.</p>
+  <p class="l-en">With IK on, moving or turning the pelvis keeps both feet where they stand and bends the knees: a character crouches, leans or shifts its weight in one drag. Switch it off with <span class="ui">View → IK: keep the feet planted when the body moves</span>. Since a0.7 IK is on from the start, and the editor remembers your choice.</p>
+  <p class="l-ru">С включённым IK движение или поворот таза оставляет обе стопы на месте и сгибает колени: персонаж приседает, наклоняется или переносит вес одним движением. Выключается через <span class="ui">View → IK: keep the feet planted when the body moves</span>. С a0.7 IK включён с самого начала, и редактор запоминает ваш выбор.</p>
 
-  <h3><span class="l-en">Stretching bones</span><span class="l-ru">Растяжение костей</span> <span class="badge new">new</span></h3>
+  <h3><span class="l-en">Stretching bones</span><span class="l-ru">Растяжение костей</span></h3>
   <div class="row">
     <figure class="fit"><img src="img/a07_stretch.jpg" alt="A stretched neck" style="--w:480px"><figcaption class="l-en"><b>Stretch on:</b> the head moved up, the neck grew longer.</figcaption><figcaption class="l-ru"><b>Растяжение включено:</b> голова поднята, шея удлинилась.</figcaption></figure>
     <div style="flex:1 1 260px;min-width:0">
@@ -313,6 +316,7 @@
     <figcaption class="l-ru"><b>Меню объекта → Attach to… → персонаж.</b> Вверху <em>Wear</em>, затем <em>(whole object)</em>, затем все физические кости.</figcaption>
   </figure>
 
+  <figure class="fit"><img src="img/a08_attach_hand.jpg" alt="Attach (lock) to a hand" style="--w:900px"><figcaption class="l-en"><b>Attach (lock) to… → Hero → R_Hand</b> (a0.8 names it after SFM's lock): the gun keeps its place in the hand in every pose and frame. To correct the grip later just move the attached gun — the new place on the bone is kept.</figcaption><figcaption class="l-ru"><b>Attach (lock) to… → Hero → R_Hand</b> (с a0.8 пункт назван как lock в SFM): пистолет держится на своём месте в руке в любой позе и кадре. Чтобы поправить хват, просто сдвиньте привязанный пистолет — новое место на кости запомнится.</figcaption></figure>
   <h2><span class="l-en">Three ways to attach</span><span class="l-ru">Три способа привязки</span></h2>
   <div class="tbl"><table>
     <tr><th><span class="l-en">Choice</span><span class="l-ru">Пункт</span></th><th><span class="l-en">Result</span><span class="l-ru">Результат</span></th><th><span class="l-en">Use for</span><span class="l-ru">Для чего</span></th></tr>
@@ -339,7 +343,7 @@
   <div class="warn l-en"><p>Wearing works only when the bone names match. A model made for another skeleton (a custom rig) stays at the wearer's root. You can still click and select the worn object: its invisible copy stays where it was attached.</p></div>
   <div class="warn l-ru"><p>Одежда работает только при совпадении имён костей. Модель под другой скелет (свой риг) остаётся у корня носителя. Надетый объект по-прежнему можно выделить щелчком: его невидимая копия стоит там, где его привязали.</p></div>
 
-  <h2><span class="l-en">TF2 cosmetics and any skeleton</span><span class="l-ru">Косметика TF2 и любой скелет</span> <span class="badge new">new</span></h2>
+  <h2><span class="l-en">TF2 cosmetics and any skeleton</span><span class="l-ru">Косметика TF2 и любой скелет</span></h2>
   <div class="row">
     <figure class="fit"><img src="img/a07_wear_menu.jpg" alt="Attach to → Heavy → Wear" style="--w:440px"></figure>
     <figure class="fit"><img src="img/a07_wear_result.jpg" alt="A TF2 cosmetic worn by Heavy" style="--w:440px"><figcaption class="l-en"><b>A TF2 coat worn by Heavy.</b> Its own bones (the tails) are in the object tree and can be posed.</figcaption><figcaption class="l-ru"><b>Пальто TF2 надето на Хеви.</b> Его собственные кости (полы) — в дереве объектов, их можно позировать.</figcaption></figure>
@@ -358,7 +362,7 @@
     <li>Персонажи, чьи модели неверно сообщают физические кости (Enhanced TF2 MvM bots), теперь нормально позируются, привязываются и принимают свои анимации.</li>
   </ul>
 
-  <h2><span class="l-en">PAC3 outfits</span><span class="l-ru">Наряды PAC3</span> <span class="badge new">new</span></h2>
+  <h2><span class="l-en">PAC3 outfits</span><span class="l-ru">Наряды PAC3</span></h2>
   <p class="l-en">With <strong>PAC3</strong> installed (from the Workshop), characters and props of the scene can wear PAC3 outfits. They follow the bones, are saved with the scene and are seen by other players on a server. Without PAC3 the outfits stay in the scene file but are not shown.</p>
   <p class="l-ru">Если установлен <strong>PAC3</strong> (из Workshop), персонажи и пропы сцены могут носить наряды PAC3. Они следуют за костями, сохраняются со сценой и видны другим игрокам на сервере. Без PAC3 наряды остаются в файле сцены, но не показываются.</p>
   <div class="row">

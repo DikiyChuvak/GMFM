@@ -107,6 +107,6 @@ function C.SnapshotThen(ent, label, action)
 	end)
 end
 
-hook.Add("SPeditor_SceneLoaded", "SPeditor.HistoryClear", function()
+SPeditor.Hook("SPeditor_SceneLoaded", "SPeditor.HistoryClear", function()
 	C.ClearHistory()
 end)
