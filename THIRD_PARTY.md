@@ -1,4 +1,4 @@
-# Third-party parts / Чужие части
+# Third-party parts
 
 The [MIT license](LICENSE) covers GM:FM's own code, texts, pictures, sounds and shaders.
 The parts below are bundled with GM:FM but **belong to their authors**: they are not under
@@ -10,7 +10,7 @@ GM:FM. Перечисленные ниже части входят в GM:FM, н�
 под лицензией MIT и остаются на своих условиях. Если делаете форк и публикуете его, сначала
 проверьте эти части (оставьте их с указанием авторов или уберите).
 
-## Interface skins / Скины интерфейса
+## Interface skins
 
 Adapted copies of Workshop Derma skins (`lua/speditor/skins/*.lua`) and their textures
 (`materials/speditor/skins/*.png`, `materials/speditor/skins/ecoui/`):
@@ -46,7 +46,7 @@ The grey glyphs `materials/speditor/skins/sfm/glyph/` are made (`tools/make_glyp
 the [Silk icons](http://www.famfamfam.com/lab/icons/silk/) by Mark James that come with
 Garry's Mod (Creative Commons Attribution 2.5).
 
-## Sounds / Звуки
+## Sounds
 
 | Folder | Source |
 |---|---|
@@ -54,7 +54,7 @@ Garry's Mod (Creative Commons Attribution 2.5).
 | `sound/speditor/notify/winxp/` | [Windows XPerience UI Sounds](https://steamcommunity.com/sharedfiles/filedetails/?id=2979067313) — Jade (Windows XP sounds, Microsoft) |
 | `sound/speditor/notify/aero7ui/` | Windows 7 system sounds, Microsoft |
 
-## Other / Прочее
+## Other
 
 - `materials/speditor/brand/start_bg.jpg` — Garry's Mod's own background picture (Facepunch Studios).
 - The SSAO, film grain and colour correction shaders (`shaders_src/`, `shaders/fxc/`) are
