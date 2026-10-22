@@ -1,0 +1,9 @@
+"gmfm"
+{
+	"base"		"base"
+	"title"		"GM:FM"
+	"category"	"other"
+	"maps"		""
+	"menusystem"	"1"
+	"workshopid"	"3817852435"
+}
