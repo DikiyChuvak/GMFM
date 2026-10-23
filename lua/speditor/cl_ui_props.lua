@@ -326,6 +326,19 @@ function UI.OpenObjectProps(ent)
 	end
 
 	-----------------------------------------------------------------
+	-- Face (b0.2.3): the Face Poser's flex scale — how far every face slider goes
+	-----------------------------------------------------------------
+	if (ent:GetFlexNum() or 0) > 0 then
+		header(scroll, L("props_face"))
+		UI.Control(scroll, { label = L("props_flexscale"), min = 0.1, max = 10, default = 1, value = C.GetLook(ent).flexscale or 1,
+				onChange = function(v, final)
+					if IsValid(ent) then C.EditLook(ent, { flexscale = v }, final) end
+				end,
+				getter = function() return IsValid(ent) and (C.GetLook(ent).flexscale or 1) or nil end })
+		UI.Label(scroll, L("props_flexscale_hint")):DockMargin(6, 3, 6, 0)
+	end
+
+	-----------------------------------------------------------------
 	-- Shadow
 	-----------------------------------------------------------------
 	header(scroll, L("props_shadow"))

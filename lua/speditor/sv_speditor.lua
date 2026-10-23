@@ -774,6 +774,7 @@ end
 
 function S.ApplyLook(ent, d)
 	if not IsValid(ent) or S.IsAux(ent) then return end
+	ent.SA_LookSig = nil   -- the materials a key applied last (sv_saeditor.lua) are no longer there
 	d = type(d) == "table" and d or {}
 	local look = {}
 
@@ -836,6 +837,13 @@ function S.ApplyLook(ent, d)
 		end
 	end
 	ent:SetNW2String("SPeditor_Tints", table.concat(tints, ";"))
+
+	-- the Face Poser's flex scale (b0.2.3): every face slider goes this many times further
+	local fs = (ent:GetFlexNum() or 0) > 0 and SPeditor.Clamp(d.flexscale, 0.1, 10, 1) or 1
+	if math.abs(fs - 1) < 0.001 then fs = 1 end
+	if ent:GetFlexScale() ~= fs then ent:SetFlexScale(fs) end
+	ent:SetNW2Float("SPeditor_FlexScale", fs)
+	if fs ~= 1 then look.flexscale = fs end
 
 	local noshadow = d.noshadow and true or false
 	ent:DrawShadow(not noshadow)

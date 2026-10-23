@@ -17,13 +17,12 @@ Scenes, animation and film inside Garry's Mod, close to a full port of Source Fi
 
 ## English
 
-*This is my last update of GM:FM for this year: I want to make other interesting addons for
-Garry's Mod, so I am opening the whole source code of the addon under the MIT license. Fork
-it, or dig into it if you are an enthusiast. I may still update the Workshop version with
-changes from other developers (and I will always credit them) — just message me on Steam
-first so I can look at what you have changed.*
+*The whole source code of GM:FM is open under the MIT license. Fork it, or dig into it if you
+are an enthusiast. Changes from other developers may get into the Workshop version (always
+credited) — message me on Steam first so I can look at what you have changed. The Simplified
+Chinese translation is by [fugui9527121](https://github.com/fugui9527121) — thank you!*
 
-This repository is the **full source code** of GM:FM b0.2.2 — the addon as it is on the
+This repository is the **full source code** of GM:FM b0.2.3 — the addon as it is on the
 [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435), its
 gamemode, shaders and tools. How to use the editor is explained inside the game: **Help → How
 to use** (illustrated guides with live demonstrations).
@@ -70,13 +69,12 @@ that get into the Workshop version are credited by name. Bugs and ideas: the
 
 ## Русский
 
-*Это пока последнее моё обновление GM:FM в этом году: я хочу делать другие интересные аддоны
-для Garry's Mod и ради этого полностью открываю исходный код аддона под лицензией MIT.
-Делайте форки, или копайтесь в нём, если вы энтузиаст. Возможно, я ещё буду обновлять версию
-в мастерской, беря изменения от других разработчиков (и обязательно их упомяну), — только
-напишите мне в личные сообщения Steam, чтобы я мог посмотреть, что вы изменили.*
+*Весь исходный код GM:FM открыт под лицензией MIT. Делайте форки или копайтесь в нём, если
+вы энтузиаст. Изменения других разработчиков могут попасть в версию мастерской (всегда с
+упоминанием авторов) — напишите мне в личные сообщения Steam, чтобы я мог посмотреть, что вы
+изменили. Перевод на упрощённый китайский — [fugui9527121](https://github.com/fugui9527121), спасибо!*
 
-Здесь лежит **полный исходный код** GM:FM b0.2.2 — аддон в том виде, в каком он в
+Здесь лежит **полный исходный код** GM:FM b0.2.3 — аддон в том виде, в каком он в
 [мастерской Steam](https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435), его
 режим игры, шейдеры и инструменты. Как пользоваться редактором — внутри игры: **Help → How
 to use** (руководства с картинками и живыми демонстрациями).

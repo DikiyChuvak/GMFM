@@ -88,7 +88,7 @@ function UI.CreateFonts()
 	-- a language pack may name a font that has its letters (Japanese, Chinese…); the
 	-- player's own choice of a font wins
 	local pack = SPeditor.LanguageInfo and SPeditor.LanguageInfo(GetConVarString("gmfm_language"))
-	if face == "Tahoma" and pack and pack.font then face = pack.font end
+	if pack and pack.font and (face == "Tahoma" or pack.forceFont) then face = pack.font end
 	-- not below 8 px: at 50 % smaller text cannot be read at all
 	local size = math.max(UI.S(math.Clamp(cvFontSize:GetInt(), 11, 16)), 8)
 	surface.CreateFont("SPeditor.Small", { font = face, size = size, weight = 500, antialias = true, extended = true })

@@ -121,6 +121,28 @@ local function setSunDir(dir)
 	end
 end
 
+-- The map's own sounds (b0.2.3): looping ambient_generic sounds and soundscapes (wind, birds,
+-- machinery) go quiet for a clean sound track. Ambient sounds that start silent are the map's
+-- triggered ones and are not started again when the sounds come back.
+local SOUNDSCAPES = { env_soundscape = true, env_soundscape_proxy = true, env_soundscape_triggerable = true }
+local function setMapSounds(on)
+	keep("mapSounds", true)
+	if (E.mapSounds ~= false) == on then return end
+	E.mapSounds = on
+	for _, e in ipairs(ents.GetAll()) do
+		local cls = e:GetClass()
+		if cls == "ambient_generic" then
+			if not on then e:Fire("StopSound")
+			elseif not e:HasSpawnFlags(16) then e:Fire("PlaySound") end
+		elseif SOUNDSCAPES[cls] then
+			e:Fire(on and "Enable" or "Disable")
+		end
+	end
+	net.Start(SPeditor.Net.EnvMapSounds)
+	net.WriteBool(on)
+	net.Broadcast()
+end
+
 -- d — the table the client sent (fields may be missing: those stay as they are)
 function S.EnvApply(d)
 	if not istable(d) then return end
@@ -136,7 +158,8 @@ function S.EnvApply(d)
 			if IsValid(sun) then sun:SetSaveValue("sun_dir", o.sunDir) end
 		end
 		if IsValid(E.madePaint) and not o.paint then E.madePaint:Remove() end
-		E.orig, E.ambient, E.staticSun = {}, nil, nil
+		if o.mapSounds then setMapSounds(true) end
+		E.orig, E.ambient, E.staticSun, E.mapSounds = {}, nil, nil, nil
 		return
 	end
 	if isnumber(d.ambient) then setAmbient(d.ambient) end
@@ -144,6 +167,7 @@ function S.EnvApply(d)
 	if d.sky then setSky(d.sky) end
 	if d.paint then setPaint(d.paint) end
 	if d.sunDir then setSunDir(d.sunDir) end
+	if d.mapSounds ~= nil then setMapSounds(d.mapSounds and true or false) end
 end
 
 -- What the map has, for the window: a light_environment to turn off, its sun, the sky

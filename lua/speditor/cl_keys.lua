@@ -53,6 +53,7 @@ K.LIST = {
 	{ id = "stretch",        kind = "press", group = "keys_g_gizmo",  desc = "help_stretch",        key = KEY_T },
 	{ id = "rig",            kind = "press", group = "keys_g_gizmo",  desc = "help_rig",            key = KEY_R },
 	{ id = "skeleton",       kind = "press", group = "keys_g_gizmo",  desc = "help_skeleton",       key = KEY_B },
+	{ id = "snap",           kind = "hold",  group = "keys_g_gizmo",  desc = "keys_snap",           key = KEY_LCONTROL },
 
 	{ id = "undo",           kind = "press", group = "keys_g_edit",   desc = "edit_undo",           key = KEY_Z, ctrl = true },
 	{ id = "redo",           kind = "press", group = "keys_g_edit",   desc = "edit_redo",           key = KEY_Y, ctrl = true },
@@ -248,7 +249,8 @@ function K.Conflicts(id, bind)
 	if not bind then return out end
 	local a = K.Action(id)
 	local function check(oid, okind, oarea)
-		if oid ~= id and okind == a.kind and oarea == a.area and K.Same(K.Get(oid), bind) then out[#out + 1] = oid end
+		local flyA, flyB = string.sub(id, 1, 4) == "fly_", string.sub(oid, 1, 4) == "fly_"
+		if oid ~= id and okind == a.kind and oarea == a.area and flyA == flyB and K.Same(K.Get(oid), bind) then out[#out + 1] = oid end
 	end
 	for _, o in ipairs(K.LIST) do check(o.id, o.kind, o.area) end
 	for _, h in ipairs(SPeditor.Components and SPeditor.Components.hotkeys or {}) do check("comp:" .. h.id, "press", nil) end

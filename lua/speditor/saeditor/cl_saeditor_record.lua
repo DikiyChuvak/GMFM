@@ -260,12 +260,15 @@ local function stopTake()
 	send(0)
 end
 
--- the scene objects whose physics a take records: the selected ragdolls and props, or all of them
-local function physObjects(all)
+-- the scene objects whose physics a take records: the selected ragdolls and props, or all of them.
+-- noKeyed (b0.2.3): objects with keys play their animation along with a gameplay take — the
+-- actor of the take before was let go and fell as a limp ragdoll when it was selected
+local function physObjects(all, noKeyed)
 	local out = {}
 	for _, e in ipairs(all and C.Objects() or C.SelectionList()) do
 		local cls = IsValid(e) and e:GetClass() or ""
-		if (cls == "prop_ragdoll" or cls == "prop_physics") and not C.IsLocked(e) and not C.AttachParent(e) then
+		if (cls == "prop_ragdoll" or cls == "prop_physics") and not C.IsLocked(e) and not C.AttachParent(e)
+			and not (noKeyed and SA.tracks[SA.UID(e)]) then
 			out[#out + 1] = SA.UID(e)
 		end
 	end
@@ -287,7 +290,7 @@ function SA.StartRecording()
 		if IsValid(me) then radius = math.max(radius, me:GetPos():Distance(m.pos) + 300) end
 	end
 	local opts = { step = cvStep:GetInt(), npcs = cvNpcs:GetBool() or #npcs > 0, radius = math.min(radius, 16384), sounds = cvSounds:GetBool(),
-		effects = cvEffects:GetBool(), from = math.floor(SA.frame + 0.5), phys = phys > 0 and physObjects(phys == 2) or nil,
+		effects = cvEffects:GetBool(), from = math.floor(SA.frame + 0.5), phys = phys > 0 and physObjects(phys == 2, true) or nil,
 		view = cvView:GetBool(), corpses = cvCorpses:GetBool() }
 	SA.rec = { pending = opts }
 	if C.active then C.SendToggle(false) else SA.rec.countFrom = RealTime() end

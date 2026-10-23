@@ -688,11 +688,6 @@ SPeditor.Lang = {
 		nse_where = "Saved to garrysmod/data/speditor/notify_styles/<name>.json. To share a style in a Workshop addon, put the file into data_static/speditor/notify_styles/; a lua file in lua/speditor_notify/ can draw a style completely (SPeditor.UI.AddNotifyStyle).",
 		-- About: list of changes of the current version
 		about_news = "New in %s",
-		about_p1 = "The GM:FM gamemode, a film studio of its own (not Sandbox: no spawn menu, context menu or tool gun): start a game with the gamemode GM:FM on any map — the editor opens at once and stays open; the player, walking around the scene and gameplay takes still work. A start window after Source Filmmaker's: a new scene, the saved scenes, a gameplay take, another map. File → Change map instead of Exit Editor. In Sandbox the editor is what it was.",
-		about_p2 = "Gameplay takes: the weapons are chosen before the take (always in the gamemode, an option in Sandbox) — Done gives them and starts the countdown; also the length of the countdown, a time limit, full health and armour, god mode and ammunition.",
-		about_p3 = "Fixed: the render preview and the render black with ambient occlusion (SSAO) on — Source Filmmaker's occlusion, film grain and colour correction now run at DirectX level 90 too (the Linux build); a map's own fog (gm_scrapland) no longer breaks the occlusion or the fog of the Environment window.",
-		about_p4 = "Fixed: hotkeys (Ctrl + Z, Ctrl + Y, Space…) that stopped at random until the editor was opened again; the Render button doing nothing until the map was reloaded (a lost frame of a render no longer hangs it); the Free aspect ratio taking the whole screen (16:9) while the Primary Viewport was hidden.",
-		about_p5 = "NPCs of a take: pick NPCs from the spawn menu list and put each where it should stand by a click in the viewport (the wheel turns it), with its weapon and its attitude to you; they appear on their marks when the take starts, and their AI can wait for the recording itself. From SFM: Up / Down jump to the previous / next key, Shift + , / . by half a second, Ctrl + , / . to the bookmarks; View → Auto aim the work camera; Edit → Select objects no camera sees.",
 		about_n1 = "GM:FM UI is now the look of Source Filmmaker's own Qt interface: its colours, buttons, fields, check boxes, tabbed windows, menus, transport and gizmo buttons and item icons (taken from SFM's style sheets and pictures). The earlier look is the theme SPeditor UI (b0.1).",
 		about_n2 = "The Motion Editor's procedural presets, SFM's whole list: 19 presets in groups (Smooth, Sharp, Steady, Jitter, Hold, Round, Default, Stagger; In, Out, Ramp, Spline, Drop, Release; Zero, Half, One; Playhead, Paste) over the keys inside the time selection. Falloff shapes Ease in and Ease out, and Autofalloff to bookmarks.",
 		about_n3 = "Timeline bookmarks (the flag button; drag, rename, saved with the scene) and play modes: once, loop, to the end and back (bounce).",
@@ -766,10 +761,23 @@ SPeditor.Lang = {
 		-- b0.2.2
 		cam_znear = "Near clip plane", view_znear = "Near clip plane of the work camera", view_znear_n = "%g units",
 		cam_tip_znear = "What is closer to the lens than this many units is cut away. Make it smaller to bring the camera right up to a face or a hand; very small values may make far surfaces flicker.",
-		about_u1 = "Much faster playback of scenes with shooting: while the game's own particles (tracers, shells, sparks, muzzle flashes, dust of hits) are alive, the Primary Viewport is drawn in the place of the main game frame instead of besides it — one view of the map a frame instead of two (a recorded shoot-out on gm_scrapland: 44 ms a frame → 11 ms). The Secondary Viewport set to «when the scene changes» draws 8 pictures a second while something moves, not every frame.",
-		about_u2 = "The near clip plane is now set: a camera's own (Animation Set Editor, beside the lens) and the work camera's (View → Near clip plane of the work camera); 3 units by default instead of 4, so a camera can come closer to a face before it is cut away.",
-		about_u4 = "The whole source code of GM:FM is open on GitHub under the MIT license (the GitHub button above): fork it, change it, build your own version. Changes from other developers may get into the Workshop version, always credited — message the author on Steam.",
-		about_u3 = "Fixed: the Render button grey and dead after a look at the Animation tab of a scene without animation (until the editor was opened again); the render preview and SSAO broken on game builds without the R32F texture format («bad argument #8 to 'GetRenderTargetEx'»).",
+		about_p1 = "Much faster playback of scenes with shooting: while the game's own particles (tracers, shells, sparks, muzzle flashes, dust of hits) are alive, the Primary Viewport is drawn in the place of the main game frame instead of besides it — one view of the map a frame instead of two (a recorded shoot-out on gm_scrapland: 44 ms a frame → 11 ms). The Secondary Viewport set to «when the scene changes» draws 8 pictures a second while something moves, not every frame.",
+		about_p2 = "The near clip plane is now set: a camera's own (Animation Set Editor, beside the lens) and the work camera's (View → Near clip plane of the work camera); 3 units by default instead of 4, so a camera can come closer to a face before it is cut away.",
+		about_p4 = "The whole source code of GM:FM is open on GitHub under the MIT license (the GitHub button above): fork it, change it, build your own version. Changes from other developers may get into the Workshop version, always credited — message the author on Steam.",
+		about_p3 = "Fixed: the Render button grey and dead after a look at the Animation tab of a scene without animation (until the editor was opened again); the render preview and SSAO broken on game builds without the R32F texture format («bad argument #8 to 'GetRenderTargetEx'»).",
+		-- b0.2.3
+		keys_snap = "Snap the gizmo to steps (hold while dragging)", view_snap = "Snapping (hold %s while dragging)",
+		view_snap_move = "Move: %g units", view_snap_rot = "Turn: %g°", view_snap_scale = "Scale: %g",
+		reset_rotation = "Reset rotation", hist_reset_rotation = "reset rotation",
+		env_sound = "Sound of the map", env_mute_map = "Mute the map's own sounds",
+		env_mute_map_note = "Wind, birds, machinery and other looping sounds of the map go quiet, for a clean sound track. Saved with the scene.",
+		props_face = "Face", props_flexscale = "Expression scale",
+		props_flexscale_hint = "As the Face Poser's flex scale: every face slider goes this many times further (goofy faces of TF2 models).",
+		about_u1 = "Material changes are keyed now: the material of the whole model and of each slot, the colours of the slots and the stretching (length, width, height) switch or move at keys, like the skin — before, one change showed over the whole timeline.",
+		about_u2 = "Snapping: hold Ctrl while dragging the gizmo and the move goes in steps of 8 units, the turn in 15°, the scale in 0.1 (View → Snapping sets the steps, the key can be changed in Interface settings → Keys). Reset rotation: Edit menu and the object menu → Utilities.",
+		about_u3 = "Environment → Sound of the map: mute the map's own looping sounds (wind, birds, machinery) for a clean sound track, saved with the scene. Object properties → Face → Expression scale: the Face Poser's flex scale for every face slider (goofy faces of TF2 models).",
+		about_u4 = "Simplified Chinese (简体中文) — the translation by fugui9527121, thank you! Help → Interface language.",
+		about_u5 = "Fixed: the actor of a gameplay take falling as a limp ragdoll when another take was recorded with Physics of the scene on; a menu of the menu bar that did not close on a click in the viewport.",
 	},
 	ru = {
 		menu_file = "Файл", menu_windows = "Окна", menu_view = "Вид",
@@ -1453,11 +1461,6 @@ SPeditor.Lang = {
 		nse_where = "Сохраняется в garrysmod/data/speditor/notify_styles/<имя>.json. Чтобы поделиться стилем через мастерскую, положите файл в data_static/speditor/notify_styles/ аддона; lua-файл в lua/speditor_notify/ может нарисовать стиль полностью (SPeditor.UI.AddNotifyStyle).",
 		-- About: list of changes of the current version
 		about_news = "Что нового в %s",
-		about_p1 = "Режим GM:FM — собственная киностудия (не Sandbox: без меню спавна, контекстного меню и тулгана): начните игру с режимом GM:FM на любой карте — редактор откроется сразу и останется открытым; плеер, прогулка по сцене и запись игры работают. Стартовое окно по образцу Source Filmmaker: новая сцена, сохранённые сцены, запись игры, другая карта. «Файл» → «Сменить карту» вместо «Выйти из редактора». В Sandbox редактор остаётся прежним.",
-		about_p2 = "Запись игры: оружие выбирается перед дублем (в режиме GM:FM всегда, в Sandbox — по галочке) — «Готово» выдаёт его и запускает отсчёт; ещё длина отсчёта, ограничение по времени, полное здоровье и броня, бессмертие и патроны.",
-		about_p3 = "Исправлено: чёрный предпросмотр и чёрный рендер с включённым затенением окружения (SSAO) — затенение Source Filmmaker, зерно плёнки и цветокоррекция теперь работают и на DirectX level 90 (версия для Linux); собственный туман карты (gm_scrapland) больше не ломает затенение и туман окна «Окружение».",
-		about_p4 = "Исправлено: горячие клавиши (Ctrl + Z, Ctrl + Y, Пробел…), которые случайно переставали работать до повторного входа в редактор; кнопка «Рендер», которая ничего не делала до перезагрузки карты (потерянный кадр рендера больше его не вешает); пропорции «Свободно», бравшие весь экран (16:9), пока основной вьюпорт был скрыт.",
-		about_p5 = "NPC дубля: выберите NPC из списка меню спавна и поставьте каждого щелчком во вьюпорте (колесо поворачивает), со своим оружием и отношением к вам; они появляются на метках, когда начинается дубль, а их ИИ может ждать начала самой записи. Из SFM: стрелки вверх / вниз — к предыдущему / следующему ключу, Shift + , / . — на полсекунды, Ctrl + , / . — к закладкам; «Вид» → «Рабочая камера следит за выделением»; «Правка» → «Выделить объекты вне кадра камер».",
 		about_n1 = "GM:FM UI теперь выглядит как собственный Qt-интерфейс Source Filmmaker: его цвета, кнопки, поля, флажки, окна со вкладками, меню, кнопки транспорта и гизмо, значки объектов (из таблиц стилей и картинок SFM). Прежний вид — тема SPeditor UI (b0.1).",
 		about_n2 = "Процедурные пресеты Motion Editor, весь список SFM: 19 пресетов по группам (Smooth, Sharp, Steady, Jitter, Hold, Round, Default, Stagger; In, Out, Ramp, Spline, Drop, Release; Zero, Half, One; Playhead, Paste) по ключам внутри выделения времени. Формы затухания Ease in и Ease out и автозатухание до закладок.",
 		about_n3 = "Закладки на таймлайне (кнопка с флажком; перетаскивание, имена, сохраняются со сценой) и режимы воспроизведения: один раз, по кругу, туда и обратно (bounce).",
@@ -1531,10 +1534,23 @@ SPeditor.Lang = {
 		-- b0.2.2
 		cam_znear = "Ближняя плоскость", view_znear = "Ближняя плоскость рабочей камеры", view_znear_n = "%g ед.",
 		cam_tip_znear = "Всё, что ближе к объективу, чем столько единиц, срезается. Уменьшите, чтобы поднести камеру вплотную к лицу или руке; совсем малые значения могут вызвать мерцание дальних поверхностей.",
-		about_u1 = "Намного быстрее проигрываются сцены со стрельбой: пока живут частицы самой игры (трассеры, гильзы, искры, вспышки выстрелов, пыль от попаданий), основной вьюпорт рисуется вместо главного кадра игры, а не вдобавок к нему — один вид карты за кадр вместо двух (записанная перестрелка на gm_scrapland: 44 мс на кадр → 11 мс). Второй вьюпорт в режиме «при изменении сцены» рисует 8 картинок в секунду, пока что-то движется, а не каждый кадр.",
-		about_u2 = "Ближняя плоскость отсечения теперь настраивается: своя у камеры (редактор набора анимации, рядом с объективом) и у рабочей камеры («Вид» → «Ближняя плоскость рабочей камеры»); по умолчанию 3 единицы вместо 4, камеру можно поднести ближе к лицу, прежде чем его срежет.",
-		about_u4 = "Весь исходный код GM:FM открыт на GitHub под лицензией MIT (кнопка GitHub выше): делайте форки, меняйте, собирайте свою версию. Изменения других разработчиков могут попасть в версию мастерской, всегда с упоминанием авторов — пишите автору в Steam.",
-		about_u3 = "Исправлено: кнопка «Рендер» серая и не работает после взгляда на вкладку «Анимация» в сцене без анимации (до перезахода в редактор); превью рендера и SSAO не работали в сборках игры без формата текстур R32F («bad argument #8 to 'GetRenderTargetEx'»).",
+		about_p1 = "Намного быстрее проигрываются сцены со стрельбой: пока живут частицы самой игры (трассеры, гильзы, искры, вспышки выстрелов, пыль от попаданий), основной вьюпорт рисуется вместо главного кадра игры, а не вдобавок к нему — один вид карты за кадр вместо двух (записанная перестрелка на gm_scrapland: 44 мс на кадр → 11 мс). Второй вьюпорт в режиме «при изменении сцены» рисует 8 картинок в секунду, пока что-то движется, а не каждый кадр.",
+		about_p2 = "Ближняя плоскость отсечения теперь настраивается: своя у камеры (редактор набора анимации, рядом с объективом) и у рабочей камеры («Вид» → «Ближняя плоскость рабочей камеры»); по умолчанию 3 единицы вместо 4, камеру можно поднести ближе к лицу, прежде чем его срежет.",
+		about_p4 = "Весь исходный код GM:FM открыт на GitHub под лицензией MIT (кнопка GitHub выше): делайте форки, меняйте, собирайте свою версию. Изменения других разработчиков могут попасть в версию мастерской, всегда с упоминанием авторов — пишите автору в Steam.",
+		about_p3 = "Исправлено: кнопка «Рендер» серая и не работает после взгляда на вкладку «Анимация» в сцене без анимации (до перезахода в редактор); превью рендера и SSAO не работали в сборках игры без формата текстур R32F («bad argument #8 to 'GetRenderTargetEx'»).",
+		-- b0.2.3
+		keys_snap = "Шаги гизмо — привязка (удерживать при перетаскивании)", view_snap = "Привязка (держите %s при перетаскивании)",
+		view_snap_move = "Сдвиг: %g ед.", view_snap_rot = "Поворот: %g°", view_snap_scale = "Масштаб: %g",
+		reset_rotation = "Сбросить поворот", hist_reset_rotation = "сброс поворота",
+		env_sound = "Звук карты", env_mute_map = "Выключить звуки самой карты",
+		env_mute_map_note = "Ветер, птицы, механизмы и другие зацикленные звуки карты замолкают — для чистой звуковой дорожки. Сохраняется со сценой.",
+		props_face = "Лицо", props_flexscale = "Масштаб выражений",
+		props_flexscale_hint = "Как flex scale в Face Poser: каждый ползунок лица заходит во столько раз дальше (смешные лица моделей TF2).",
+		about_u1 = "Изменения материала теперь в ключах: материал всей модели и каждого слота, цвета слотов и растяжение (длина, ширина, высота) переключаются или плавно меняются на ключах, как скин, — раньше одно изменение было видно на всём таймлайне.",
+		about_u2 = "Привязка: держите Ctrl, перетаскивая гизмо, — сдвиг идёт шагами по 8 единиц, поворот по 15°, масштаб по 0,1 (шаги — «Вид» → «Привязка», клавиша меняется в настройках интерфейса → «Клавиши»). «Сбросить поворот»: меню «Правка» и меню объекта → «Утилиты».",
+		about_u3 = "«Окружение» → «Звук карты»: выключить зацикленные звуки самой карты (ветер, птицы, механизмы) ради чистой звуковой дорожки, сохраняется со сценой. Свойства объекта → «Лицо» → «Масштаб выражений»: flex scale из Face Poser для всех ползунков лица (смешные лица моделей TF2).",
+		about_u4 = "Упрощённый китайский (简体中文) — перевод fugui9527121, спасибо! «Справка» → «Язык интерфейса».",
+		about_u5 = "Исправлено: актёр записи игры падал обмякшим рэгдоллом, когда записывался следующий дубль с включённой «Физикой сцены»; меню из полосы меню не закрывалось кликом во вьюпорте.",
 	},
 }
 
@@ -1617,6 +1633,9 @@ function SPeditor.AddLanguage(def)
 	info.author  = isstring(def.author) and def.author or info.author
 	info.version = isstring(def.version) and def.version or info.version
 	info.font    = isstring(def.font) and def.font ~= "" and def.font or info.font
+	-- the language's letters are missing from the editor's usual fonts (Chinese): its own font wins
+	-- over the player's choice of a face
+	if def.forceFont ~= nil then info.forceFont = def.forceFont and true or false end
 
 	local en = SPeditor.Lang.en
 	local dict = SPeditor.Lang[code] or {}

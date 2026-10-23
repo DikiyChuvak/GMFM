@@ -28,6 +28,7 @@ local function defaults()
 		sun = { on = false, mapDir = true, pitch = 50, yaw = 306, color = Color(255, 236, 205), bright = 1.6,
 			soft = 0.6, cascades = 3, reach = 1, staticSun = true },
 		ambient = 13,
+		mapSounds = true,
 		sky = { name = nil, paint = nil },
 		fog = { on = false, start = 300, finish = 6000, color = Color(190, 200, 215), density = 0.75, sky = true },
 	}
@@ -325,11 +326,18 @@ function Env.ServerState()
 	if cur.sky.name then d.sky = cur.sky.name end
 	if cur.sky.paint then d.paint = cur.sky.paint end
 	if cur.sun.on or not cur.sun.mapDir then d.sunDir = Env.SunDir() end
+	d.mapSounds = cur.mapSounds ~= false
 	return d
 end
 
 net.Receive(SPeditor.Net.EnvLightmaps, function()
 	render.RedownloadAllLightmaps(true, true)
+end)
+
+-- the map's sounds went quiet (sv_env.lua): the soundscape playing now fades out at once,
+-- the server has turned off the ones that would start it again
+net.Receive(SPeditor.Net.EnvMapSounds, function()
+	if not net.ReadBool() then RunConsoleCommand("stopsoundscape") end
 end)
 
 net.Receive(SPeditor.Net.EnvInfo, function()
@@ -362,6 +370,8 @@ function Env.Set(path, value)
 	local root = parts[1]
 	if root == "ambient" then
 		Env.SendServer({ ambient = Env.cur.ambient })
+	elseif root == "mapSounds" then
+		Env.SendServer({ mapSounds = Env.cur.mapSounds ~= false })
 	elseif root == "sky" then
 		local d = {}
 		if last == "name" then d.sky = value else d.paint = Env.cur.sky.paint end
@@ -410,6 +420,7 @@ function Env.Serialize()
 		sun = { on = c.sun.on, mapDir = c.sun.mapDir, pitch = c.sun.pitch, yaw = c.sun.yaw, color = colorOut(c.sun.color),
 			bright = c.sun.bright, soft = c.sun.soft, cascades = c.sun.cascades, reach = c.sun.reach, staticSun = c.sun.staticSun },
 		ambient = c.ambient,
+		mapSounds = c.mapSounds == false and false or nil,
 		sky = { name = c.sky.name, paint = paint },
 		fog = { on = c.fog.on, start = c.fog.start, finish = c.fog.finish, color = colorOut(c.fog.color), density = c.fog.density, sky = c.fog.sky },
 	}
@@ -431,6 +442,7 @@ function Env.Deserialize(t)
 		d.sun.reach = math.Clamp(tonumber(s.reach) or 1, 0.25, 8)
 		d.sun.staticSun = s.staticSun ~= false
 		d.ambient = math.Clamp(math.floor(tonumber(t.ambient) or 13), 1, 26)
+		d.mapSounds = t.mapSounds ~= false
 		local sk = istable(t.sky) and t.sky or {}
 		if isstring(sk.name) and #sk.name <= 64 and string.match(sk.name, "^[%w_%-/%.]+$") then d.sky.name = sk.name end
 		if istable(sk.paint) then

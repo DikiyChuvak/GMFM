@@ -118,6 +118,13 @@ local function capture(ent)
 	-- where the eyes look (b0.1): the point set in the face window (for a ragdoll local to its
 	-- "eyes" attachment); a key without it lets the eyes look ahead by themselves
 	if ent.SPeditor_Eye then st.eye = Vector(ent.SPeditor_Eye) end
+	-- the material (whole and per slot), slot colours and stretching (b0.2.3): before, they were
+	-- not keyed and one change showed over the whole timeline
+	local look = ent.SPeditor_Look or {}
+	st.mat = look.material or ""
+	st.sub = look.submats and table.Copy(look.submats) or {}
+	st.tints = look.tints and table.Copy(look.tints) or {}
+	if S.CanScale(ent) then st.stretch = look.stretch and SPeditor.TableToVec(look.stretch) or Vector(1, 1, 1) end
 	return st
 end
 
@@ -223,6 +230,29 @@ local function applyProp(ent, a, b, u, noFace)
 	end
 
 	if not noFace then applyFlex(ent, a, b, u) end
+
+	-- materials switch at a key like the skin, stretching moves (keys made before b0.2.3 have
+	-- neither, and the object keeps what it has)
+	if a.mat or a.stretch then
+		local look = ent.SPeditor_Look or {}
+		local sig = a.mat and (a.mat .. util.TableToJSON(a.sub or {}) .. util.TableToJSON(a.tints or {})) or nil
+		local sa, sb = a.stretch, b.stretch or a.stretch
+		local stv = sa and S.CanScale(ent) and lerpV(sa, sb, u) or nil
+		if sig and sig ~= ent.SA_LookSig then
+			look = table.Copy(look)
+			look.material = a.mat ~= "" and a.mat or nil
+			look.submats = next(a.sub or {}) and table.Copy(a.sub) or nil
+			look.tints = next(a.tints or {}) and table.Copy(a.tints) or nil
+			if stv then look.stretch = SPeditor.VecToTable(stv) end
+			S.ApplyLook(ent, look)
+			ent.SA_LookSig = sig
+		elseif stv and stv:DistToSqr(ent:GetNW2Vector("SPeditor_Stretch", ONE)) > 1e-8 then
+			local same = stv:DistToSqr(ONE) < 1e-6
+			ent:SetNW2Vector("SPeditor_Stretch", same and ONE or stv)
+			look.stretch = not same and SPeditor.VecToTable(stv) or nil
+			ent.SPeditor_Look = next(look) ~= nil and look or nil
+		end
+	end
 
 	-- the eyes: between two keys that both aim them the point moves over; a key without an
 	-- aim takes the eyes back to looking ahead (when it is reached)
@@ -376,7 +406,8 @@ SA.TrackParts = cacheOf
 -- quaternions (SA.BlendAngles). A value one of the snapshots lacks is taken from its neighbour
 -- (a bone offset or a flex it lacks is zero, as everywhere).
 ---------------------------------------------------------------------
-local COPY_FIELDS = { kind = true, only = true, skip = true, bg = true, skin = true, on = true }
+local COPY_FIELDS = { kind = true, only = true, skip = true, bg = true, skin = true, on = true,
+	mat = true, sub = true, tints = true }
 local ZERO_DEFAULT = { bones = ZERO_BONE, flex = 0 }
 
 local function mix(vals, ws, def)
@@ -532,7 +563,8 @@ end
 -- the state of a model between two snapshots, as one snapshot (what applyProp would set)
 local function blendProp(a, b, u)
 	local st = { kind = "prop", pos = lerpV(a.pos, b.pos, u), ang = slerp(a.ang, b.ang, u), bones = {}, flex = {},
-		skin = a.skin, bg = a.bg }
+		skin = a.skin, bg = a.bg, mat = a.mat, sub = a.sub, tints = a.tints }
+	if a.stretch then st.stretch = lerpV(a.stretch, b.stretch or a.stretch, u) end
 	if a.phys or b.phys then
 		st.phys = {}
 		local pa, pb = a.phys or {}, b.phys or {}
@@ -949,7 +981,7 @@ end
 local MOTION_SKIP = { kind = true, pos = true, ang = true, phys = true, bones = true, flex = true,
 	only = true, skip = true, resolved = true }
 -- values that switch rather than move: taken over once the weight is past the half
-local MOTION_SWITCH = { skin = true, bg = true, on = true }
+local MOTION_SWITCH = { skin = true, bg = true, on = true, mat = true, sub = true, tints = true }
 
 local function nearAng(x, y)
 	return math.abs(math.AngleDifference(x.p, y.p)) < 0.001 and math.abs(math.AngleDifference(x.y, y.y)) < 0.001
@@ -2190,6 +2222,12 @@ local function validState(st)
 		end
 		if not isnumber(st.skin) then st.skin = nil end
 		if st.eye ~= nil and not SPeditor.ValidVec(st.eye) then st.eye = nil end
+		if not isstring(st.mat) or #st.mat > 160 then st.mat, st.sub, st.tints = nil, nil, nil end
+		if st.mat then
+			st.sub = istable(st.sub) and st.sub or {}
+			st.tints = istable(st.tints) and st.tints or {}
+		end
+		if st.stretch ~= nil and not SPeditor.ValidVec(st.stretch) then st.stretch = nil end
 		if st.bg ~= nil then
 			if not istable(st.bg) then
 				st.bg = nil

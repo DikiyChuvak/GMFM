@@ -183,6 +183,7 @@ function C.GetLook(ent)
 		l.color, l.material, l.submats = l.color or { 255, 255, 255, 255 }, l.material or "", l.submats or {}
 		l.stretch, l.noshadow = l.stretch or { 1, 1, 1 }, l.noshadow or false
 		l.locks, l.tints = l.locks or {}, l.tints or {}
+		l.flexscale = l.flexscale or 1
 		return l
 	end
 	local c = ent:GetColor()
@@ -194,6 +195,7 @@ function C.GetLook(ent)
 	}
 	for b, t in string.gmatch(ent:GetNW2String("SPeditor_Locks", ""), "(%d+):(%d+)") do look.locks[b] = tonumber(t) end
 	look.tints = C.GetTints(ent)
+	look.flexscale = ent:GetNW2Float("SPeditor_FlexScale", 1)
 	-- the base pose of a model without physics (prop_dynamic): its animation and moment
 	if ent:GetClass() == "prop_dynamic" then
 		look.seq, look.cycle = ent:GetSequenceName(ent:GetSequence()), math.max(ent:GetNW2Float("SPeditor_Cycle", 0), 0)
@@ -510,6 +512,30 @@ function C.SendDropToFloor(ent)
 		p1, a1 = Vector(p1), Angle(a1)
 		histEdit("drop to floor", ent, { p0, a0 }, { p1, a1 }, function(e, v) C.SendTransform(e, v[1], v[2], true) end)
 	end)
+end
+
+-- Reset rotation (b0.2.3): the selected objects stand straight (turn 0, 0, 0) where they are
+function C.ResetRotation(list)
+	local items = {}
+	for _, e in ipairs(list or C.SelectionList()) do
+		if IsValid(e) and not IsValid(C.AttachParent(e)) then
+			local p, a = C.GetEntityTransform(e)
+			if p and a and (a.p ~= 0 or a.y ~= 0 or a.r ~= 0) then
+				items[#items + 1] = { ref = C.Ref(e), p = Vector(p), a = Angle(a) }
+				C.SendTransform(e, Vector(p), Angle(0, 0, 0), true)
+			end
+		end
+	end
+	if #items == 0 then return end
+	local function each(fn)
+		for _, it in ipairs(items) do
+			local e = C.Deref(it.ref)
+			if e then fn(e, it) end
+		end
+	end
+	C.PushHistory("reset rotation",
+		function() each(function(e, it) C.SendTransform(e, it.p, it.a, true) end) end,
+		function() each(function(e, it) C.SendTransform(e, it.p, Angle(0, 0, 0), true) end) end)
 end
 
 function C.SendLightSpawn(ltype, pos, ang, col, radius, brightness, fov)

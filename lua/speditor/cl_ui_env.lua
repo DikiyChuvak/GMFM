@@ -210,6 +210,15 @@ local function build(body)
 	colorRow(fog, L("env_fog_color"), function() return Env.cur.fog.color end, function(c) Env.Set("fog.color", c) end)
 	check(fog, L("env_fog_sky"), "fog.sky", function() return Env.cur.fog.sky end)
 
+	-------------------------------------------------------------------
+	-- Sound of the map (b0.2.3)
+	-------------------------------------------------------------------
+	local snd = UI.Section(scroll, L("env_sound"))
+	local mute = check(snd, L("env_mute_map"), "mapSounds", function() return Env.cur.mapSounds == false end)
+	-- the box reads "mute": checked = mapSounds false
+	mute.OnChange = function(_, v) if not syncing then Env.Set("mapSounds", not v) end end
+	note(snd, L("env_mute_map_note"))
+
 	local reset = UI.Button(scroll, L("env_reset"), "icon16/arrow_undo.png", function()
 		Derma_Query(L("env_reset_q"), L("env_title"), L("yes"), function() Env.Reset() end, L("cancel"))
 	end, 24)

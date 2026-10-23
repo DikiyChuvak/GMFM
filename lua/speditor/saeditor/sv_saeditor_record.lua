@@ -538,8 +538,10 @@ function SA.StartRecord(ply, opts)
 	local nPhys = 0
 	for _, uid in ipairs(istable(opts.phys) and opts.phys or {}) do
 		local e = tonumber(uid) and S.FindUID(ply, tonumber(uid))
+		-- an object with keys plays along in a gameplay take: letting it go dropped the actor of
+		-- the take before as a limp ragdoll (b0.2.3)
 		if IsValid(e) and nPhys < MAX_PHYS and not S.IsAux(e) and not e.SPeditor_Attach and not rec.subjects[e]
-			and e:GetPhysicsObjectCount() > 0 then
+			and e:GetPhysicsObjectCount() > 0 and (opts.noPlayer or not a.tracks[e.SPeditor_UID]) then
 			nPhys = nPhys + 1
 			rec.subjects[e] = { kind = "phys", ent = e, samples = {}, weapons = {} }
 			e.SPeditor_PhysRec = true

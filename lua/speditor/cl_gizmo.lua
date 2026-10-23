@@ -59,6 +59,22 @@ C.BONE_SIZES = { 0.3, 0.6, 1, 1.6 }
 function C.GetBoneSize() return math.Clamp(cvBoneSize:GetFloat(), 0.1, 3) end
 function C.SetBoneSize(v) RunConsoleCommand("gmfm_bone_size", tostring(math.Clamp(tonumber(v) or 0.6, 0.1, 3))) end
 
+-- Snapping (b0.2.3): while the snap key is held (Ctrl by default, Interface settings → Keys) a drag
+-- of the gizmo goes in steps — units of the map, degrees, parts of the size. The steps are
+-- set in View → Snapping. With a step set in C.gizmo (old scenes, scripts) the key turns it off.
+local cvSnapMove  = CreateClientConVar("gmfm_snap_move", "8", true, false, "Snap step of a move, units (the snap key held)", 0.01, 1024)
+local cvSnapRot   = CreateClientConVar("gmfm_snap_rot", "15", true, false, "Snap step of a turn, degrees (the snap key held)", 0.1, 180)
+local cvSnapScale = CreateClientConVar("gmfm_snap_scale", "0.1", true, false, "Snap step of a scale (the snap key held)", 0.01, 10)
+
+function C.SnapStep(kind)
+	local fixed = kind == "move" and C.gizmo.snapMove or kind == "rot" and C.gizmo.snapRot or 0
+	if not C.Keys.Down("snap") then return fixed or 0 end
+	if (fixed or 0) > 0 then return 0 end
+	if kind == "move" then return math.max(cvSnapMove:GetFloat(), 0.01) end
+	if kind == "rot" then return math.max(cvSnapRot:GetFloat(), 0.1) end
+	return math.max(cvSnapScale:GetFloat(), 0.01)
+end
+
 local function rotateVec(v, k, deg)
 	local th = math.rad(deg)
 	local c, s = math.cos(th), math.sin(th)
@@ -758,6 +774,8 @@ local function updateDrag()
 			if not t then return end
 			factor = 1 + (t - d.t0) / math.max(d.size, 1)
 		end
+		local snap = C.SnapStep("scale")
+		if snap > 0 then factor = 1 + math.Round((factor - 1) / snap) * snap end
 		factor = math.max(factor, 0.01)
 		d.total = factor - 1
 		applyScale(d, factor)
@@ -766,7 +784,7 @@ local function updateDrag()
 		if not h then return end
 		local off = h - d.h0
 		local a, b = off:Dot(d.planeU), off:Dot(d.planeV)
-		local snap = C.gizmo.snapMove
+		local snap = C.SnapStep("move")
 		if snap > 0 then a, b = math.Round(a / snap) * snap, math.Round(b / snap) * snap end
 		off = d.planeU * a + d.planeV * b
 		d.total = off:Length()
@@ -775,13 +793,15 @@ local function updateDrag()
 		local h = util.IntersectRayWithPlane(ro, rd, d.startPos, d.camFwd)
 		if not h then return end
 		local off = h - d.h0
+		local snap = C.SnapStep("move")
+		if snap > 0 then off = Vector(math.Round(off.x / snap) * snap, math.Round(off.y / snap) * snap, math.Round(off.z / snap) * snap) end
 		d.total = off:Length()
 		applyMove(d, off)
 	elseif d.mode == "move" then
 		local t = axisParam(ro, rd, d.startPos, d.axis)
 		if not t then return end
 		local delta = t - d.t0
-		local snap = C.gizmo.snapMove
+		local snap = C.SnapStep("move")
 		if snap > 0 then delta = math.Round(delta / snap) * snap end
 		d.total = delta
 		applyMove(d, d.axis * delta)
@@ -804,7 +824,7 @@ local function updateDrag()
 		d.raw = d.raw + math.NormalizeAngle(a - d.lastA)
 		d.lastA = a
 		local total = d.raw
-		local snap = C.gizmo.snapRot
+		local snap = C.SnapStep("rot")
 		if snap > 0 then total = math.Round(total / snap) * snap end
 		d.total = total
 		applyRotate(d, total)
@@ -1046,6 +1066,9 @@ SPeditor.Hook("Think", "SPeditor.GizmoInput", function()
 	end
 	if lmb and not lmbPrev then
 		C.marquee = nil
+		-- the viewport takes the mouse by polling, so Derma never sees the press: a menu of the
+		-- menu bar stayed open over the viewport (b0.2.3)
+		if hovering then CloseDermaMenus() end
 		-- a placing tool (b0.2.1, the NPCs of a take) takes the click instead of the selection
 		if hovering and not alt and C.placeTool then
 			C.placeTool.click()

@@ -1133,6 +1133,7 @@ function UI.BuildASE(body)
 		else
 			local um = m:AddSubMenu(L("ase_utilities"))
 			um:AddOption(L("drop_floor"), function() C.SendDropToFloor(ent) end)
+			um:AddOption(L("reset_rotation"), function() C.ResetRotation({ ent }) end)
 			um:AddOption(L("rig_make"), function() C.SpawnLightRig(ent) end)
 			um:AddOption(L("reset_selected"), function() C.ResetPoseFull(ent) end)
 			-- copies in a row (a0.9)
