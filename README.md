@@ -22,7 +22,7 @@ are an enthusiast. Changes from other developers may get into the Workshop versi
 credited) — message me on Steam first so I can look at what you have changed. The Simplified
 Chinese translation is by [fugui9527121](https://github.com/fugui9527121) — thank you!*
 
-This repository is the **full source code** of GM:FM b0.2.3 — the addon as it is on the
+This repository is the **full source code** of GM:FM b0.2.4 — the addon as it is on the
 [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435), its
 gamemode, shaders and tools. How to use the editor is explained inside the game: **Help → How
 to use** (illustrated guides with live demonstrations).
@@ -74,7 +74,7 @@ that get into the Workshop version are credited by name. Bugs and ideas: the
 упоминанием авторов) — напишите мне в личные сообщения Steam, чтобы я мог посмотреть, что вы
 изменили. Перевод на упрощённый китайский — [fugui9527121](https://github.com/fugui9527121), спасибо!*
 
-Здесь лежит **полный исходный код** GM:FM b0.2.3 — аддон в том виде, в каком он в
+Здесь лежит **полный исходный код** GM:FM b0.2.4 — аддон в том виде, в каком он в
 [мастерской Steam](https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435), его
 режим игры, шейдеры и инструменты. Как пользоваться редактором — внутри игры: **Help → How
 to use** (руководства с картинками и живыми демонстрациями).

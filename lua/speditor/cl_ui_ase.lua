@@ -1119,6 +1119,19 @@ function UI.BuildASE(body)
 				m:AddOption(L("attach_bake"), function() SA.BakeDetach(ent) end):SetIcon("icon16/key_go.png")
 			end
 		end
+		-- saved looks (b0.2.4, cl_presets.lua): material presets, outfits of a character
+		local Pr = SPeditor.Presets
+		if Pr and not C.IsAux(ent) then
+			m:AddSpacer()
+			local mm, mo = m:AddSubMenu(L("matpreset_title"))
+			mo:SetIcon("icon16/palette.png")
+			Pr.MaterialMenu(mm, ent)
+			if (ent:GetBoneCount() or 0) > 1 then
+				local om, oo = m:AddSubMenu(L("outfit_title"))
+				oo:SetIcon("icon16/user_suit.png")
+				Pr.OutfitMenu(om, ent)
+			end
+		end
 		m:AddSpacer()
 		m:AddOption(L("ase_show_ev"), function() C.Select(ent, -1) SPeditor.Dock.ShowPage("ev") end)
 		m:AddOption(L("obj_focus"), function() C.Select(ent, -1) C.FocusSelected() end)
@@ -1146,6 +1159,15 @@ function UI.BuildASE(body)
 			end):SetIcon("icon16/application_cascade.png")
 			-- physics off / on (a0.9, cl_saeditor_extra.lua): limbs can be pulled apart, the whole model scaled
 			local SA = SPeditor.Component("saeditor").SA
+			-- a crate, a melon, a barrel falls apart at the playhead (b0.2.4)
+			if SA.BreakProp and ent:GetClass() == "prop_physics" then
+				local info = util.GetModelInfo(ent:GetModel() or "")
+				if info and isstring(info.KeyValues) and string.find(info.KeyValues, '"break"', 1, true) then
+					local b = um:AddOption(L("brk_menu"), function() SA.BreakProp(ent) end)
+					b:SetIcon("icon16/bomb.png")
+					b:SetTooltip(L("brk_tip"))
+				end
+			end
 			if SA.TogglePhysics and (ent:GetBoneCount() or 0) > 1 then
 				if obj.kind == "ragdoll" then
 					m:AddOption(L("phys_off"), function() SA.TogglePhysics(ent) end):SetIcon("icon16/link_break.png")

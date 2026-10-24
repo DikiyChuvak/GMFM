@@ -93,8 +93,7 @@ if CLIENT then
 		if C.renderViewEnt or C.vpPass == "secondary" or C.vpPass == "export" then return end
 
 		local selected = (C.selected == self)
-		local pos   = self:GetPos()
-		local ang   = self:GetAngles()
+		local pos, ang = SPeditor.LivePos(self)
 		local fwd, right, up = ang:Forward(), ang:Right(), ang:Up()
 		local fov   = self:GetCameraFOV()
 		local dist = selected and 150 or 100

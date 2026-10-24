@@ -1700,6 +1700,8 @@ local function renderSpeedRows(row)
 	local curFmt = SA.RenderVideoFormat()
 	vc:AddChoice(L("sa_rd_video_avi"), "avi", curFmt == "avi")
 	if SA.WEBM_OK then vc:AddChoice(L("sa_rd_video_webm"), "webm", curFmt == "webm") end
+	vc:AddChoice(L("sa_rd_video_png"), "png", curFmt == "png")
+	vc:AddChoice(L("sa_rd_video_jpeg"), "jpeg", curFmt == "jpeg")
 	vc.OnSelect = function(_, _, _, data) RunConsoleCommand("gmfm_render_video", tostring(data)) end
 	local qRow = row(L("sa_rd_quality"))
 	local q = UI.StyleCombo(vgui.Create("DComboBox", qRow))

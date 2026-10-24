@@ -1068,7 +1068,13 @@ SPeditor.Hook("Think", "SPeditor.GizmoInput", function()
 		C.marquee = nil
 		-- the viewport takes the mouse by polling, so Derma never sees the press: a menu of the
 		-- menu bar stayed open over the viewport (b0.2.3)
-		if hovering then CloseDermaMenus() end
+		if hovering then
+			CloseDermaMenus()
+			-- and a text field typed in last (the ASE search) let go of the keyboard: it kept
+			-- it, and Ctrl+Z, Space and the other keys did nothing (b0.2.4)
+			local f = vgui.GetKeyboardFocus()
+			if IsValid(f) and C.TypingIn(f) then f:KillFocus() end
+		end
 		-- a placing tool (b0.2.1, the NPCs of a take) takes the click instead of the selection
 		if hovering and not alt and C.placeTool then
 			C.placeTool.click()

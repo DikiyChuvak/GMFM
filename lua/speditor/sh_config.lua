@@ -3,9 +3,19 @@
 SPeditor = SPeditor or {}
 SPeditor.Name     = "GM:FM"
 SPeditor.FullName = "Garry's Mod Filmmaker"
-SPeditor.Version = "b0.2.3"
+SPeditor.Version = "b0.2.4"
 SPeditor.VersionBase = "b0.2"   -- the release the patch builds on: About lists its news under the patch's
-SPeditor.VersionPrev = "b0.2.2" -- the patch before this one (its news are about_p*, this one's about_u*)
+SPeditor.VersionPrev = "b0.2.3" -- the patch before this one
+-- every update since b0.1, newest first: version, release date, prefix of its news in the
+-- language files (About → What's new, b0.2.4)
+SPeditor.History = {
+	{ "b0.2.4", "2026-10-24", "about_w" },
+	{ "b0.2.3", "2026-10-23", "about_u" },
+	{ "b0.2.2", "2026-10-22", "about_p" },
+	{ "b0.2.1", "2026-10-22", "about_v021_" },
+	{ "b0.2",   "2026-10-21", "about_n" },
+	{ "b0.1",   "2026-10-20", "about_v01_" },
+}
 SPeditor.GitHub  = "https://github.com/DikiyChuvak/GMFM"     -- address of the addon page (empty: the About window shows a caption instead of a link)
 SPeditor.BugsURL = "https://steamcommunity.com/workshop/filedetails/discussion/3817852435/567048683131023614/"   -- "Bug Report and ideas" (Help → Report a problem)
 
@@ -47,6 +57,7 @@ SPeditor.Net = {
 	CameraView    = "SPeditor_CameraView",
 	Scale         = "SPeditor_Scale",
 	Attach        = "SPeditor_Attach",
+	Outfit        = "SPeditor_Outfit",      -- b0.2.4: put a saved outfit on a character (cl_presets.lua)
 	Aim           = "SPeditor_Aim",
 	Look          = "SPeditor_Look",
 	CameraFX      = "SPeditor_CameraFX",

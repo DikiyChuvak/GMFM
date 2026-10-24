@@ -1516,6 +1516,78 @@ COMP:NetReceive("Play", function(ply)
 	sendFrame(ply)
 end)
 
+---------------------------------------------------------------------
+-- Breaking a prop into its pieces (b0.2.4, asked on the Workshop: a crate that falls apart).
+-- The gibs the model names in its "break" sections are made as scene props in their places
+-- (a gib model shares the origin of the whole one); at the frame the prop vanishes and the
+-- pieces appear (opacity keys, a hold key before it), and the client lets them fall with a
+-- physics take from that frame (cl_saeditor_record.lua). One undo step on the client.
+---------------------------------------------------------------------
+function SA.GibModels(model)
+	local info = util.GetModelInfo(model or "")
+	local kv = info and info.KeyValues
+	local out = {}
+	if not isstring(kv) then return out end
+	for m in string.gmatch(kv, '"break"%s*{[^}]-"model"%s*"([^"]+)"') do
+		m = string.lower(string.gsub(m, "\\", "/"))
+		if not string.StartWith(m, "models/") then m = "models/" .. m end
+		if not string.EndsWith(m, ".mdl") then m = m .. ".mdl" end
+		if util.IsValidModel(m) then out[#out + 1] = m end
+	end
+	return out
+end
+
+COMP:NetReceive("Break", function(ply)
+	local id = net.ReadUInt(32)
+	local ent = S.ReadOwned(ply)
+	local frame = math.max(math.floor(net.ReadFloat() + 0.5), 1)
+	if not ent or S.IsAux(ent) or S.IsRagdoll(ent) then return end
+	local gibs = SA.GibModels(ent:GetModel())
+	if #gibs == 0 then
+		S.Notice(ply, "#brk_none", 1)
+		return
+	end
+	local pos, ang = S.GetTransform(ent)
+	local col = ent:GetColor()
+	local function alpha(e, a)
+		local c = Color(col.r, col.g, col.b, a)
+		e:SetColor(c)
+		e:SetRenderMode(a < 255 and RENDERMODE_TRANSCOLOR or RENDERMODE_NORMAL)
+		local look = e.SPeditor_Look or {}
+		look.color = (c.r < 255 or c.g < 255 or c.b < 255 or c.a < 255) and { c.r, c.g, c.b, c.a } or nil
+		e.SPeditor_Look = next(look) ~= nil and look or nil
+	end
+	-- the prop is there up to the frame before, gone from the frame on
+	local op = opBefore(ply, id, ent.SPeditor_UID)
+	setKey(ply, ent, frame - 1, "hold")
+	alpha(ent, 0)
+	setKey(ply, ent, frame, "hold")
+	opAfter(ply, op, ent.SPeditor_UID)
+	-- the pieces: hidden before the frame, there from it on
+	local uids = {}
+	for i = 1, math.min(#gibs, 32) do
+		local g = S.SpawnModel(ply, gibs[i], pos, ang)
+		if IsValid(g) then
+			if ent:GetModelScale() ~= 1 then S.SetScale(g, ent:GetModelScale()) end
+			S.SetTransform(g, pos, ang)
+			opBefore(ply, id, g.SPeditor_UID)
+			alpha(g, 0)
+			setKey(ply, g, frame - 1, "hold")
+			alpha(g, col.a)
+			setKey(ply, g, frame, "hold")
+			opAfter(ply, op, g.SPeditor_UID)
+			uids[#uids + 1] = g.SPeditor_UID
+		end
+	end
+	SA.SendSummary(ply)
+	COMP:NetStart("Break")
+	net.WriteUInt(id, 32)
+	net.WriteUInt(frame, 32)
+	net.WriteUInt(#uids, 8)
+	for _, u in ipairs(uids) do net.WriteUInt(u, 32) end
+	net.Send(ply)
+end)
+
 COMP:NetReceive("Key", function(ply)
 	local id     = net.ReadUInt(32)
 	local action = net.ReadUInt(4)

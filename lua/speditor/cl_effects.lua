@@ -367,7 +367,8 @@ function E.Fire(ent)
 	-- the engine moves the particles of these effects only in its main frame (cl_camera.lua)
 	if C.KeepParticlesAlive then C.KeepParticlesAlive() end
 	local src, name = ent:GetFxSource(), ent:GetFxName()
-	local pos, ang, scale, len = ent:GetPos(), ent:GetAngles(), ent:GetFxScale(), ent:GetFxLength()
+	local pos, ang = SPeditor.LivePos(ent)
+	local scale, len = ent:GetFxScale(), ent:GetFxLength()
 	local mpos, mang = E.Mount(ent)
 	if mpos then
 		-- a tracer keeps the end it was keyed with (where the bullet hit) and starts at the muzzle
@@ -487,7 +488,7 @@ function E.Update(ent)
 		kill(st)
 	end
 
-	local pos, ang = ent:GetPos(), ent:GetAngles()
+	local pos, ang = SPeditor.LivePos(ent)
 	local T = E.Time(ent)
 	local live = ent:GetFxSource() ~= "pcf"
 	-- An effect that was moved while its moment stood still is started over at the new place

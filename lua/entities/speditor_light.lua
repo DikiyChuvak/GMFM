@@ -138,10 +138,9 @@ if CLIENT then
 		if cube then
 			putOutDynamic(self)
 			self.PTCube = self.PTCube or {}
-			local pos = self:GetPos()
+			local pos, a = SPeditor.LivePos(self)
 			local area = self:GetSourceSize()
 			if area > 0 and jx and (jx ~= 0 or jy ~= 0) then
-				local a = self:GetAngles()
 				pos = pos + a:Right() * (jx * area) + a:Up() * (jy * area)
 			end
 			local radius = self:GetLightRadius()
@@ -174,7 +173,7 @@ if CLIENT then
 		if enabled and ltype == 0 and not cube then
 			local d = DynamicLight(self:EntIndex())
 			if d then
-				d.pos        = self:GetPos()
+				d.pos        = (SPeditor.LivePos(self))
 				d.r          = c.x * 255
 				d.g          = c.y * 255
 				d.b          = c.z * 255
@@ -199,8 +198,8 @@ if CLIENT then
 			end
 			local pt = self.PT
 			local radius = self:GetLightRadius()
-			local ang = self:GetAngles()
-			local pos = self:GetPos() + ang:Forward() * 4
+			local pos, ang = SPeditor.LivePos(self)
+			pos = pos + ang:Forward() * 4
 			local area = self:GetSourceSize()
 			if area > 0 and jx and (jx ~= 0 or jy ~= 0) then
 				pos = pos + ang:Right() * (jx * area) + ang:Up() * (jy * area)
@@ -277,9 +276,8 @@ if CLIENT then
 
 	function ENT:DrawHelpers(C)
 		local c      = self:GetLightColor()
-		local pos    = self:GetPos()
+		local pos, ang = SPeditor.LivePos(self)
 		local radius = self:GetLightRadius()
-		local ang    = self:GetAngles()
 
 		if C.selected ~= self then
 			local small = Color(c.x * 255, c.y * 255, c.z * 255, 120)

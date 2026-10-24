@@ -93,6 +93,25 @@ local function physMap(ent)
 	return m
 end
 
+-- Where an object is drawn (b0.2.4). The client smooths the moves of a light, a camera or
+-- an effect over ~0.1 s, while its parent may not be smoothed at all (a ragdoll; a prop, at
+-- times): an attached light trailed 20 units behind a parent moving at 200 u/s (measured in
+-- game). Attached, it is put where the parent is drawn, at its offset from the parent as the
+-- server last sent both.
+function SPeditor.LivePos(ent)
+	if CLIENT then
+		local par = ent:GetNW2Entity("SPeditor_Parent")
+		if IsValid(par) then
+			local np, na = ent:GetNetworkOrigin(), ent:GetNetworkAngles()
+			-- a ragdoll is drawn at the places its bodies were sent with
+			if par:GetClass() == "prop_ragdoll" then return np, na end
+			local lp, la = WorldToLocal(np, na, par:GetNetworkOrigin(), par:GetNetworkAngles())
+			return LocalToWorld(lp, la, par:GetPos(), par:GetAngles())
+		end
+	end
+	return ent:GetPos(), ent:GetAngles()
+end
+
 -- The physics body of exactly this bone, or nil (a finger, a toe)
 function SPeditor.PhysOfBone(ent, bone)
 	if not IsValid(ent) or ent:GetClass() ~= "prop_ragdoll" or not bone then return nil end

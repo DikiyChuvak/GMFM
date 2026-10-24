@@ -914,10 +914,15 @@ function C.MouseInViewport()
 	local px, py, pw, ph, isPanel = C.PanelRect()
 	local mx, my = gui.MousePos()
 	if mx < px or mx > px + pw or my < py or my > py + ph then return false end
+	local hp = vgui.GetHoveredPanel()
 	if isPanel then
 		local view = SPeditor.UI.PrimaryVP.view
-		local hp = vgui.GetHoveredPanel()
 		if not IsValid(hp) or (hp ~= view and not hp:HasParent(view)) then return false end
+	elseif IsValid(hp) and hp ~= vgui.GetWorldPanel() then
+		-- the Primary Viewport is closed: the view is the screen, but not where a window or a
+		-- menu is (b0.2.4: a press on the Windows menu closed the menu before its option ran,
+		-- so the closed viewport could not be brought back)
+		return false
 	end
 	return true
 end

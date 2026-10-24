@@ -62,7 +62,7 @@ if CLIENT then
 		if not C or not C.active or C.hideUI or C.vpPass == "secondary" or C.vpPass == "export" then return end
 
 		local restore = SPeditor.Render.HelperLighting()
-		local pos, ang = self:GetPos(), self:GetAngles()
+		local pos, ang = SPeditor.LivePos(self)
 		local Fx = SPeditor.Effects
 		local mpos = Fx and Fx.Mount and Fx.Mount(self)
 		local len = self:GetFxLength()

@@ -143,38 +143,85 @@ function UI.OpenAbout()
 	UI.StyleButton(close, nil, 3)
 	close.DoClick = function() win:Close() end
 
-	-- description
-	local scroll = vgui.Create("DScrollPanel", body)
-	scroll:Dock(FILL)
-	scroll.Paint = function(_, w, h)
-		surface.SetDrawColor(COL.BG)
+	-- two tabs (b0.2.4): About — what GM:FM is, how to use it, credits; What's new — the news of
+	-- every update since b0.1 (SPeditor.History), the newest first
+	local tabs = vgui.Create("DPanel", body)
+	tabs:Dock(TOP)
+	tabs:SetTall(UI.S(28))
+	tabs.Paint = function(_, w, h)
+		surface.SetDrawColor(COL.HEADER)
 		surface.DrawRect(0, 0, w, h)
+		surface.SetDrawColor(COL.BORDER)
+		surface.DrawRect(0, h - 1, w, 1)
 	end
+	local function page()
+		local sp = vgui.Create("DScrollPanel", body)
+		sp:Dock(FILL)
+		sp.Paint = function(_, w, h)
+			surface.SetDrawColor(COL.BG)
+			surface.DrawRect(0, 0, w, h)
+		end
+		return sp
+	end
+	local scroll, news = page(), page()
+	local current
+	local function show(which)
+		current = which
+		scroll:SetVisible(which == "info")
+		news:SetVisible(which == "news")
+		body:InvalidateLayout()
+	end
+	local function tab(id, title, icon)
+		local b = vgui.Create("DButton", tabs)
+		b:Dock(LEFT)
+		b:DockMargin(id == "info" and 8 or 2, 4, 0, 0)
+		b:SetText("")
+		surface.SetFont("SPeditor.Bold")
+		b:SetWide(select(1, surface.GetTextSize(title)) + UI.S(40))
+		local mat = Material(icon)
+		b.Paint = function(s, w, h)
+			local on = current == id
+			surface.SetDrawColor(on and COL.BG or (s:IsHovered() and COL.ROW_A or COL.HEADER))
+			surface.DrawRect(0, 0, w, h)
+			if on then
+				surface.SetDrawColor(COL.ORANGE)
+				surface.DrawRect(0, 0, w, 2)
+			end
+			surface.SetDrawColor(255, 255, 255, 255)
+			surface.SetMaterial(mat)
+			surface.DrawTexturedRect(8, math.floor(h / 2 - 8), 16, 16)
+			draw.SimpleText(title, "SPeditor.Bold", 30, h / 2, on and COL.TEXT or COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		end
+		b.DoClick = function() show(id) end
+	end
+	tab("info", L("about_tab_info"), "icon16/information.png")
+	tab("news", L("about_tab_news"), "icon16/newspaper.png")
 
-	local function bullets(prefix)
+	local function bullets(prefix, parent)
 		for i = 1, 40 do
 			local key = prefix .. i
 			local str = L(key)
 			if str == key then break end
-			text(scroll, "•  " .. str, COL.TEXT, nil, 4)
+			text(parent or scroll, "•  " .. str, COL.TEXT, nil, 4)
 		end
 	end
 
+	-- What's new: every version with its date, the newest first
+	text(news, L("about_news_hint"), COL.DIM, nil, 10)
+	for _, v in ipairs(SPeditor.History or {}) do
+		if L(v[3] .. "1") ~= v[3] .. "1" then
+			text(news, string.format(L("about_news"), v[1]), v[1] == SPeditor.Version and COL.ORANGE or COL.TEXT, "SPeditor.Bold", 14)
+			text(news, v[2], COL.DIM, nil, 0)
+			bullets(v[3], news)
+		end
+	end
+	text(news, "", COL.DIM, nil, 8)
+	-- the first time after an update the window opens on its news
+	local seen = cookie.GetString("gmfm_news_seen", "")
+	cookie.Set("gmfm_news_seen", SPeditor.Version or "")
+	show(seen ~= (SPeditor.Version or "") and "news" or "info")
+
 	text(scroll, L("about_intro"), COL.TEXT, nil, 10)
-	-- what changed: a patch (about_p1, about_p2, …) above the release it builds on (about_n1, …)
-	local base = SPeditor.VersionBase or SPeditor.Version or ""
-	-- a second patch on the same release (b0.2.2): its own news first, then the patch before
-	local prev = SPeditor.VersionPrev
-	if prev and prev ~= SPeditor.Version and L("about_u1") ~= "about_u1" then
-		text(scroll, string.format(L("about_news"), SPeditor.Version), COL.ORANGE, "SPeditor.Bold", 12)
-		bullets("about_u")
-	end
-	if base ~= SPeditor.Version and L("about_p1") ~= "about_p1" then
-		text(scroll, string.format(L("about_news"), prev or SPeditor.Version), COL.ORANGE, "SPeditor.Bold", 12)
-		bullets("about_p")
-	end
-	text(scroll, string.format(L("about_news"), base), COL.ORANGE, "SPeditor.Bold", 12)
-	bullets("about_n")
 	text(scroll, L("about_features"), COL.ORANGE, "SPeditor.Bold", 12)
 	bullets("about_f")
 	text(scroll, L("about_usage"), COL.ORANGE, "SPeditor.Bold", 12)

@@ -296,10 +296,36 @@ end
 ---------------------------------------------------------------------
 local matGlow = Material("sprites/light_ignorez")
 
+-- what hides the glow: not the editor's own objects (an effect's placeholder, another light)
+-- and nothing see-through — the glow was lost behind effects and half-transparent props (b0.2.4)
+local NOT_COVER = { speditor_camera = true, speditor_light = true, speditor_effect = true }
+local seeThrough = {}           -- [model] = true when a material of it is see-through
+local function covers(e)
+	if NOT_COVER[e:GetClass()] or e:GetNoDraw() then return false end
+	if e:GetColor().a < 250 or e:GetRenderMode() ~= RENDERMODE_NORMAL then return false end
+	local mdl = e:GetModel()
+	if not mdl then return true end
+	local see = seeThrough[mdl]
+	if see == nil then
+		-- glass, a fence, leaves: a material of the model is translucent or cut out
+		see = false
+		for _, m in ipairs(e:GetMaterials() or {}) do
+			local mat = Material(m)
+			if mat and not mat:IsError() and (mat:GetInt("$translucent") == 1 or mat:GetInt("$alphatest") == 1
+					or mat:GetInt("$additive") == 1) then
+				see = true
+				break
+			end
+		end
+		seeThrough[mdl] = see
+	end
+	return not see
+end
+
 local function visible(ent, from, pos)
 	local tr = util.TraceLine({
 			start = from, endpos = pos, mask = MASK_OPAQUE,
-			filter = function(e) return e ~= ent and SPeditor.IsEditable(e) and e:GetClass() ~= "speditor_camera" end,
+			filter = function(e) return e ~= ent and SPeditor.IsEditable(e) and covers(e) end,
 	})
 	return not tr.Hit
 end
@@ -382,7 +408,7 @@ local function volVisibility(ent, pos, fwd, right, up, len, r0, spread, shadows)
 end
 
 function Lt.DrawVolume(ent, col, bri, vol)
-	local pos, ang = ent:GetPos(), ent:GetAngles()
+	local pos, ang = SPeditor.LivePos(ent)
 	local fwd, right, up = ang:Forward(), ang:Right(), ang:Up()
 	local len = ent:GetLightRadius() * math.Clamp(ent:GetVolLength(), 0.05, 1)
 	local ortho = ent:GetLightOrtho()
@@ -475,7 +501,7 @@ function Lt.DrawEffects(ent)
 	if C and C.IsHidden and C.IsHidden(ent) then return end
 
 	local c = ent:GetLightColor()
-	local pos, ang = ent:GetPos(), ent:GetAngles()
+	local pos, ang = SPeditor.LivePos(ent)
 	local fwd = ang:Forward()
 	local spot = ent:GetLightType() == 1
 	local eye = EyePos()

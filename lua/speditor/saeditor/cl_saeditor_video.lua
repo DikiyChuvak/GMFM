@@ -70,7 +70,7 @@ local cvSamples = CreateClientConVar("gmfm_render_samples", "50", true, false)  
 local cvFps     = CreateClientConVar("gmfm_render_fps", "0", true, false)         -- frames a second of the video, 0 — as the animation
 local cvBlur    = CreateClientConVar("gmfm_render_mblur", "0", true, false)       -- motion blur: moments a frame, 0 — off
 local cvShutter = CreateClientConVar("gmfm_render_shutter", "0.5", true, false)   -- motion blur: the part of a frame the shutter is open
-local cvFormat  = CreateClientConVar("gmfm_render_video", "avi", true, false)     -- avi | webm (Windows only)
+local cvFormat  = CreateClientConVar("gmfm_render_video", "avi", true, false)     -- avi | webm (Windows only) | png | jpeg (pictures)
 
 -- The game's JPEG encoder has only five levels (measured in game on a 1280 x 876 frame):
 -- 100 — 1148 KB, 71..99 — 158 KB, 51..70 — 96 KB, 31..50 — 56 KB, up to 30 — 28 KB.
@@ -90,7 +90,11 @@ function SA.RenderBlur() return math.Clamp(math.floor(cvBlur:GetFloat()), 0, 32)
 function SA.RenderShutter() return math.Clamp(cvShutter:GetFloat(), 0.05, 1) end
 
 SA.WEBM_OK = system.IsWindows()
-function SA.RenderVideoFormat() return (SA.WEBM_OK and cvFormat:GetString() == "webm") and "webm" or "avi" end
+function SA.RenderVideoFormat()
+	local f = cvFormat:GetString()
+	if f == "png" or f == "jpeg" then return f end      -- a sequence of pictures (b0.2.4)
+	return (SA.WEBM_OK and f == "webm") and "webm" or "avi"
+end
 -- the bit rate of a WebM video (kbit/s) for every "Video size" level
 local WEBM_BITRATE = { [100] = 50000, [90] = 25000, [70] = 12000, [50] = 6000, [30] = 3000 }
 
@@ -290,6 +294,18 @@ end
 
 local function openVideo(job)
 	if job.format == "webm" then return openWebm(job) end
+	-- a picture for every frame (b0.2.4, asked on the Workshop): data/speditor/renders/<name>/
+	-- <name>_0001.png …, the sound as <name>.wav beside them — for a video editor
+	if job.format == "png" or job.format == "jpeg" then
+		job.seq = true
+		ensureDir(RENDER_DIR .. "/" .. job.dir)
+		job.path = RENDER_DIR .. "/" .. job.dir
+		if job.mix then
+			job.wavPath = RENDER_DIR .. "/" .. job.dir .. "/" .. job.name .. ".wav"
+			job.wav = wavOpen(job.wavPath, SA.Audio.RATE)
+		end
+		return true
+	end
 	local W, H = C.GetRenderSize()
 	local part = job.part or 1
 	job.path = RENDER_DIR .. "/" .. job.name .. (part > 1 and ("_part" .. part) or "") .. ".avi.dat"
@@ -442,6 +458,13 @@ function SA.StopRender(ok)
 			job.wav = nil
 			if job.count == 0 then file.Delete(job.wavPath) end
 		end
+	elseif job.seq then
+		path = "garrysmod/data/" .. job.path
+		if job.wav then
+			pcall(wavClose, job.wav)
+			job.wav = nil
+			if job.count == 0 then file.Delete(job.wavPath) end
+		end
 	elseif job.avi then
 		job.bytes = (job.bytes or 0) + job.avi.pos
 		job.repeats = (job.repeats or 0) + (job.avi.repeats or 0)
@@ -454,6 +477,16 @@ function SA.StopRender(ok)
 		if job.wavPath and job.count > 0 then SPeditor.Notify("#sa_rnd_webm_wav|garrysmod/data/" .. job.wavPath, 0) end
 		if SPeditor.UI.ShowRenderDone then
 			local notes = { COMP:L("sa_rdone_webm", job.count, job.webmW, job.webmH) }
+			if job.wavPath and job.count > 0 then notes[2] = COMP:L("sa_rdone_wav", "garrysmod/data/" .. job.wavPath) end
+			SPeditor.UI.ShowRenderDone({ path = path, notes = notes })
+		end
+		if job.mix and #job.mix.skipped > 0 then
+			SPeditor.Notify("#sa_snd_skipped|" .. table.concat(job.mix.skipped, ", ", 1, math.min(#job.mix.skipped, 6)), 1)
+		end
+	elseif ok and job.seq then
+		SPeditor.Notify("#sa_rnd_done_seq|" .. job.count .. "|" .. path, 2)
+		if SPeditor.UI.ShowRenderDone then
+			local notes = { COMP:L("sa_rdone_seq", job.count, job.fps) }
 			if job.wavPath and job.count > 0 then notes[2] = COMP:L("sa_rdone_wav", "garrysmod/data/" .. job.wavPath) end
 			SPeditor.UI.ShowRenderDone({ path = path, notes = notes })
 		end
@@ -559,10 +592,14 @@ COMP:Hook("Think", function()
 		if Fx and waited < FX_WAIT and Fx.Busy() then return end
 		if (stable and waited >= job.minWait) or waited >= job.settle then
 			local accepted = SPeditor.Export.Render({
-				single = true, camera = frameCamera(job), dir = job.dir, nodof = true,
+				single = true, camera = frameCamera(job), dir = job.dir,
+				-- the depth of field: the camera's own (Camera effects) or, for a camera without
+				-- it, the Render window's (b0.2.4: before it was left out of videos — "DoF does
+				-- not work in the animation render", Workshop)
+				nodof = not GetConVar("gmfm_render_dof"):GetBool(),
 				camdof = GetConVar("gmfm_render_dof"):GetBool(),
 				name = string.format("%s_%04d", job.name, job.n + 1),
-				format = "jpeg", quality = job.quality, sampleScale = job.sampleScale, silent = true,
+				format = job.seq and job.format or "jpeg", quality = job.quality, sampleScale = job.sampleScale, silent = true,
 				-- "engine frame": the effects are settled by the previous frame of the animation
 				warmup = (job.count > 0) and 1 or nil,
 				-- a video frame goes straight into the file

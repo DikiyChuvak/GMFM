@@ -262,6 +262,12 @@ function UI.OpenObjectProps(ent)
 	end
 
 	button(scroll, L("props_mat_remove"), "icon16/picture_delete.png", function() setMaterial(WHITE_MAT) end)
+	-- b0.2.4: the materials of the whole object kept under a name (cl_presets.lua)
+	button(scroll, L("matpreset_title") .. "…", "icon16/palette.png", function()
+		local m = UI.Menu()
+		SPeditor.Presets.MaterialMenu(m, ent)
+		m:Open()
+	end)
 	button(scroll, L("props_mat_restore"), "icon16/picture_go.png", function() setMaterial("") end)
 
 	local path = vgui.Create("DTextEntry", scroll)

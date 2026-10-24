@@ -298,9 +298,10 @@ end
 
 -- Physics only, with the editor open: the selected ragdolls and props (all of them when nothing
 -- is selected) are let go from the current frame; Stop (or Backspace) writes their keys.
-function SA.StartPhysicsTake()
+-- uids, from (b0.2.4, the pieces of a broken prop): these objects from this frame
+function SA.StartPhysicsTake(uids, from)
 	if SA.rec then return end
-	local list = physObjects(false)
+	local list = uids or physObjects(false)
 	if #list == 0 then list = physObjects(true) end
 	if #list == 0 then
 		SPeditor.Notify("#sa_rec_phys_none", 1)
@@ -308,7 +309,7 @@ function SA.StartPhysicsTake()
 	end
 	SA.rec = { inEditor = true }
 	send(1, { step = cvStep:GetInt(), npcs = false, sounds = false, effects = false, noPlayer = true,
-		from = math.floor(SA.frame + 0.5), phys = list })
+		from = from or math.floor(SA.frame + 0.5), phys = list })
 end
 
 function SA.StopRecording()

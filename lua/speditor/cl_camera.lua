@@ -317,7 +317,7 @@ SPeditor.Hook("Think", "SPeditor.CameraUpdate", function()
 		-- a render "from the Primary Viewport" was shot from where the camera had been when
 		-- the view was switched to it. The view follows only while it is at rest itself, and
 		-- not right after it has moved the camera (the answer is still on its way).
-		local ep, ea = cam.viewEnt:GetPos(), cam.viewEnt:GetAngles()
+		local ep, ea = SPeditor.LivePos(cam.viewEnt)
 		local atRest = not m and cam.sentPos ~= nil and RealTime() > (cam.sentT or 0) + 0.4
 			and cam.sentPos:DistToSqr(cam.pos) <= 0.01 and not anglesChanged(cam.sentAng, cam.angles)
 			and cam.pos:DistToSqr(cam.target) <= 0.01 and not anglesChanged(cam.angles, cam.targetAngles)
@@ -476,7 +476,7 @@ function C.SceneTime()
 end
 
 function C.CameraPose(ent)
-	local pos, ang = ent:GetPos(), ent:GetAngles()
+	local pos, ang = SPeditor.LivePos(ent)
 	local amp, rot = ent:GetShakeAmp(), ent:GetShakeRot()
 	if amp <= 0 and rot <= 0 then return pos, ang end
 	local t = C.SceneTime() * math.max(ent:GetShakeFreq(), 0.2)

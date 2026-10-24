@@ -179,6 +179,18 @@ SPeditor.Hook("SPeditor_HistoryStep", "SPeditor.Vp2", function() vp2.sig = nil e
 -- every frame halved the frame rate of playback. "Every frame" (0) still draws every frame.
 local VP2_BUSY = 0.125
 
+-- b0.2.4: "the Secondary Viewport is laggy" (Workshop) — at 8 pictures a second it was, also
+-- where the game had frames to spare. While the game keeps a good frame rate, moving pictures
+-- (this viewport, the Render window preview) are drawn every frame; when it drops, they go back
+-- to a few a second. The rate is smoothed and has two thresholds, so it does not flicker.
+local smoothFT, fastNow = 1 / 60, true
+SPeditor.Hook("Think", "SPeditor.FrameRate", function()
+	smoothFT = smoothFT + (math.min(RealFrameTime(), 0.25) - smoothFT) * 0.05
+	if fastNow and smoothFT > 1 / 35 then fastNow = false
+	elseif not fastNow and smoothFT < 1 / 50 then fastNow = true end
+end)
+function UI.FrameRateGood() return fastNow end
+
 -- true: the Secondary Viewport keeps its last picture this frame
 local function vp2Frozen(src, pw, ph)
 	local mode = cvVp2:GetFloat()
@@ -199,7 +211,7 @@ local function vp2Frozen(src, pw, ph)
 	local SA = SPeditor.Component and SPeditor.Component("saeditor").SA
 	if C.gizmo.drag or input.IsMouseDown(MOUSE_LEFT) or (SA and SA.playing) then
 		vp2.sig = nil
-		if now - vp2.at < VP2_BUSY then return true end
+		if not fastNow and now - vp2.at < VP2_BUSY then return true end
 		vp2.at = now
 		return false
 	end

@@ -108,6 +108,8 @@ SPeditor.Hook("PostRender", "SPeditor.RenderPreview", function()
 	local place = string.format("%.1f %.1f %.1f %.2f %.2f %.2f", o.x, o.y, o.z, a.p, a.y, a.r)
 	if place ~= pv.place then pv.place, pv.movedAt = place, now end
 	local moving = now - (pv.movedAt or 0) < 0.4 or (C.ScenePlaying and C.ScenePlaying())
+	-- a game with frames to spare re-shoots a moving preview every frame (b0.2.4, UI.FrameRateGood)
+	local fastStep = (moving and UI.FrameRateGood and UI.FrameRateGood()) and 0 or PREVIEW_FAST
 	if R.EngineFor(GetConVar("gmfm_render_fullbright"):GetBool()) then
 		-- "engine frame": the engine shoots the scene in the next game frame, here we take the finished one
 		R.FinishEngineFrame()
@@ -133,8 +135,9 @@ SPeditor.Hook("PostRender", "SPeditor.RenderPreview", function()
 		local opts = { fullbright = GetConVar("gmfm_render_fullbright"):GetBool(), aspect = aspect,
 			ss = (GetConVar("gmfm_render_ss"):GetBool() and pw < 1280) and 2 or 1 }
 		pv.samples = nil
-		-- the Animation tab shows the video as it will be: without depth of field (a0.9)
-		local anim = UI.renderTab == "anim"
+		-- the Animation tab shows the video as it will be: with depth of field only when the
+		-- video keeps it (b0.2.4, "Depth of field" of the Animation tab)
+		local anim = UI.renderTab == "anim" and not GetConVar("gmfm_render_dof"):GetBool()
 		if GetConVar("gmfm_dof"):GetBool() and not anim then
 			pv.samples = math.min(math.Clamp(GetConVar("gmfm_dof_samples"):GetInt(), 2, 128), PREVIEW_SAMPLES)
 			opts.dof = { aperture = math.Clamp(GetConVar("gmfm_dof_aperture"):GetFloat(), 0.05, 20), samples = pv.samples,
@@ -149,7 +152,7 @@ SPeditor.Hook("PostRender", "SPeditor.RenderPreview", function()
 		-- soft shadows from lights with a size: the same accumulator and the same pass ceiling
 		opts.softMax = PREVIEW_SAMPLES
 		local slow = opts.dof or (not opts.fullbright and SPeditor.Lights.SoftSamples() > 0)
-		pv.next = now + (slow and PREVIEW_DOF or PREVIEW_FAST)
+		pv.next = now + (slow and PREVIEW_DOF or fastStep)
 		pv.soon = now + (slow and PREVIEW_DOF_MIN or 0)
 		-- a moving camera: a light frame now, the full one when it stops
 		pv.fastShot = moving and slow or nil
@@ -157,7 +160,7 @@ SPeditor.Hook("PostRender", "SPeditor.RenderPreview", function()
 			if opts.dof then opts.dof.samples = math.min(opts.dof.samples, PREVIEW_MOVING) end
 			opts.softMax = PREVIEW_MOVING
 			pv.samples = opts.dof and opts.dof.samples or pv.samples
-			pv.fastNext = now + PREVIEW_FAST
+			pv.fastNext = now + fastStep
 		end
 
 		-- as in export: the gizmo and helper graphics are hidden for the render

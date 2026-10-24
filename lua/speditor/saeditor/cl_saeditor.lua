@@ -553,6 +553,36 @@ function SA.BakeDetach(ent)
 	end)
 end
 
+-- Break a prop into its pieces at the playhead (b0.2.4, sv_saeditor.lua "Break"): the pieces
+-- appear in its place and fall with a physics take (Backspace or Stop writes their keys).
+-- One undo step: the pieces go and the keys come back.
+function SA.BreakProp(ent)
+	if not IsValid(ent) or C.IsAux(ent) or C.IsRagdoll(ent) then return end
+	COMP:NetStart("Break")
+	net.WriteUInt(nextOp(), 32)
+	net.WriteEntity(ent)
+	net.WriteFloat(SA.frame)
+	net.SendToServer()
+end
+
+COMP:NetReceive("Break", function()
+	local id, frame, n = net.ReadUInt(32), net.ReadUInt(32), net.ReadUInt(8)
+	local uids = {}
+	for i = 1, n do uids[i] = net.ReadUInt(32) end
+	C.PushHistory("sa break", function()
+		COMP:NetStart("Restore") net.WriteUInt(id, 32) net.WriteBool(false) net.SendToServer()
+		for _, u in ipairs(uids) do C.SendObjRemove(u) end
+	end, function()
+		for _, u in ipairs(uids) do C.SendObjRestore(u) end
+		COMP:NetStart("Restore") net.WriteUInt(id, 32) net.WriteBool(true) net.SendToServer()
+	end)
+	SPeditor.Notify("#brk_done|" .. n, 2)
+	if SA.StartPhysicsTake and n > 0 then
+		SA.Seek(frame)
+		SA.StartPhysicsTake(uids, frame)
+	end
+end)
+
 -- A procedural preset of the Motion Editor (b0.2, SA.PRESETS) on the keys of the selected objects
 -- (their face tracks too) inside the time selection — or the whole animation when there is
 -- none. strength: percent (100 — in full). One undo step.

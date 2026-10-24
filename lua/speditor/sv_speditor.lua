@@ -1507,6 +1507,34 @@ S.Receive("Attach", function(ply)
 	end
 end)
 
+-- A saved outfit (cl_presets.lua, b0.2.4): every item is made where the character stands and worn
+S.Receive("Outfit", function(ply)
+	local parent = S.ReadOwned(ply)
+	local items = SPeditor.ReadTable()
+	if not parent or type(items) ~= "table" or S.IsAux(parent) or parent:GetBoneCount() <= 1 then return end
+	local pos, ang = S.GetTransform(parent)
+	local n = 0
+	for i = 1, math.min(#items, 32) do
+		local it = items[i]
+		if type(it) == "table" and isstring(it.model) then
+			local ent, err = S.SpawnWithState(ply, it.model, pos, ang, tonumber(it.skin), it.groups, nil, tonumber(it.scale),
+				type(it.look) == "table" and it.look or nil)
+			if ent then
+				if isstring(it.name) and it.name ~= "" then
+					ent.SPeditor_Name = string.sub(it.name, 1, 48)
+					ent:SetNW2String("SPeditor_Name", ent.SPeditor_Name)
+				end
+				S.Attach(ent, parent, S.WEAR)
+				S.SendSpawned(ply, ent)
+				n = n + 1
+			else
+				S.Notice(ply, err or "#err_create", 1)
+			end
+		end
+	end
+	if n > 0 then S.Notice(ply, "#outfit_worn|" .. n, 2) end
+end)
+
 S.Receive("Aim", function(ply)
 	local ent    = S.ReadOwned(ply)
 	local target = S.ReadOwned(ply)
