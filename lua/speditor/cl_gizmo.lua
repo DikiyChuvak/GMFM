@@ -43,7 +43,20 @@ function C.SetStretch(on)
 	C.gizmo.stretch = on and true or false
 	RunConsoleCommand("gmfm_stretch", on and "1" or "0")
 end
-if C.gizmo.ikFeet == nil then C.gizmo.ikFeet = true end
+-- Planted limbs (b0.2.5, after SFM's rig with IK targets on the feet and the hands): moving or
+-- turning the body keeps the feet — and, when asked, the hands — where they are, each kind
+-- on its own switch (a walk: the pelvis goes, the feet stay; a push-up: the hands stay too)
+local cvIKFeet  = CreateClientConVar("gmfm_ik_feet", "1", true, false)
+local cvIKHands = CreateClientConVar("gmfm_ik_hands", "0", true, false)
+C.gizmo.ikFeet, C.gizmo.ikHands = cvIKFeet:GetBool(), cvIKHands:GetBool()
+function C.SetIKFeet(on)
+	C.gizmo.ikFeet = on and true or false
+	RunConsoleCommand("gmfm_ik_feet", on and "1" or "0")
+end
+function C.SetIKHands(on)
+	C.gizmo.ikHands = on and true or false
+	RunConsoleCommand("gmfm_ik_hands", on and "1" or "0")
+end
 
 -- plane handles: index 4 + i is the plane across axis i (spanned by the other two axes)
 local PLANE_A, PLANE_B = 0.22, 0.42     -- where the square starts and ends, in gizmo sizes
@@ -62,13 +75,19 @@ function C.SetBoneSize(v) RunConsoleCommand("gmfm_bone_size", tostring(math.Clam
 -- Snapping (b0.2.3): while the snap key is held (Ctrl by default, Interface settings → Keys) a drag
 -- of the gizmo goes in steps — units of the map, degrees, parts of the size. The steps are
 -- set in View → Snapping. With a step set in C.gizmo (old scenes, scripts) the key turns it off.
-local cvSnapMove  = CreateClientConVar("gmfm_snap_move", "8", true, false, "Snap step of a move, units (the snap key held)", 0.01, 1024)
-local cvSnapRot   = CreateClientConVar("gmfm_snap_rot", "15", true, false, "Snap step of a turn, degrees (the snap key held)", 0.1, 180)
+-- b0.2.5: steps of 10 units, 30° and a tenth of the size by default (as in Blender, SFM, Roblox
+-- Studio), and "Snap always" (gmfm_snap_always): the gizmo goes in steps by itself and the snap
+-- key frees it for a fine move instead.
+local cvSnapMove  = CreateClientConVar("gmfm_snap_move", "10", true, false, "Snap step of a move, units (the snap key held)", 0.01, 1024)
+local cvSnapRot   = CreateClientConVar("gmfm_snap_rot", "30", true, false, "Snap step of a turn, degrees (the snap key held)", 0.1, 180)
 local cvSnapScale = CreateClientConVar("gmfm_snap_scale", "0.1", true, false, "Snap step of a scale (the snap key held)", 0.01, 10)
+local cvSnapAlways = CreateClientConVar("gmfm_snap_always", "0", true, false, "The gizmo snaps without the snap key; the key frees it", 0, 1)
+function C.SnapAlways() return cvSnapAlways:GetBool() end
+function C.SetSnapAlways(on) RunConsoleCommand("gmfm_snap_always", on and "1" or "0") end
 
 function C.SnapStep(kind)
 	local fixed = kind == "move" and C.gizmo.snapMove or kind == "rot" and C.gizmo.snapRot or 0
-	if not C.Keys.Down("snap") then return fixed or 0 end
+	if C.Keys.Down("snap") == cvSnapAlways:GetBool() then return fixed or 0 end
 	if (fixed or 0) > 0 then return 0 end
 	if kind == "move" then return math.max(cvSnapMove:GetFloat(), 0.01) end
 	if kind == "rot" then return math.max(cvSnapRot:GetFloat(), 0.1) end
@@ -97,6 +116,33 @@ local function makeBasis(axis)
 	local u = axis:Cross(ref):GetNormalized()
 	local v = axis:Cross(u)
 	return u, v
+end
+
+-- An axis that points (almost) at the camera has no stable closest point to the mouse ray:
+-- the drag stalled or jumped. Then, as in SFM and Blender, the mouse moving along the axis as
+-- the screen shows it moves the object; an axis seen end-on takes the mouse going up and down.
+-- Returns the state for screenAxis, or nil when the ray works.
+local function screenAxisStart(p0, ad, size)
+	local _, vang = C.GetView()
+	if math.abs(ad:Dot(vang:Forward())) < 0.9 then return nil end
+	local x0, y0, v0 = C.ProjectToViewport(p0)
+	local x1, y1, v1 = C.ProjectToViewport(p0 + ad * size)
+	local mx, my = gui.MousePos()
+	local s = { mx = mx, my = my, upp = size / 120 }
+	if v0 and v1 then
+		local dx, dy = x1 - x0, y1 - y0
+		local len = math.sqrt(dx * dx + dy * dy)
+		if len > 6 then s.dx, s.dy, s.upp = dx / len, dy / len, size / len end
+	end
+	if not s.dx then
+		-- end-on: up the screen is along the axis when it points away from the camera
+		s.dx, s.dy = 0, ad:Dot(vang:Forward()) > 0 and -1 or 1
+	end
+	return s
+end
+local function screenAxis(s)
+	local mx, my = gui.MousePos()
+	return ((mx - s.mx) * s.dx + (my - s.my) * s.dy) * s.upp
 end
 
 local function axisParam(ro, rd, p0, ad)
@@ -379,13 +425,16 @@ end
 -- Planted feet and bone locks: worked out after the dragged bones got their new places
 ---------------------------------------------------------------------
 local FOOT_PATTERNS = { "foot", "ankle", "hoof" }
-local function isFoot(name)
+local HAND_PATTERNS = { "hand", "wrist", "paw" }
+local function matches(name, patterns)
 	local n = string.lower(name or "")
-	for _, p in ipairs(FOOT_PATTERNS) do
+	for _, p in ipairs(patterns) do
 		if string.find(n, p, 1, true) then return true end
 	end
 	return false
 end
+local function isFoot(name) return matches(name, FOOT_PATTERNS) end
+local function isHand(name) return not isFoot(name) and matches(name, HAND_PATTERNS) end
 
 -- The locks of a ragdoll: { [bone] = { to = bone it follows } }. They are a part of the
 -- object's look (S.ApplyLook): saved with the scene, undone with Ctrl+Z.
@@ -468,10 +517,16 @@ prepareLocks = function(d, tgt)
 	end
 	local post = {}
 
-	-- planted feet: the body moves, a leg whose thigh is carried along bends so that the foot stays
-	if C.gizmo.ik and C.gizmo.ikFeet and not d.ik then
+	-- planted feet (and hands): the body moves, a leg whose thigh is carried along bends so that
+	-- the foot stays; a locked hand follows its lock instead
+	local locks = C.GetBoneLocks(ent)
+	local function planted(name)
+		if C.gizmo.ikFeet and isFoot(name) then return true end
+		return C.gizmo.ikHands and isHand(name)
+	end
+	if C.gizmo.ik and (C.gizmo.ikFeet or C.gizmo.ikHands) and not d.ik then
 		for b = 0, ent:GetBoneCount() - 1 do
-			if b ~= tgt.bone and isFoot(ent:GetBoneName(b)) and C.PhysIndexOfBone(ent, b) then
+			if b ~= tgt.bone and not locks[b] and planted(ent:GetBoneName(b)) and C.PhysIndexOfBone(ent, b) then
 				local mid = nextPhysAncestor(ent, b)
 				local root = mid and nextPhysAncestor(ent, mid)
 				if root and mid ~= tgt.bone and root ~= tgt.bone and moving[C.PhysIndexOfBone(ent, root)]
@@ -567,7 +622,8 @@ local function startDrag(tgt, hit)
 		if free then
 			d.free, d.mx0 = true, gui.MouseX()
 		else
-			d.t0 = axisParam(ro, rd, tgt.pos, axis)
+			d.scrAxis = screenAxisStart(tgt.pos, axis, d.size)
+			d.t0 = not d.scrAxis and axisParam(ro, rd, tgt.pos, axis) or 0
 			if not d.t0 then return end
 		end
 	elseif hit.mode == "move" and plane then
@@ -582,7 +638,8 @@ local function startDrag(tgt, hit)
 		d.h0 = util.IntersectRayWithPlane(ro, rd, tgt.pos, d.camFwd)
 		if not d.h0 then return end
 	elseif hit.mode == "move" then
-		d.t0 = axisParam(ro, rd, tgt.pos, axis)
+		d.scrAxis = screenAxisStart(tgt.pos, axis, gizmoSize(tgt.pos))
+		d.t0 = not d.scrAxis and axisParam(ro, rd, tgt.pos, axis) or 0
 		if not d.t0 then return end
 	elseif turnFree and hit.index == 4 then
 		local _, vang = C.GetView()
@@ -591,12 +648,24 @@ local function startDrag(tgt, hit)
 		d.camRight, d.camUp = vang:Right(), vang:Up()
 	else
 		d.viewRing = turnFree
-		local h = util.IntersectRayWithPlane(ro, rd, tgt.pos, axis)
-		if not h then return end
 		d.U, d.V = makeBasis(axis)
-		local v = h - tgt.pos
-		d.lastA = math.deg(math.atan2(v:Dot(d.V), v:Dot(d.U)))
 		d.raw = 0
+		-- (b0.2.5, as Blender and SFM turn) the angle the mouse goes round the gizmo's centre on the
+		-- screen is the turn: a ring seen edge-on — where the point on its plane under the mouse runs
+		-- off to infinity — turned in jerks or not at all. Turning the mouse anticlockwise turns the
+		-- object anticlockwise as seen from the camera.
+		local cx, cy, vis = C.ProjectToViewport(tgt.pos)
+		local mx, my = gui.MousePos()
+		if vis and (mx - cx) ^ 2 + (my - cy) ^ 2 >= 16 then
+			local _, vang = C.GetView()
+			d.scrRing = { cx = cx, cy = cy, a = math.deg(math.atan2(my - cy, mx - cx)),
+				sign = axis:Dot(vang:Forward()) >= 0 and 1 or -1 }
+		else
+			local h = util.IntersectRayWithPlane(ro, rd, tgt.pos, axis)
+			if not h then return end
+			local v = h - tgt.pos
+			d.lastA = math.deg(math.atan2(v:Dot(d.V), v:Dot(d.U)))
+		end
 	end
 	local root, mid = nil, nil
 	-- the rig's knee / elbow: the bend turns toward where it is pulled, the hand / foot stays
@@ -770,7 +839,7 @@ local function updateDrag()
 		if d.free then
 			factor = 1 + (gui.MouseX() - d.mx0) / 150
 		else
-			local t = axisParam(ro, rd, d.startPos, d.axis)
+			local t = d.scrAxis and screenAxis(d.scrAxis) or axisParam(ro, rd, d.startPos, d.axis)
 			if not t then return end
 			factor = 1 + (t - d.t0) / math.max(d.size, 1)
 		end
@@ -798,7 +867,7 @@ local function updateDrag()
 		d.total = off:Length()
 		applyMove(d, off)
 	elseif d.mode == "move" then
-		local t = axisParam(ro, rd, d.startPos, d.axis)
+		local t = d.scrAxis and screenAxis(d.scrAxis) or axisParam(ro, rd, d.startPos, d.axis)
 		if not t then return end
 		local delta = t - d.t0
 		local snap = C.SnapStep("move")
@@ -817,12 +886,22 @@ local function updateDrag()
 		d.total = d.total + deg
 		applyTurn(d, d.M)
 	else
-		local h = util.IntersectRayWithPlane(ro, rd, d.startPos, d.axis)
-		if not h then return end
-		local v = h - d.startPos
-		local a = math.deg(math.atan2(v:Dot(d.V), v:Dot(d.U)))
-		d.raw = d.raw + math.NormalizeAngle(a - d.lastA)
-		d.lastA = a
+		if d.scrRing then
+			-- the mouse going round the gizmo's centre on the screen turns it as far (see startDrag)
+			local r = d.scrRing
+			local mx, my = gui.MousePos()
+			if (mx - r.cx) ^ 2 + (my - r.cy) ^ 2 < 16 then return end
+			local a = math.deg(math.atan2(my - r.cy, mx - r.cx))
+			d.raw = d.raw + math.NormalizeAngle(a - r.a) * r.sign
+			r.a = a
+		else
+			local h = util.IntersectRayWithPlane(ro, rd, d.startPos, d.axis)
+			if not h then return end
+			local v = h - d.startPos
+			local a = math.deg(math.atan2(v:Dot(d.V), v:Dot(d.U)))
+			d.raw = d.raw + math.NormalizeAngle(a - d.lastA)
+			d.lastA = a
+		end
 		local total = d.raw
 		local snap = C.SnapStep("rot")
 		if snap > 0 then total = math.Round(total / snap) * snap end
@@ -1156,8 +1235,9 @@ local function drawSkeleton(ent)
 	render.SetColorMaterialIgnoreZ()
 	local vp = C.GetView()
 	local size = C.GetBoneSize()
+	local hidden = C.HiddenBones(ent)
 	for b = 0, ent:GetBoneCount() - 1 do
-		if ent:GetBoneName(b) ~= "__INVALIDBONE__" then
+		if ent:GetBoneName(b) ~= "__INVALIDBONE__" and not hidden[b] then
 			local p = C.GetBoneWorld(ent, b)
 			if p then
 				local par = ent:GetBoneParent(b)
@@ -1178,6 +1258,20 @@ local function drawSkeleton(ent)
 	for bone, lock in pairs(C.GetBoneLocks(ent)) do
 		local p, q = C.GetBoneWorld(ent, bone), C.GetBoneWorld(ent, lock.to)
 		if p and q then render.DrawBeam(p, q, math.Clamp(p:Distance(vp) * 0.002, 0.05, 0.5), 0, 1, COL_LOCK) end
+	end
+end
+
+-- Hiding bones (b0.2.5): the bone of the menu, and all hidden bones of the object back
+function C.BoneHideMenu(m, ent, bone)
+	local L = SPeditor.L
+	if not IsValid(ent) then return end
+	if bone and bone >= 0 then
+		local name = string.gsub(ent:GetBoneName(bone) or "", "^ValveBiped%.Bip01_", "")
+		m:AddOption(string.format(L("bone_hide"), name), function() C.SetBoneHidden(ent, bone, true) end):SetIcon("icon16/eye.png")
+	end
+	local n = table.Count(C.HiddenBones(ent))
+	if n > 0 then
+		m:AddOption(string.format(L("bone_unhide_all"), n), function() C.EditLook(ent, { hidebones = {} }, true) end)
 	end
 end
 

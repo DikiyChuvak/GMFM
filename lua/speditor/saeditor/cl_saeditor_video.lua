@@ -293,7 +293,13 @@ local function openWebm(job)
 end
 
 local function openVideo(job)
-	if job.format == "webm" then return openWebm(job) end
+	if job.format == "webm" then
+		if openWebm(job) then return true end
+		-- (b0.2.5) the game's writer refused (a report: "Could not create the video file" with
+		-- WebM on Windows): the video is written as AVI by the editor instead of failing
+		SPeditor.Notify("#sa_rnd_webm_avi", 1)
+		job.format = "avi"
+	end
 	-- a picture for every frame (b0.2.4, asked on the Workshop): data/speditor/renders/<name>/
 	-- <name>_0001.png …, the sound as <name>.wav beside them — for a video editor
 	if job.format == "png" or job.format == "jpeg" then

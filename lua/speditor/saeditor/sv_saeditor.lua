@@ -58,7 +58,28 @@ SA.Anim = anim
 ---------------------------------------------------------------------
 -- Object snapshot
 ---------------------------------------------------------------------
+-- Attaching keyed (b0.2.5): every key remembers whether its object was attached and to what —
+-- st.att = { uid = parent, code = S.AttachCode, lp, la = the offset } or false. While all keys of
+-- a track agree, the attachment is not animated (attaching or detaching without a key stays as
+-- it is); once they differ, it switches at the keys, as a skin does: a prop lies on a table
+-- until the frame of the key where it was put into the hand, and stays there until a key
+-- where it was let go.
+local function attState(ent)
+	local a = ent.SPeditor_Attach
+	if not a or not IsValid(a.parent) or not a.parent.SPeditor_UID then return false end
+	return { uid = a.parent.SPeditor_UID, code = a.wear and S.WEAR or S.AttachCode(a.bone, a.mode),
+		lp = a.lpos and Vector(a.lpos) or nil, la = a.lang and Angle(a.lang) or nil }
+end
+
+local captureState
+
 local function capture(ent)
+	local st = captureState(ent)
+	st.att = attState(ent)
+	return st
+end
+
+function captureState(ent)
 	if S.IsLight(ent) then
 		local c = ent:GetLightColor()
 		local st = {
@@ -106,7 +127,7 @@ local function capture(ent)
 		end
 	end
 	for i = 0, ent:GetFlexNum() - 1 do
-		local w = ent:GetFlexWeight(i)
+		local w = SPeditor.FlexGet(ent, i)
 		if math.abs(w) > 0.001 then st.flex[i] = w end
 	end
 	local c = ent:GetColor()
@@ -133,7 +154,7 @@ local function captureFace(ent)
 	local pos, ang = S.GetTransform(ent)
 	local st = { kind = "face", pos = Vector(pos), ang = Angle(ang), flex = {} }
 	for i = 0, ent:GetFlexNum() - 1 do
-		local w = ent:GetFlexWeight(i)
+		local w = SPeditor.FlexGet(ent, i)
 		if math.abs(w) > 0.001 then st.flex[i] = w end
 	end
 	return st
@@ -167,15 +188,15 @@ local function applyFlex(ent, a, b, u, whole)
 	if whole then
 		for id = 0, nf - 1 do
 			local w = SA.LerpNum(fa[id] or 0, fb[id] or 0, u)
-			if ent:GetFlexWeight(id) ~= w then ent:SetFlexWeight(id, w) end
+			if math.abs(SPeditor.FlexGet(ent, id) - w) > 1e-5 then SPeditor.FlexSet(ent, id, w) end
 		end
 		return
 	end
 	for id, wa in pairs(fa) do
-		if id < nf then ent:SetFlexWeight(id, SA.LerpNum(wa, fb[id] or 0, u)) end
+		if id < nf then SPeditor.FlexSet(ent, id, SA.LerpNum(wa, fb[id] or 0, u)) end
 	end
 	for id, wb in pairs(fb) do
-		if not fa[id] and id < nf then ent:SetFlexWeight(id, SA.LerpNum(0, wb, u)) end
+		if not fa[id] and id < nf then SPeditor.FlexSet(ent, id, SA.LerpNum(0, wb, u)) end
 	end
 end
 
@@ -407,7 +428,7 @@ SA.TrackParts = cacheOf
 -- (a bone offset or a flex it lacks is zero, as everywhere).
 ---------------------------------------------------------------------
 local COPY_FIELDS = { kind = true, only = true, skip = true, bg = true, skin = true, on = true,
-	mat = true, sub = true, tints = true }
+	mat = true, sub = true, tints = true, att = true }
 local ZERO_DEFAULT = { bones = ZERO_BONE, flex = 0 }
 
 local function mix(vals, ws, def)
@@ -486,7 +507,9 @@ end
 -- The two snapshots a track gives at the frame frame and the share of the way between them.
 -- order — the frames to look at: the full keys by default (bone keys are left to the parts
 -- they hold); nil when there are none. A spline stretch gives one worked-out snapshot twice.
-local function segment(tr, frame, order)
+-- part: the stretch of one part of the model (bone keys) — it moves the way that part was given
+-- at the key (key.pe = { [part] = ease }, b0.2.5), else the way of the whole key.
+local function segment(tr, frame, order, part)
 	order = order or cacheOf(tr).full
 	local n = #order
 	if n == 0 then return nil end
@@ -506,7 +529,9 @@ local function segment(tr, frame, order)
 	end
 	local fa, fb = order[lo], order[hi]
 	local ka, kb = tr.keys[fa], tr.keys[fb]
-	if ka.e == "spline" and ka.st.kind == kb.st.kind then
+	local e, bz = ka.e, ka.bz
+	if part and ka.pe and ka.pe[part] then e, bz = ka.pe[part], nil end
+	if e == "spline" and ka.st.kind == kb.st.kind then
 		local f0, f3 = order[lo - 1], order[hi + 1]
 		local s0 = f0 and tr.keys[f0].st or ka.st
 		local s3 = f3 and tr.keys[f3].st or kb.st
@@ -516,7 +541,7 @@ local function segment(tr, frame, order)
 		local st = mixState({ s0, ka.st, kb.st, s3 }, { w0, w1, w2, w3 })
 		return st, st, 0
 	end
-	return ka.st, kb.st, SA.EaseValue(ka.e, (frame - fa) / (fb - fa), ka.bz)
+	return ka.st, kb.st, SA.EaseValue(e, (frame - fa) / (fb - fa), bz)
 end
 
 -- Smoothness of a camera (its CamSmooth, seconds): the place, the direction and the field
@@ -619,7 +644,7 @@ local function resolveProp(ent, tr, frame)
 		return nil
 	end
 	for part, list in pairs(c.parts) do
-		local pa, pb, pu = segment(tr, frame, list)
+		local pa, pb, pu = segment(tr, frame, list, part)
 		local va = pa and partValue(pa, part)
 		local vb = pb and partValue(pb, part) or va
 		va = va or vb
@@ -649,9 +674,66 @@ function SA.StateAt(ent, tr, frame)
 	return a
 end
 
+-- Keyed attaching (see attState): does the track switch it at all (its keys disagree)?
+local function attSig(att)
+	if att == nil then return nil end
+	if not att then return "-" end
+	return att.uid .. ":" .. att.code
+end
+
+local function attAnimated(tr)
+	local c = tr.attCache
+	if c and c.order == tr.order and c.n == #tr.order and c.stamp == tr.stamp then return c.on end
+	local first, on = nil, false
+	for _, f in ipairs(tr.order) do
+		local sig = attSig(tr.keys[f].st.att)
+		if sig then
+			if first and sig ~= first then on = true break end
+			first = first or sig
+		end
+	end
+	tr.attCache = { order = tr.order, n = #tr.order, stamp = tr.stamp, on = on }
+	return on
+end
+
+-- the attachment of the last key at or before the frame (of the first key before it)
+local function attApply(ent, tr, frame)
+	if not attAnimated(tr) then return end
+	local order, att = tr.order, nil
+	for i = #order, 1, -1 do
+		if order[i] <= frame or i == 1 then
+			-- keys made before b0.2.5 hold nothing: the one before them decides
+			for j = i, 1, -1 do
+				att = tr.keys[order[j]].st.att
+				if att ~= nil then break end
+			end
+			break
+		end
+	end
+	if att == nil then return end
+	local cur = ent.SPeditor_Attach
+	if not att then
+		if cur then S.Detach(ent) end
+		return
+	end
+	local parent = S.FindUID(ent.SPeditor_Owner, att.uid)
+	if not IsValid(parent) then return end
+	local curCode = cur and (cur.wear and S.WEAR or S.AttachCode(cur.bone, cur.mode))
+	if cur and cur.parent == parent and curCode == att.code then return end
+	if not S.Attach(ent, parent, att.code) then return end
+	-- the offset it had when that key was set (not the one it happens to have now)
+	local a = ent.SPeditor_Attach
+	if att.lp and att.la then
+		a.lpos, a.lang = att.lp, att.la
+		a.fp, a.fa = nil, nil
+		S.SendAttachOffset(ent)
+	end
+end
+
 -- A track at the frame frame -> object
 local function applyTrack(ent, tr, frame, noFace)
 	if #tr.order == 0 then return end
+	attApply(ent, tr, frame)
 	if cacheOf(tr).has and not S.IsAux(ent) then
 		local st = resolveProp(ent, tr, frame)
 		if st then applyProp(ent, st, st, 0, noFace) end
@@ -802,7 +884,14 @@ function SA.SendSummary(ply)
 			-- bone keys: the parts a key holds ("p3,b17"), or those a full key leaves out
 			local only = k.st.only and table.concat(table.GetKeys(k.st.only), ",") or ""
 			local skip = k.st.skip and table.concat(table.GetKeys(k.st.skip), ",") or ""
-			list[i] = { f, k.e, math.Round(p.x, 1), math.Round(p.y, 1), math.Round(p.z, 1), only, skip }
+			-- the motions of single parts (b0.2.5): "p3=hold,b17=linear"
+			local pe = ""
+			if k.pe then
+				local t = {}
+				for part, e in pairs(k.pe) do t[#t + 1] = part .. "=" .. e end
+				pe = table.concat(t, ",")
+			end
+			list[i] = { f, k.e, math.Round(p.x, 1), math.Round(p.y, 1), math.Round(p.z, 1), only, skip, pe }
 		end
 		tracks[tostring(uid)] = SA.ToPages(list)
 	end
@@ -902,7 +991,7 @@ end
 
 -- face = true: a key of the object's face track; parts — a bone key: only these parts of the
 -- object are keyed (a key already at the frame gets them, the rest of it stays)
-local function setKey(ply, ent, frame, ease, face, parts, def)
+local function setKey(ply, ent, frame, ease, face, parts, def, skip)
 	local a = anim(ply)
 	local uid = ent.SPeditor_UID
 	if not uid then return false end
@@ -930,8 +1019,20 @@ local function setKey(ply, ent, frame, ease, face, parts, def)
 		for part in pairs(parts) do putPart(st, part, partValue(now, part)) end
 	else
 		st = capture(ent)
+		-- skip: parts left to their own keys (b0.2.5); what a key already at this frame held of
+		-- them stays in it
+		if skip and st.kind == "prop" then
+			for part in pairs(skip) do
+				if old and old.st.kind == "prop" and defines(old.st, part) then
+					putPart(st, part, partValue(old.st, part))
+				else
+					st.skip = st.skip or {}
+					st.skip[part] = true
+				end
+			end
+		end
 	end
-	tr.keys[frame] = { e = e, bz = old and old.e == e and old.bz or nil, st = st }
+	tr.keys[frame] = { e = e, bz = old and old.e == e and old.bz or nil, pe = old and old.pe, st = st }
 	tr.stamp = (tr.stamp or 0) + 1
 	if not old then
 		-- a new frame goes into its place in the sorted order (binary search)
@@ -979,7 +1080,7 @@ end
 -- selection (and at the frame itself) first, so that nothing outside it changes.
 ---------------------------------------------------------------------
 local MOTION_SKIP = { kind = true, pos = true, ang = true, phys = true, bones = true, flex = true,
-	only = true, skip = true, resolved = true }
+	only = true, skip = true, resolved = true, att = true }
 -- values that switch rather than move: taken over once the weight is past the half
 local MOTION_SWITCH = { skin = true, bg = true, on = true, mat = true, sub = true, tints = true }
 
@@ -1245,7 +1346,7 @@ local function presetTrack(tr, preset, sel, strength, seed, extra)
 					end
 				end
 				if fn and first then
-					tr.keys[f] = { e = k.e, bz = k.bz, st = presetValue(k.st, prev, nxt, first, fn) }
+					tr.keys[f] = { e = k.e, bz = k.bz, pe = k.pe, st = presetValue(k.st, prev, nxt, first, fn) }
 					changed = true
 				end
 			end
@@ -1294,7 +1395,7 @@ local function motionKey(ply, ent, uid, frame, sel, face)
 		if w > 0 and k then
 			local st = table.Copy(k.st)
 			motionApply(st, now, base, w, noFace)
-			tr.keys[f] = { e = k.e, bz = k.bz, st = st }
+			tr.keys[f] = { e = k.e, bz = k.bz, pe = k.pe, st = st }
 		end
 	end
 	tr.stamp = (tr.stamp or 0) + 1
@@ -1736,10 +1837,14 @@ COMP:NetReceive("Key", function(ply)
 		local ent = S.FindUID(ply, face and (uid - SA.FACE) or uid)
 		-- str — the easing of the new key (the client asks for "linear" when it plays an effect)
 		local ease = (str ~= "bezier" and SA.ValidEase(str)) and str or nil
+		-- "skip:p3,b17|…": the parts of the object that keep to their own keys (b0.2.5)
+		local skipList, rest = string.match(str, "^skip:([^|]*)|(.*)$")
+		if skipList then str = rest end
+		local skip = skipList and not face and parseParts(ent, skipList) or nil
 		-- "def:<ease>": what a NEW key gets (the client's choice, a0.8); a key there keeps its own
 		local def = string.match(str, "^def:(.+)$")
 		def = (def and def ~= "bezier" and SA.ValidEase(def)) and def or nil
-		if IsValid(ent) and not setKey(ply, ent, frame, ease, face, parts, def) then S.Notice(ply, "#sa_keys_limit", 1) end
+		if IsValid(ent) and not setKey(ply, ent, frame, ease, face, parts, def, skip) then S.Notice(ply, "#sa_keys_limit", 1) end
 	elseif action == OP.MOTION then
 		local face = SA.IsFaceTrack(uid)
 		local ent = S.FindUID(ply, face and (uid - SA.FACE) or uid)
@@ -1769,7 +1874,7 @@ COMP:NetReceive("Key", function(ply)
 						if action == OP.DELETE or frame ~= 1 then
 							local st, left = table.Copy(k.st), true
 							for part in pairs(vals) do left = dropPart(st, part) end
-							tr.keys[f] = left and { e = k.e, bz = k.bz, st = st } or nil
+							tr.keys[f] = left and { e = k.e, bz = k.bz, pe = k.pe, st = st } or nil
 						end
 					end
 				end
@@ -1780,8 +1885,17 @@ COMP:NetReceive("Key", function(ply)
 					if to >= 0 and to <= a.frames then
 						local dest = tr.keys[to]
 						local st = (dest and dest.st.kind == "prop") and table.Copy(dest.st) or emptyPart(m.k.st.pos, m.k.st.ang)
-						for part, v in pairs(m.vals) do putPart(st, part, v) end
-						tr.keys[to] = { e = dest and dest.e or m.k.e, bz = dest and dest.bz or m.k.bz, st = st }
+						local pe = dest and dest.pe and table.Copy(dest.pe) or nil
+						for part, v in pairs(m.vals) do
+							putPart(st, part, v)
+							-- the part takes its own motion along (b0.2.5)
+							local pm = m.k.pe and m.k.pe[part]
+							if pm or (pe and pe[part]) then
+								pe = pe or {}
+								pe[part] = pm
+							end
+						end
+						tr.keys[to] = { e = dest and dest.e or m.k.e, bz = dest and dest.bz or m.k.bz, pe = pe and next(pe) and pe or nil, st = st }
 					end
 				end
 			end
@@ -1871,12 +1985,23 @@ COMP:NetReceive("Key", function(ply)
 		local bz = string.sub(str, 1, 7) == "bezier:" and SA.ParseBezier(string.sub(str, 8)) or nil
 		for _, f in ipairs(frames) do
 			local k = tr and tr.keys[f]
-			if k and bz then
+			if k and parts then
+				-- (b0.2.5) the motion of some parts only (picked on a bone's row): the other bones
+				-- keyed at the same frame keep theirs
+				if table.HasValue(SA.EASES, str) and str ~= "bezier" and k.st.kind == "prop" then
+					local pe = k.pe and table.Copy(k.pe) or {}
+					for part in pairs(parts) do
+						if defines(k.st, part) then pe[part] = (str ~= k.e) and str or nil end
+					end
+					tr.keys[f] = { e = k.e, bz = k.bz, pe = next(pe) and pe or nil, st = k.st }
+				end
+			elseif k and bz then
 				tr.keys[f] = { e = "bezier", bz = bz, st = k.st }
 			elseif k and table.HasValue(SA.EASES, str) then
 				tr.keys[f] = { e = str, st = k.st }
 			end
 		end
+		if tr then tr.stamp = (tr.stamp or 0) + 1 end
 	elseif action == OP.CLEAR then
 		a.tracks[uid] = nil
 	end
@@ -2034,8 +2159,9 @@ COMP:NetReceive("Lip", function(ply)
 		for fl, wts in pairs(map) do
 			local w = 0
 			for j = 1, nch do w = w + (ch[j] or 0) * (wts[j] or 0) end
+			-- two-sided controllers go below zero (the TF2 mercenaries' phonemes, b0.2.5)
 			local mn, mx = ent:GetFlexBounds(fl)
-			w = math.Clamp(w, math.max(mn or 0, 0), mx or 1)
+			w = math.Clamp(w, mn or 0, mx or 1)
 			flex[fl] = math.abs(w) > 0.001 and w or nil
 		end
 		return { kind = "face", pos = face.pos, ang = face.ang, flex = flex }
@@ -2325,7 +2451,19 @@ COMP:SceneData(function(ply, ctx)
 		local index = ent and ctx.indexOf[ent]
 		if index then
 			local keys = {}
-			for f, k in pairs(tr.keys) do keys[tostring(f)] = { e = k.e, bz = k.bz, st = enc(k.st) } end
+			for f, k in pairs(tr.keys) do
+				local st = k.st
+				-- a keyed parent goes by its number in the scene (its uid is new after loading)
+				if istable(st.att) then
+					local p = S.FindUID(ply, st.att.uid)
+					local pi = p and ctx.indexOf[p]
+					local c = {}
+					for kk, v in pairs(st) do c[kk] = v end
+					c.att = pi and { obj = pi, code = st.att.code, lp = st.att.lp, la = st.att.la } or nil
+					st = c
+				end
+				keys[tostring(f)] = { e = k.e, bz = k.bz, pe = k.pe, st = enc(st) }
+			end
 			keys = SA.MapToPages(keys)
 			if face then faces[tostring(index)] = keys else tracks[tostring(index)] = keys end
 		end
@@ -2402,10 +2540,24 @@ end, function(ply, data, ctx)
 					for f, k in pairs(keys) do
 						f = tonumber(f)
 						local st = istable(k) and dec(k.st)
+						if istable(st) and st.att ~= nil and st.att ~= false then
+							local att, p = st.att, nil
+							if istable(att) then p = ctx.ents[tonumber(att.obj)] end
+							st.att = (IsValid(p) and p.SPeditor_UID and tonumber(att.code)) and { uid = p.SPeditor_UID,
+								code = math.floor(tonumber(att.code)), lp = SPeditor.ValidVec(att.lp) and att.lp or nil,
+								la = SPeditor.ValidAng(att.la) and att.la or nil } or nil
+						end
 						if f and f >= 0 and f <= a.frames and n < SA.MAX_KEYS and validState(st) then
 							local bz = k.e == "bezier" and istable(k.bz) and SA.ParseBezier(table.concat(k.bz, ",")) or nil
 							local e = (k.e == "bezier" and not bz) and "ease" or (SA.ValidEase(k.e) and k.e or "ease")
-							tr.keys[math.floor(f)] = { e = e, bz = bz, st = st }
+							local pe
+							for part, pv in pairs(istable(k.pe) and k.pe or {}) do
+								if isstring(part) and string.match(part, "^[pb]%d+$") and SA.ValidEase(pv) and pv ~= "bezier" then
+									pe = pe or {}
+									pe[part] = pv
+								end
+							end
+							tr.keys[math.floor(f)] = { e = e, bz = bz, pe = pe, st = st }
 							n = n + 1
 						end
 					end
@@ -2594,7 +2746,7 @@ function SA.ProcRevert(map)
 		local s = IsValid(ent) and ent.SA_Proc
 		if s then
 			if s.chest then ent:ManipulateBoneScale(s.chest, s.chestBase) end
-			if s.flex then ent:SetFlexWeight(s.flex, s.flexBase) end
+			if s.flex then SPeditor.FlexSet(ent, s.flex, s.flexBase) end
 			if s.head then
 				local p = ent:GetPhysicsObjectNum(s.head)
 				if IsValid(p) then setPhys(p, p:GetPos(), s.headBase) end
@@ -2632,9 +2784,9 @@ function SA.ProcApply(a, map, frame)
 			if pr.blink > 0 and not S.IsAux(ent) then
 				local f = blinkFlex(ent)
 				if f then
-					local base = ent:GetFlexWeight(f)
+					local base = SPeditor.FlexGet(ent, f)
 					s.flex, s.flexBase = f, base
-					ent:SetFlexWeight(f, math.max(base, blinkAt(t, 1.5 + 5 * (1 - pr.blink), seed)))
+					SPeditor.FlexSet(ent, f, math.max(base, blinkAt(t, 1.5 + 5 * (1 - pr.blink), seed)))
 				end
 			end
 			if pr.head > 0 and S.IsRagdoll(ent) then

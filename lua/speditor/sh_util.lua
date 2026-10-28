@@ -103,13 +103,49 @@ function SPeditor.LivePos(ent)
 		local par = ent:GetNW2Entity("SPeditor_Parent")
 		if IsValid(par) then
 			local np, na = ent:GetNetworkOrigin(), ent:GetNetworkAngles()
-			-- a ragdoll is drawn at the places its bodies were sent with
-			if par:GetClass() == "prop_ragdoll" then return np, na end
+			if par:GetClass() == "prop_ragdoll" then
+				-- b0.2.5: at its offset from the bone of the hand as the hand is drawn now
+				local bone = ent:GetNW2Int("SPeditor_ParentBone", -1)
+				if bone >= 0 and ent:GetNW2Bool("SPeditor_AttRel", false) then
+					if par.SPeditor_BonesAt ~= FrameNumber() then
+						par.SPeditor_BonesAt = FrameNumber()
+						par:SetupBones()
+					end
+					local m = par:GetBoneMatrix(bone)
+					if m then return LocalToWorld(ent:GetNW2Vector("SPeditor_AttP"), ent:GetNW2Angle("SPeditor_AttA"), m:GetTranslation(), m:GetAngles()) end
+				end
+				-- a ragdoll is drawn at the places its bodies were sent with
+				return np, na
+			end
 			local lp, la = WorldToLocal(np, na, par:GetNetworkOrigin(), par:GetNetworkAngles())
 			return LocalToWorld(lp, la, par:GetPos(), par:GetAngles())
 		end
 	end
 	return ent:GetPos(), ent:GetAngles()
+end
+
+-- Face sliders (b0.2.5). The game takes a flex weight as a share of the controller's range
+-- (0 … 1, verified in game): for a slider that goes from -1 to 1 — the faces of the TF2
+-- mercenaries for animation (HWM) — the weight 0 is the slider at -1 and the weight 0.5 is the
+-- slider at zero. The editor keeps and shows the slider's own value (what Faceposer and SFM
+-- show, what the phonemes of the game are written in), and these two turn it into the weight
+-- and back. For the usual 0 … 1 sliders of Valve faces both are the same.
+function SPeditor.FlexGet(ent, i)
+	local mn, mx = ent:GetFlexBounds(i)
+	local w = ent:GetFlexWeight(i)
+	if not mn or not mx or mx <= mn then return w end
+	return mn + w * (mx - mn)
+end
+
+function SPeditor.FlexSet(ent, i, v)
+	local mn, mx = ent:GetFlexBounds(i)
+	if mn and mx and mx > mn then v = (v - mn) / (mx - mn) end
+	ent:SetFlexWeight(i, v)
+end
+
+-- a face at rest: every slider at zero (sliders from -1 to 1 at their middle)
+function SPeditor.FlexRest(ent)
+	for i = 0, (ent:GetFlexNum() or 0) - 1 do SPeditor.FlexSet(ent, i, 0) end
 end
 
 -- The physics body of exactly this bone, or nil (a finger, a toe)

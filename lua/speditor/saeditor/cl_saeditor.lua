@@ -84,6 +84,18 @@ function SA.KeyHasParts(k, parts)
 	return false
 end
 
+-- The parts of an object that have bone keys of their own ("p3,b14,…"; nil — none). The
+-- parts of a key of the root body (which holds every body) do not count.
+function SA.OwnParts(uid)
+	local set = {}
+	for _, k in ipairs(SA.tracks[uid] or {}) do
+		if k.only and not k.only.p0 then
+			for part in pairs(k.only) do set[part] = true end
+		end
+	end
+	return next(set) and table.concat(table.GetKeys(set), ",") or nil
+end
+
 function SA.HasKey(uid, frame)
 	for _, k in ipairs(SA.tracks[uid] or {}) do
 		if k.f == frame then return k end
@@ -109,7 +121,13 @@ SA.ReceiveParts("Summary", function(t)
 			return next(out) and out or nil
 		end
 		for i, k in ipairs(SA.FromPages(list)) do
-			keys[i] = { f = k[1], e = k[2], pos = Vector(k[3] or 0, k[4] or 0, k[5] or 0), only = set(k[6]), skip = set(k[7]) }
+			-- pe: the motions of single parts at this key (b0.2.5), { [part] = ease }
+			local pe
+			for part, e in string.gmatch(isstring(k[8]) and k[8] or "", "([pb]%d+)=(%a+)") do
+				pe = pe or {}
+				pe[part] = e
+			end
+			keys[i] = { f = k[1], e = k[2], pos = Vector(k[3] or 0, k[4] or 0, k[5] or 0), only = set(k[6]), skip = set(k[7]), pe = pe }
 		end
 		tracks[tonumber(uid)] = keys
 	end
@@ -407,6 +425,10 @@ function SA.SetKey(ents, frame, quiet, parts)
 			sendKey(id, OP.MOTION, uid, frame, 0, SA.TimeSelString(ts))
 		elseif uid ~= 0 then
 			local def = "def:" .. SA.NewEase()
+			-- (b0.2.5) with the bone keys on, a key of the whole object leaves the bones that have
+			-- keys of their own to those keys: each bone stays a separate channel, as in SFM
+			local own = not parts and SA.BoneKeysOn() and SA.OwnParts(uid)
+			if own then def = "skip:" .. own .. "|" .. def end
 			sendKey(id, OP.SET, uid, frame, 0, parts and ("parts:" .. parts .. "|" .. def) or def)
 		end
 	end
@@ -627,7 +649,8 @@ end
 function SA.SetEaseMany(list, ease)
 	if #list == 0 then return end
 	local id = nextOp()
-	for _, g in pairs(byTrack(list)) do sendKey(id, OP.EASE, g.uid, 0, 0, ease .. "|" .. table.concat(g.frames, ",")) end
+	-- keys picked on a bone's row change the motion of that bone only (b0.2.5)
+	for _, g in pairs(byTrack(list)) do sendKey(id, OP.EASE, g.uid, 0, 0, withParts(g, ease .. "|" .. table.concat(g.frames, ","))) end
 	pushHistory("sa ease", id)
 end
 
@@ -805,6 +828,11 @@ COMP:AddHotkey({ key = KEY_COMMA, shift = true, fn = function() step(-math.max(m
 COMP:AddHotkey({ key = KEY_PERIOD, shift = true, fn = function() step(math.max(math.floor(SA.fps / 2), 1)) end, label = "Shift + .", desc = "sa_hk_fwd_half" })
 COMP:AddHotkey({ key = KEY_COMMA, ctrl = true, fn = function() toMark(-1) end, label = "Ctrl + ,", desc = "sa_hk_prev_mark" })
 COMP:AddHotkey({ key = KEY_PERIOD, ctrl = true, fn = function() toMark(1) end, label = "Ctrl + .", desc = "sa_hk_next_mark" })
+-- the arrows step through the frames too (b0.2.5), as in other editors; Shift — half a second
+COMP:AddHotkey({ key = KEY_LEFT, fn = function() step(-1) end, label = "Left", desc = "sa_hk_prev" })
+COMP:AddHotkey({ key = KEY_RIGHT, fn = function() step(1) end, label = "Right", desc = "sa_hk_next" })
+COMP:AddHotkey({ key = KEY_LEFT, shift = true, fn = function() step(-math.max(math.floor(SA.fps / 2), 1)) end, label = "Shift + Left", desc = "sa_hk_back_half" })
+COMP:AddHotkey({ key = KEY_RIGHT, shift = true, fn = function() step(math.max(math.floor(SA.fps / 2), 1)) end, label = "Shift + Right", desc = "sa_hk_fwd_half" })
 
 COMP:AddStatus(function()
 	if next(SA.tracks) == nil and #(SA.sounds or {}) == 0 and not SA.autokey and not SA.timeSel then return nil end
@@ -902,6 +930,48 @@ end
 -- A model without physics (prop_dynamic, e.g. a model ported from SFM with no ragdoll): every
 -- bone gets the turn it has in the animation relative to the model's base pose as a bone
 -- offset; the root bone also gets its shift. The model itself stays where it is.
+-- The frames of a baked animation go to the server a few per game frame (b0.2.5): a long ready
+-- motion (a dance looped to the end) sent hundreds of messages in one frame — past the server's
+-- limit of messages a second the rest were dropped, the last one too, and the editor seemed
+-- frozen until the map was restarted. m = { id, ent, f, phys = { { i, pos, ang } }, soft =
+-- { { bone, ang } }, last, shifts = { { bone, vec } } }
+local bakeQ = {}
+local BAKE_PER_FRAME = 6
+local function writeBake(m)
+	COMP:NetStart("Bake")
+	net.WriteUInt(m.id, 32)
+	net.WriteEntity(m.ent)
+	net.WriteUInt(m.f, 32)
+	net.WriteUInt(#m.phys, 8)
+	for _, p in ipairs(m.phys) do
+		net.WriteUInt(p[1], 8)
+		SPeditor.WriteVecF(p[2])
+		SPeditor.WriteAngF(p[3])
+	end
+	net.WriteUInt(#m.soft, 16)
+	for _, s in ipairs(m.soft) do
+		net.WriteUInt(s[1], 16)
+		SPeditor.WriteAngF(s[2])
+	end
+	net.WriteBool(m.last and true or false)
+	net.WriteUInt(#m.shifts, 8)
+	for _, sh in ipairs(m.shifts) do
+		net.WriteUInt(sh[1], 16)
+		SPeditor.WriteVecF(sh[2])
+	end
+	net.SendToServer()
+end
+function SA.QueueBake(m) bakeQ[#bakeQ + 1] = m end
+function SA.BakeBusy() return #bakeQ > 0 end
+COMP:Hook("Think", function()
+	local n = 0
+	while bakeQ[1] and n < BAKE_PER_FRAME do
+		local m = table.remove(bakeQ, 1)
+		if IsValid(m.ent) then writeBake(m) end
+		n = n + 1
+	end
+end, "bake_queue")
+
 local function importOnProp(ent, seq, opts)
 	opts = opts or {}
 	local stepN  = math.Clamp(math.floor(opts.step or 2), 1, 12)
@@ -986,32 +1056,19 @@ local function importOnProp(ent, seq, opts)
 		csm:SetCycle(math.min(c0 + part * (c1 - c0), 0.9999))
 		csm:InvalidateBoneCache()
 		csm:SetupBones()
-		COMP:NetStart("Bake")
-		net.WriteUInt(id, 32)
-		net.WriteEntity(ent)
-		net.WriteUInt(math.min(start + f, SA.MAX_FRAMES), 32)
-		net.WriteUInt(0, 8)                     -- no physical bones
-		net.WriteUInt(#bones, 16)
-		local shifts = {}
+		-- no physical bones: the bones turn, the root bone also moves (nothing else carries it)
+		local m = { id = id, ent = ent, f = math.min(start + f, SA.MAX_FRAMES), phys = {}, soft = {}, shifts = {}, last = i == #frames }
 		for _, bd in ipairs(bones) do
 			local ap, aa = localOf(csm, bd.cb, bd.cp)
 			local d = angle_zero
 			if ap then
 				local _, dd = WorldToLocal(vector_origin, aa, vector_origin, bd.ra)
 				d = dd
-				-- the root bone also moves (a model has no physics to carry it)
-				if bd.root then shifts[#shifts + 1] = { bd.bone, ap - bd.rp } end
+				if bd.root and #m.shifts < 255 then m.shifts[#m.shifts + 1] = { bd.bone, ap - bd.rp } end
 			end
-			net.WriteUInt(bd.bone, 16)
-			SPeditor.WriteAngF(d)
+			m.soft[#m.soft + 1] = { bd.bone, d }
 		end
-		net.WriteBool(i == #frames)
-		net.WriteUInt(#shifts, 8)
-		for _, sh in ipairs(shifts) do
-			net.WriteUInt(sh[1], 16)
-			SPeditor.WriteVecF(sh[2])
-		end
-		net.SendToServer()
+		SA.QueueBake(m)
 		count = count + 1
 	end
 	csm:Remove()
@@ -1193,30 +1250,21 @@ function SA.ImportSequence(ent, seq, opts)
 			local ok, delta = csm:GetSequenceMovement(seq, c0, c0 + part * (c1 - c0))
 			if ok and delta then move = move + delta end
 		end
+		-- a motion made in place goes forward at opts.forward units a second (b0.2.5)
+		if (opts.forward or 0) > 0 then move = move + Vector(opts.forward * f / SA.fps, 0, 0) end
 		move:Rotate(baseAng)
 		endPos = basePos + move
 		csm:SetPos(endPos)
 		pose(part)
 
-		COMP:NetStart("Bake")
-		net.WriteUInt(id, 32)
-		net.WriteEntity(ent)
-		net.WriteUInt(math.min(start + f, SA.MAX_FRAMES), 32)
-		net.WriteUInt(#phys, 8)
+		-- no bone shifts (the bodies carry the bones)
+		local msg = { id = id, ent = ent, f = math.min(start + f, SA.MAX_FRAMES), phys = {}, soft = {}, shifts = {}, last = i == #frames }
 		for _, p in ipairs(phys) do
 			local m = csm:GetBoneMatrix(p.bone)
-			net.WriteUInt(p.pi, 8)
-			SPeditor.WriteVecF(m and m:GetTranslation() or basePos)
-			SPeditor.WriteAngF(m and m:GetAngles() or angle_zero)
+			msg.phys[#msg.phys + 1] = { p.pi, m and m:GetTranslation() or Vector(basePos), m and m:GetAngles() or Angle(0, 0, 0) }
 		end
-		net.WriteUInt(#soft, 16)
-		for _, s in ipairs(soft) do
-			net.WriteUInt(s.bone, 16)
-			SPeditor.WriteAngF(softAngle(s))
-		end
-		net.WriteBool(i == #frames)
-		net.WriteUInt(0, 8)                     -- no bone shifts (the bodies carry the bones)
-		net.SendToServer()
+		for _, s in ipairs(soft) do msg.soft[#msg.soft + 1] = { s.bone, softAngle(s) } end
+		SA.QueueBake(msg)
 		count = count + 1
 	end
 	csm:Remove()

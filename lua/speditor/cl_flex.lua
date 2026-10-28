@@ -28,7 +28,7 @@ function C.GetFlexList(ent)
 			local mn, mx = ent:GetFlexBounds(i)
 			list[#list + 1] = {
 				id = i, name = name, min = mn or 0, max = mx or 1,
-				weight = ent:GetFlexWeight(i), group = C.FlexGroupOf(name),
+				weight = SPeditor.FlexGet(ent, i), group = C.FlexGroupOf(name),
 			}
 		end
 	end
@@ -41,7 +41,7 @@ function C.EditFlex(ent, id, weight)
 	local ref = C.Ref(ent)
 
 	C.BurstEdit("fx" .. ent:EntIndex() .. "_" .. id, "flex",
-		function() return ent:GetFlexWeight(id) end,
+		function() return SPeditor.FlexGet(ent, id) end,
 	weight,
 	function(w) local e = C.Deref(ref) if e then C.SendFlex(e, id, w, true) end end)
 end

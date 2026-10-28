@@ -41,7 +41,9 @@ SPeditor.Shadows = SPeditor.Shadows or {}
 local Sh = SPeditor.Shadows
 
 local cvEnabled = CreateClientConVar("gmfm_shadows", "1", true, false)
-local cvMax     = CreateClientConVar("gmfm_shadow_max", "4", true, false)
+-- 8 by default (b0.2.5, was 4): the engine has 8 shadow maps anyway, and a fifth light without
+-- shadows shone through the walls of a map ("more than 3 lights and the lighting breaks")
+local cvMax     = CreateClientConVar("gmfm_shadow_max", "8", true, false)
 local cvQuality = CreateClientConVar("gmfm_shadow_quality", "2", true, false)
 local cvSlope   = CreateClientConVar("gmfm_shadow_slope", "2", true, false)
 local cvDist    = CreateClientConVar("gmfm_shadow_dist", "0", true, false)
@@ -92,11 +94,14 @@ end
 Sh.SHADOW_MAPS = 8
 local allowed = {}
 local skipped = 0          -- how many lights were cut off by the draw distance
+local over = 0             -- how many did not fit the limit / the shadow maps (b0.2.5)
+local warned = false
 local nextScan = 0
 
 local function rescan()
+	local before = allowed
 	allowed = {}
-	skipped = 0
+	skipped, over = 0, 0
 	if not Sh.IsEnabled() then return end
 	local C = SPeditor.Client
 	local origin = (C and C.GetView and select(1, C.GetView())) or EyePos()
@@ -105,6 +110,10 @@ local function rescan()
 	for _, e in ipairs(ents.FindByClass("speditor_light")) do
 		if IsValid(e) and e:GetLightEnabled() and e:GetLightShadows() and e:GetLightBrightness() > 0 then
 			local d = e:GetPos():DistToSqr(origin)
+			-- (b0.2.5) the set does not jump while the camera moves: a light that has shadows keeps
+			-- them until another one is clearly nearer, and the selected light comes first
+			if before[e] then d = d * 0.5 end
+			if C and C.selected == e then d = 0 end
 			-- the distance is measured to the lit area: a light may stand far away and shine nearby
 			local reach = math.max(math.sqrt(d) - e:GetLightRadius(), 0)
 			if limit <= 0 or reach <= limit then
@@ -117,11 +126,17 @@ local function rescan()
 	table.sort(list, function(a, b) return a.d < b.d end)
 	local count, maps = 0, 0
 	for _, it in ipairs(list) do
-		if count >= Sh.GetMax() then break end
-		if maps + it.cost <= Sh.SHADOW_MAPS then
+		if count < Sh.GetMax() and maps + it.cost <= Sh.SHADOW_MAPS then
 			allowed[it.ent] = true
 			count, maps = count + 1, maps + it.cost
+		else
+			over = over + 1
 		end
+	end
+	-- once per session: why a light shines through walls
+	if over > 0 and not warned and C and C.active then
+		warned = true
+		SPeditor.Notify("#shadows_over_note", 1)
 	end
 end
 
@@ -144,6 +159,8 @@ end
 
 -- How many lights are without shadows now because of the draw distance
 function Sh.SkippedCount() return skipped end
+-- How many lights are without shadows because the limit or the 8 shadow maps are used up
+function Sh.OverCount() return over end
 
 ---------------------------------------------------------------------
 -- Prop shadows from the map light (render-to-texture)

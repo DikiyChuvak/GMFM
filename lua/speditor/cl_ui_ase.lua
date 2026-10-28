@@ -586,7 +586,7 @@ function UI.BuildASE(body)
 					label = f.name, min = f.min, max = f.max, value = f.weight,
 					default = math.Clamp(0, f.min, f.max),
 					onChange = function(v) C.EditFlex(ent, f.id, v) end,
-			getter = function() return IsValid(ent) and ent:GetFlexWeight(f.id) or nil end,
+			getter = function() return IsValid(ent) and SPeditor.FlexGet(ent, f.id) or nil end,
 			})
 		end
 	end
@@ -1077,7 +1077,8 @@ function UI.BuildASE(body)
 		local nTargets = 0
 		for _, o in ipairs(C.BuildEntityList()) do
 			local tgt = o.ent
-			if IsValid(tgt) and tgt ~= ent and o.kind ~= "light" and o.kind ~= "camera" and o.kind ~= "effect" then
+			-- cameras and lights can lead too (b0.2.5): a prop in front of a first person camera
+			if IsValid(tgt) and tgt ~= ent and o.kind ~= "effect" then
 				nTargets = nTargets + 1
 				-- a ragdoll, or a model with a skeleton but no physics (a character ported from SFM)
 				if o.kind == "ragdoll" or (not C.IsAux(tgt) and (tgt:GetBoneCount() or 0) > 1) then
@@ -1183,6 +1184,7 @@ function UI.BuildASE(body)
 			end
 			-- an own IK chain ending at the selected bone (a0.9, cl_rig.lua)
 			if C.selected == ent and C.selBone >= 0 then SPeditor.Rig.ChainMenu(m, ent, C.selBone) end
+			if not C.IsAux(ent) then C.BoneHideMenu(m, ent, C.selected == ent and C.selBone or nil) end
 			-- a model without physics: the animation its bone offsets are put on (cl_ui_props.lua)
 			if UI.IsPoseProp(ent) then
 				m:AddOption(L("bpose_title") .. "…", function() UI.OpenBasePose(ent) end):SetIcon("icon16/user_edit.png")
@@ -1281,6 +1283,7 @@ function UI.BuildASE(body)
 					local m = SPeditor.UI.Menu()
 					if kind == "phys" and C.IsRagdoll(ent) then C.BoneLockMenu(m, ent, b.id) end
 					SPeditor.Rig.ChainMenu(m, ent, b.id)
+					C.BoneHideMenu(m, ent, b.id)
 					m:Open()
 				end
 				-- the bone under the cursor is marked in the viewports

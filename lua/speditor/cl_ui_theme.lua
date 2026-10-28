@@ -616,6 +616,21 @@ end
 ---------------------------------------------------------------------
 local CTRL = {}
 
+-- Unlocked limits (b0.2.5, after SFM's "flex unlocker"): every slider can be dragged and typed
+-- past its ends — a face slider at 2.5 or -1 for goofy or extreme faces, a light brighter than
+-- its slider goes. The server keeps only the limits the game itself has (a field of view, a
+-- skin number). Off by default: View → Unlock slider limits (gmfm_unlock_limits).
+local cvUnlock = CreateClientConVar("gmfm_unlock_limits", "0", true, false, "GM:FM: sliders go past their ends (as SFM's flex unlocker)", 0, 1)
+function UI.LimitsUnlocked() return cvUnlock:GetBool() end
+function UI.SetLimitsUnlocked(on) RunConsoleCommand("gmfm_unlock_limits", on and "1" or "0") end
+
+-- the value kept inside the control's range, or within ten ranges past it when unlocked
+local function fit(self, v)
+	if self.hard or not cvUnlock:GetBool() then return math.Clamp(v, self.min, self.max) end
+	local r = math.max(self.max - self.min, 1)
+	return math.Clamp(v, self.min - r * 10, self.max + r * 10)
+end
+
 function CTRL:Init()
 	self:SetTall(UI.S(18))
 	self:SetCursor("sizewe")
@@ -635,13 +650,14 @@ function CTRL:Setup(o)
 	self.decimals = o.decimals or 2
 	self.onChange = o.onChange
 	self.getter   = o.getter
-	self.value    = math.Clamp(o.value or self.default, self.min, self.max)
+	self.hard     = o.hard
+	self.value    = fit(self, o.value or self.default)
 	self:SetTooltip(o.tooltip)
 	return self
 end
 
 function CTRL:SetValue(v, fire, final)
-	v = math.Clamp(tonumber(v) or self.default, self.min, self.max)
+	v = fit(self, tonumber(v) or self.default)
 	self.value = v
 	if fire and self.onChange then self.onChange(v, final and true or false) end
 end
@@ -659,19 +675,21 @@ function CTRL:Paint(w, h)
 		if self.min < 0 and self.max > 0 then
 			-- two-sided control: fill from zero
 			local zx = (0 - self.min) / range * w
-			local vx = (self.value - self.min) / range * w
+			local vx = math.Clamp((self.value - self.min) / range, 0, 1) * w
 			surface.DrawRect(math.min(zx, vx), 1, math.abs(vx - zx), h - 2)
 			surface.SetDrawColor(COL.BORDER)
 			surface.DrawRect(zx, 0, 1, h)
 		else
-			surface.DrawRect(0, 1, (self.value - self.min) / range * w, h - 2)
+			surface.DrawRect(0, 1, math.Clamp((self.value - self.min) / range, 0, 1) * w, h - 2)
 		end
 	end
 
 	draw.SimpleText(self.label, "SPeditor.Small", w / 2, h / 2, COL.TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-	if self.drag or self:IsHovered() then
+	-- a value past the ends (unlocked limits) is always shown, in the accent colour
+	local past = self.value < self.min - 1e-6 or self.value > self.max + 1e-6
+	if self.drag or self:IsHovered() or past then
 		draw.SimpleText(string.format("%." .. self.decimals .. "f", self.value), "SPeditor.Small", w - 4, h / 2,
-			COL.ORANGE, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+			past and COL.RED or COL.ORANGE, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
 	end
 end
 
@@ -741,7 +759,7 @@ function CTRL:Think()
 	if (self.nextPoll or 0) > RealTime() then return end
 	self.nextPoll = RealTime() + 0.25
 	local v = self.getter()
-	if v and math.abs(v - self.value) > 1e-3 then self.value = math.Clamp(v, self.min, self.max) end
+	if v and math.abs(v - self.value) > 1e-3 then self.value = fit(self, v) end
 end
 
 vgui.Register("SPeditorControl", CTRL, "Panel")

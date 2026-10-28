@@ -611,7 +611,7 @@ end, "playercolor")
 -- The game's view sits 8-15 units behind the model's eyes (measured on a walking take), so a view
 -- is "inside the head" when it is that close to the eyes and not in front of the face: a close-up
 -- of the face from the front still shows it.
-local EYE_RADIUS = 24       -- units from the eyes (20 from the head bone of a model without "eyes")
+local EYE_RADIUS = 18       -- units from the eyes (14 from the head bone of a model without "eyes"; b0.2.5: was 24)
 local EYE_FRONT  = 3        -- a view more than this in front of the eyes is a close-up
 local headOf = {}           -- [model] = { att = eyes attachment } | { bone = head bone } | false
 local function eyesOf(ent)
@@ -676,7 +676,53 @@ function C.HiddenInView(eye)
 end
 
 local function drawNothing() end
-local hidden = nil          -- { [ent] = its own draw callback } while a view hides someone
+local hidden = nil          -- { [ent] = { its own draw callback, the one put instead } } while a view hides someone
+
+-- (b0.2.5) A body seen from its own eyes: only the head is cut away (a clip plane at the neck),
+-- the body, the arms and the legs stay, as in a first person game. Before, the whole character
+-- went, and a camera brought close to a character made it vanish ("culled"). gmfm_fp_body 0 —
+-- the whole character is hidden as before.
+local cvFPBody = CreateClientConVar("gmfm_fp_body", "1", true, false, "GM:FM: a view from a character's eyes shows its body without the head", 0, 1)
+local neckOf = {}           -- [model] = { neck bone, head bone } | false
+local function neckPlane(rag)
+	local mdl = rag:GetModel() or ""
+	local nk = neckOf[mdl]
+	if nk == nil then
+		nk = false
+		local head = rag:LookupBone("ValveBiped.Bip01_Head1")
+		-- other skeletons (bip_head of the TF2 mercenaries…): the first bone called "head"
+		if not head then
+			for i = 0, rag:GetBoneCount() - 1 do
+				if string.find(string.lower(rag:GetBoneName(i) or ""), "head", 1, true) then head = i break end
+			end
+		end
+		local neck = rag:LookupBone("ValveBiped.Bip01_Neck1") or (head and rag:GetBoneParent(head))
+		if head and neck and neck >= 0 then nk = { neck, head } end
+		neckOf[mdl] = nk
+	end
+	if not nk then return nil end
+	local mn, mh = rag:GetBoneMatrix(nk[1]), rag:GetBoneMatrix(nk[2])
+	if not mn or not mh then return nil end
+	local up = mh:GetTranslation() - mn:GetTranslation()
+	if up:LengthSqr() < 0.01 then return nil end
+	up:Normalize()
+	-- what lies below the neck (against "up") is kept
+	local n = -up
+	return n, n:Dot(mn:GetTranslation())
+end
+
+local function clippedDraw(plane)
+	return function(self, flags)
+		local old = render.EnableClipping(true)
+		render.PushCustomClipPlane(plane[1], plane[2])
+		-- the object's own drawing (tinted materials, no shadow) goes on inside the clip
+		local own = hidden and hidden[self] and hidden[self][1]
+		if own then own(self, flags) else self:DrawModel(flags) end
+		render.PopCustomClipPlane()
+		render.EnableClipping(old)
+	end
+end
+
 local hiddenFrame = 0       -- a view cut short by an error does not block the next frames
 local hidePlayer = false
 -- PAC3 outfits are drawn by PAC3's own hooks after the opaque and translucent passes, for the
@@ -690,10 +736,10 @@ local function givePacBack()
 	pacKeep = {}
 end
 
-local function hide(e)
+local function hide(e, draw)
 	if IsValid(e) and not hidden[e] then
-		hidden[e] = { e.RenderOverride }
-		e.RenderOverride = drawNothing
+		hidden[e] = { e.RenderOverride, draw or drawNothing }
+		e.RenderOverride = draw or drawNothing
 		if e.pac_is_drawing then
 			e.pac_is_drawing = false
 			pacKeep[e] = true
@@ -713,16 +759,26 @@ COMP:Hook("PreDrawOpaqueRenderables", function(depth, skybox, sky3d)
 	if hidden and hiddenFrame == FrameNumber() then return end
 	if hidden then
 		for e, keep in pairs(hidden) do
-			if IsValid(e) and e.RenderOverride == drawNothing then e.RenderOverride = keep[1] end
+			if IsValid(e) and e.RenderOverride == keep[2] then e.RenderOverride = keep[1] end
 		end
 	end
 	givePacBack()
 	hidden, hidePlayer = {}, false
 	local eye = EyePos()
+	-- the camera of a recorded take (the player's own eyes, b0.2.5): the whole body goes, as in the
+	-- game's first person; any other camera at the eyes shows the body without the head
+	local vcam = C.renderViewEnt
+	if not IsValid(vcam) and SA.show and IsValid(SA.show.cam) then vcam = SA.show.cam end
+	if not IsValid(vcam) and C.camera then vcam = C.camera.viewEnt end
+	local recEyes = IsValid(vcam) and (vcam:GetNW2Bool("SPeditor_RecEyes", false)
+		or string.find(vcam:GetNW2String("SPeditor_Name", ""), "view (rec)", 1, true) ~= nil)
 	for rag, worn in pairs(bodies) do
 		if IsValid(rag) and inEyes(rag, eye) then
-			hide(rag)
-			for _, csm in ipairs(worn) do hide(csm) end
+			local n, d
+			if cvFPBody:GetBool() and not recEyes then n, d = neckPlane(rag) end
+			local draw = n and clippedDraw({ n, d }) or nil
+			hide(rag, draw)
+			for _, csm in ipairs(worn) do hide(csm, draw) end
 		end
 	end
 	-- the player itself, standing where the take ended (the editor and the player of the
@@ -749,7 +805,7 @@ end, "eye_hide")
 COMP:Hook("PostDrawTranslucentRenderables", function(depth, skybox, sky3d)
 	if skybox or sky3d or not hidden then return end
 	for e, keep in pairs(hidden) do
-		if IsValid(e) and e.RenderOverride == drawNothing then e.RenderOverride = keep[1] end
+		if IsValid(e) and e.RenderOverride == keep[2] then e.RenderOverride = keep[1] end
 	end
 	hidden, hidePlayer = nil, false
 end, "eye_hide")

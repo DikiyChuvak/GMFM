@@ -90,6 +90,59 @@ local LIP_VALVE = {
 	bite = { 0, 0, 0, 0, 0.8 }, lip_bite = { 0, 0, 0, 0, 0.6 },
 	right_upper_raiser = { 0, 0, 0, 0, 0.35 }, left_upper_raiser = { 0, 0, 0, 0, 0.35 },
 }
+-- A model with phonemes of its own (b0.2.5: the TF2 mercenaries for animation, HWM): the game
+-- keeps them in expressions/<model path>/phonemes/phonemes.txt — for every phoneme the value of
+-- every face controller. Their mouths are not at rest at zero: a closed "m" pulls the lower lip
+-- down to -0.8, so a map made of positive weights only made a crooked mouth. The channels take
+-- the rows of these phonemes as they are (the first one the file has):
+local LIP_PHONEMES = { { "aa", "ah", "ao", "a" }, { "iy", "ih", "eh", "i" }, { "uw", "ow", "w", "u" }, { "m", "b", "p" }, { "f", "v" } }
+local phonemeMaps = {}       -- [model] = { [controller name] = { weight of each channel } } | false
+local function phonemeMap(model)
+	local m = phonemeMaps[model]
+	if m ~= nil then return m end
+	m = false
+	local path = string.match(string.lower(model or ""), "^models/(.+)%.mdl$")
+	local raw = path and file.Read("expressions/" .. path .. "/phonemes/phonemes.txt", "GAME")
+	if raw then
+		local keys, rows = nil, {}
+		for line in string.gmatch(raw, "[^\r\n]+") do
+			if string.sub(line, 1, 5) == "$keys" then
+				keys = {}
+				for k in string.gmatch(string.sub(line, 6), "%S+") do keys[#keys + 1] = string.lower(k) end
+			elseif keys then
+				local name, rest = string.match(line, '^%s*"([^"]+)"%s+"[^"]*"(.*)$')
+				if name then
+					local nums = {}
+					for x in string.gmatch(string.gsub(rest, '".*$', ""), "%-?[%d%.]+") do nums[#nums + 1] = tonumber(x) end
+					rows[string.lower(name)] = nums
+				end
+			end
+		end
+		if keys then
+			local map = {}
+			for c, names in ipairs(LIP_PHONEMES) do
+				local row
+				for _, n in ipairs(names) do
+					row = rows[n]
+					if row then break end
+				end
+				-- values and weights by pairs, one pair a controller
+				for k, name in ipairs(keys) do
+					local v = row and row[k * 2 - 1]
+					-- the mouth only: the nose and the jaw sideways / forward stay as they are
+					local mouth = not (string.find(name, "nose", 1, true) or name == "jawd" or name == "jawh")
+					if mouth and v and math.abs(v) > 0.001 then
+						map[name] = map[name] or { 0, 0, 0, 0, 0 }
+						map[name][c] = v
+					end
+				end
+			end
+			if next(map) then m = map end
+		end
+	end
+	phonemeMaps[model] = m
+	return m
+end
 -- other models: flexes by name (visemes of VRChat / MMD / ported models), one channel each
 local LIP_NAMES = {
 	{ 1, { "jaw_open", "jawopen", "mouth_open", "mouthopen", "open_mouth", "mouth_a", "viseme_aa", "vrc.v_aa", "aa", "a", "あ" } },
@@ -109,14 +162,25 @@ function SA.MouthMap(ent)
 		if name ~= "" and byName[name] == nil then byName[name] = i end
 	end
 	local map, open = {}, false
-	for name, w in pairs(LIP_VALVE) do
-		local id = byName[name]
-		if id then
-			map[id] = w
-			if (w[1] or 0) > 0 then open = true end
+	local own = phonemeMap(ent:GetModel())
+	if own then
+		for name, w in pairs(own) do
+			local id = byName[name]
+			if id then map[id] = w end
 		end
+		if next(map) then return map end
 	end
-	if open then return map end
+	for _, set in ipairs({ LIP_VALVE }) do
+		for name, w in pairs(set) do
+			local id = byName[name]
+			if id then
+				map[id] = w
+				if (w[1] or 0) > 0 then open = true end
+			end
+		end
+		if open then return map end
+		map = {}
+	end
 	map = {}
 	for _, ch in ipairs(LIP_NAMES) do
 		for _, name in ipairs(ch[2]) do
@@ -665,7 +729,7 @@ COMP:Lang("en", {
 	sa_hk_prev = "Previous frame", sa_hk_next = "Next frame", sa_hk_first = "First frame", sa_hk_last = "Last frame",
 	sa_imp_title = "Import model animation", sa_imp_search = "Search animations…",
 	sa_imp_hint = "The animation of the model is baked into keys of the selected character, starting at the current frame.",
-	sa_imp_step = "Key every N frames", sa_imp_loops = "Repeats", sa_imp_root = "Move the character along (root motion)",
+	sa_imp_step = "Key every N frames", sa_imp_loops = "Repeats", sa_imp_root = "Move the character along (root motion)", sa_imp_forward = "Forward, units/s", sa_imp_forward_tip = "For walks and runs made in place: the character goes forward at this speed (0 — stays where the animation keeps it). A walk is about 70-90, a run about 200-250.",
 	sa_imp_speed = "Speed", sa_imp_go = "Import", sa_imp_none = "This model has no animations",
 	sa_imp_done = "Imported '%s': %d keys", sa_imp_col_name = "Animation", sa_imp_col_len = "Length, s",
 	sa_imp_extend = "The animation is longer than the timeline: its length was increased.",
@@ -682,7 +746,7 @@ COMP:Lang("en", {
 	sa_rnd_go = "Render", sa_rnd_cancel = "Cancel",
 	sa_rnd_progress = "Rendering frame %d of %d…", 
 	sa_rnd_stopped = "Animation render stopped", sa_rnd_busy = "An animation render is already running",
-	sa_rnd_failed = "Could not create the video file", sa_rnd_done_avi = "Animation rendered: %d frames, video %s (remove '.dat' from the name)",
+	sa_rnd_failed = "Could not create the video file", sa_rnd_webm_avi = "The game could not create the WebM file: the video is written as AVI instead (garrysmod/data/speditor/renders)", sa_rnd_done_avi = "Animation rendered: %d frames, video %s (remove '.dat' from the name)",
 	sa_rd_title = "Animated scene: %d frames, %.2f s, %d fps",
 	sa_rd_what = "Render", sa_rd_anim = "The whole animation", sa_rd_frame = "Only the current frame",
 	sa_rd_button = "Render animation", sa_rd_stop = "Stop the animation render",
@@ -982,7 +1046,7 @@ COMP:Lang("ru", {
 	sa_hk_prev = "Предыдущий кадр", sa_hk_next = "Следующий кадр", sa_hk_first = "Первый кадр", sa_hk_last = "Последний кадр",
 	sa_imp_title = "Импорт анимации модели", sa_imp_search = "Поиск анимаций…",
 	sa_imp_hint = "Анимация модели запекается в ключи выделенного персонажа, начиная с текущего кадра.",
-	sa_imp_step = "Ключ каждые N кадров", sa_imp_loops = "Повторов", sa_imp_root = "Двигать персонажа (перемещение из анимации)",
+	sa_imp_step = "Ключ каждые N кадров", sa_imp_loops = "Повторов", sa_imp_root = "Двигать персонажа (перемещение из анимации)", sa_imp_forward = "Вперёд, ед./с", sa_imp_forward_tip = "Для ходьбы и бега на месте: персонаж идёт вперёд с этой скоростью (0 — стоит там, где его держит анимация). Шаг — около 70-90, бег — около 200-250.",
 	sa_imp_speed = "Скорость", sa_imp_go = "Импортировать", sa_imp_none = "У этой модели нет анимаций",
 	sa_imp_done = "Импортировано «%s»: ключей — %d", sa_imp_col_name = "Анимация", sa_imp_col_len = "Длина, с",
 	sa_imp_extend = "Анимация длиннее таймлайна: его длина увеличена.",
@@ -999,7 +1063,7 @@ COMP:Lang("ru", {
 	sa_rnd_go = "Рендер", sa_rnd_cancel = "Отмена",
 	sa_rnd_progress = "Рендер кадра %d из %d…", 
 	sa_rnd_stopped = "Рендер анимации остановлен", sa_rnd_busy = "Рендер анимации уже идёт",
-	sa_rnd_failed = "Не удалось создать видеофайл", sa_rnd_done_avi = "Анимация снята: кадров — %d, видео %s (уберите «.dat» из имени)",
+	sa_rnd_failed = "Не удалось создать видеофайл", sa_rnd_webm_avi = "Игра не смогла создать файл WebM: видео записано в AVI (garrysmod/data/speditor/renders)", sa_rnd_done_avi = "Анимация снята: кадров — %d, видео %s (уберите «.dat» из имени)",
 	sa_rd_title = "Анимированная сцена: кадров — %d, %.2f с, %d к/с",
 	sa_rd_what = "Снимать", sa_rd_anim = "Всю анимацию", sa_rd_frame = "Только текущий кадр",
 	sa_rd_button = "Рендер анимации", sa_rd_stop = "Остановить рендер анимации",

@@ -32,6 +32,26 @@ function C.Objects()
 	return objects
 end
 
+-- A model attached to a bone of a ragdoll (a knife in a hand) is drawn at the bone as the bone
+-- is drawn in this frame (b0.2.5, SPeditor.LivePos): the place the server sends lags the hand
+-- by the network smoothing and missed it by up to a few units after the arm was moved.
+SPeditor.Hook("PreRender", "GMFM.AttachedDraw", function()
+	for _, e in ipairs(C.Objects()) do
+		if IsValid(e) and not C.IsAux(e) and e:GetClass() ~= "prop_ragdoll" then
+			if e:GetNW2Bool("SPeditor_AttRel", false) and IsValid(e:GetNW2Entity("SPeditor_Parent")) then
+				local pos, ang = SPeditor.LivePos(e)
+				e:SetRenderOrigin(pos)
+				e:SetRenderAngles(ang)
+				e.GMFM_RenderAt = true
+			elseif e.GMFM_RenderAt then
+				e.GMFM_RenderAt = nil
+				e:SetRenderOrigin(nil)
+				e:SetRenderAngles(nil)
+			end
+		end
+	end
+end)
+
 local listCache, listCacheFor
 
 function C.BuildEntityList()
@@ -416,6 +436,31 @@ local function applyWorn(e)
 			if csm:GetManipulateBonePosition(b) ~= mp then csm:ManipulateBonePosition(b, mp) end
 			if csm:GetManipulateBoneScale(b) ~= ms then csm:ManipulateBoneScale(b, ms) end
 		end
+	end
+	-- the face (b0.2.5): a worn head, mask or beard with face sliders follows the wearer's
+	-- face where the slider names match, and its own sliders (Face window, keys) are taken over
+	-- the wearer's: before, the copy kept a still face whatever was set on either of them
+	local nf = csm:GetFlexNum()
+	if nf > 0 then
+		local pm = parent:GetModel()
+		if csm.SPFlexOf ~= pm then
+			local map = {}
+			for i = 0, nf - 1 do
+				local id = parent:GetFlexIDByName(csm:GetFlexName(i) or "")
+				if id then map[i] = id end
+			end
+			csm.SPFlexOf, csm.SPFlexMap = pm, map
+		end
+		local map = csm.SPFlexMap
+		local own = e:GetFlexNum() == nf
+		for i = 0, nf - 1 do
+			local w = own and SPeditor.FlexGet(e, i) or 0
+			if map[i] and math.abs(w) < 0.001 then w = SPeditor.FlexGet(parent, map[i]) end
+			if math.abs(SPeditor.FlexGet(csm, i) - w) > 1e-5 then SPeditor.FlexSet(csm, i, w) end
+		end
+		local sc = own and e:GetNW2Float("SPeditor_FlexScale", 1) or 1
+		if sc == 1 and next(map) then sc = parent:GetNW2Float("SPeditor_FlexScale", 1) end
+		if csm:GetFlexScale() ~= sc then csm:SetFlexScale(sc) end
 	end
 	-- TF2 paint and crit glow (Hat Painter & Crit Glow Tools): their material proxies read
 	-- the drawn entity's ProxyentPaintColor / ProxyentCritGlow, and the copy is what is drawn
@@ -838,9 +883,21 @@ function C.GetAspectDef()
 	return SPeditor.Aspects[2]
 end
 
--- a number (w/h), or nil if the frame is free
-function C.GetAspect()
-	local a = C.GetAspectDef()
+-- The Secondary Viewport may have proportions of its own (b0.2.5): a 9:16 render no longer
+-- squeezes the second view too. "" — the same as the Primary Viewport.
+local cvAspect2 = CreateClientConVar("gmfm_aspect_vp2", "", true, false)
+function C.GetAspectDef2()
+	local id = cvAspect2:GetString()
+	for _, a in ipairs(SPeditor.Aspects) do
+		if a.id == id then return a end
+	end
+	return nil
+end
+function C.SetAspect2(id) RunConsoleCommand("gmfm_aspect_vp2", id or "") end
+
+-- a number (w/h), or nil if the frame is free; pass "secondary" — of the Secondary Viewport
+function C.GetAspect(pass)
+	local a = pass == "secondary" and C.GetAspectDef2() or C.GetAspectDef()
 	if a.w <= 0 or a.h <= 0 then return nil end
 	return a.w / a.h
 end
@@ -1086,12 +1143,34 @@ function C.PickBodyBone(ent)
 	return best
 end
 
+-- Hidden bones of an object (b0.2.5, S.ApplyLook "hidebones"): { [bone] = true }
+function C.HiddenBones(ent)
+	local str = ent:GetNW2String("SPeditor_HideBones", "")
+	if ent.GMFM_HBStr ~= str then
+		local set = {}
+		for b in string.gmatch(str, "%d+") do set[tonumber(b)] = true end
+		ent.GMFM_HBStr, ent.GMFM_HB = str, set
+	end
+	return ent.GMFM_HB
+end
+
+function C.SetBoneHidden(ent, bone, hide)
+	local list = {}
+	for b in pairs(C.HiddenBones(ent)) do
+		if b ~= bone then list[#list + 1] = b end
+	end
+	if hide and bone then list[#list + 1] = bone end
+	if hide and C.selected == ent and C.selBone == bone then C.Select(ent, -1) end
+	C.EditLook(ent, { hidebones = list }, true)
+end
+
 -- Bone picking by screen distance inside the viewport
 function C.PickBone(ent, radiusPx)
 	local mx, my = gui.MousePos()
 	local best, bestD = nil, radiusPx * radiusPx
+	local hidden = C.HiddenBones(ent)
 	for b = 0, ent:GetBoneCount() - 1 do
-		if ent:GetBoneName(b) ~= "__INVALIDBONE__" then
+		if ent:GetBoneName(b) ~= "__INVALIDBONE__" and not hidden[b] then
 			local p = C.GetBoneWorld(ent, b)
 			if p then
 				local x, y, vis = C.ProjectToViewport(p)

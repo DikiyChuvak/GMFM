@@ -584,6 +584,12 @@ local function boxBlock(parent, text, edge, label)
 end
 
 -- a line of text that works as a link
+-- the title of a guide in the language of the interface (b0.2.5: About → What's new links to them)
+function UI.GuideTitle(id)
+	local g = UI.Guides[id]
+	return g and T(g.title.en, g.title.ru) or nil
+end
+
 local function linkLine(parent, text, fn, indent)
 	local b = vgui.Create("DButton", parent)
 	b:Dock(TOP)

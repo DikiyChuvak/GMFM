@@ -194,6 +194,9 @@ function C.GetLook(ent)
 		stretch = { st.x, st.y, st.z }, locks = {},
 	}
 	for b, t in string.gmatch(ent:GetNW2String("SPeditor_Locks", ""), "(%d+):(%d+)") do look.locks[b] = tonumber(t) end
+	local hb = {}
+	for b in string.gmatch(ent:GetNW2String("SPeditor_HideBones", ""), "%d+") do hb[#hb + 1] = tonumber(b) end
+	if #hb > 0 then look.hidebones = hb end
 	look.tints = C.GetTints(ent)
 	look.flexscale = ent:GetNW2Float("SPeditor_FlexScale", 1)
 	-- the base pose of a model without physics (prop_dynamic): its animation and moment
@@ -308,8 +311,14 @@ function C.SendAttach(ent, parent, bone, noHist)
 			local e = C.Deref(ref)
 			if e then C.SendAttach(e, pref and C.Deref(pref) or nil, b, true) end
 		end
+		-- the server may put the object into the bone (S.SnapToBone): undo puts it back too
+		local pos0, ang0 = C.GetEntityTransform(ent)
 		C.PushHistory(IsValid(parent) and "attach" or "detach",
-			function() apply(pref0, b0) end,
+			function()
+				apply(pref0, b0)
+				local e = C.Deref(ref)
+				if e and not pref0 then C.SendTransform(e, pos0, ang0, true) end
+			end,
 		function() apply(pref1, b1) end)
 	end
 	net.Start(Net.Attach)

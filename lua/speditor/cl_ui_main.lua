@@ -100,6 +100,14 @@ function UI.ExposureMenu(m)
 	end
 end
 
+-- Opens a menu of the menu bar by its language key ("menu_view"), as if it was clicked (b0.2.5,
+-- the links of About → What's new)
+function UI.OpenTopMenu(key)
+	local b = UI.TopMenus and UI.TopMenus[L(key)]
+	if IsValid(b) then b:DoClick() return true end
+	return false
+end
+
 function UI.PageShown(id)
 	local pg = Dock.pages[id]
 	return pg ~= nil and IsValid(pg.panel) and pg.panel:IsVisible() and IsValid(pg.win) and pg.win:IsVisible()
@@ -355,11 +363,21 @@ local function buildViewport(title, key, pass)
 		UI.ExposureMenu(m)
 		if pass == "secondary" then UI.Vp2RefreshMenu(m) end
 		local asp = m:AddSubMenu(L("menu_aspect"))
-		for _, a in ipairs(SPeditor.Aspects) do
-			asp:AddOption(SPeditor.LN("aspect_", a.name), function()
-				RunConsoleCommand("gmfm_render_custom", "0")
-				C.SetAspect(a.id)
-			end):SetChecked(C.GetAspectDef().id == a.id)
+		if pass == "secondary" then
+			-- its own proportions, or those of the Primary Viewport (the render's)
+			local own = C.GetAspectDef2()
+			asp:AddOption(L("aspect_same"), function() C.SetAspect2("") end):SetChecked(own == nil)
+			asp:AddSpacer()
+			for _, a in ipairs(SPeditor.Aspects) do
+				asp:AddOption(SPeditor.LN("aspect_", a.name), function() C.SetAspect2(a.id) end):SetChecked(own ~= nil and own.id == a.id)
+			end
+		else
+			for _, a in ipairs(SPeditor.Aspects) do
+				asp:AddOption(SPeditor.LN("aspect_", a.name), function()
+					RunConsoleCommand("gmfm_render_custom", "0")
+					C.SetAspect(a.id)
+				end):SetChecked(C.GetAspectDef().id == a.id)
+			end
 		end
 		m:AddSpacer()
 		m:AddOption(L("gear_hide"), function() local pg = Dock.pages[key] if pg and IsValid(pg.win) then pg.win:Close() end end)
@@ -576,6 +594,8 @@ function UI.Open()
 		b:SetFont("SPeditor.Small")
 		b:SetTextColor(UI.ChromeText("MenuBar") or COL.TEXT)
 		b.Paint = function(s, w, h) UI.PaintChrome("MenuButton", s, w, h) end
+		UI.TopMenus = UI.TopMenus or {}
+		UI.TopMenus[label] = b
 		b.DoClick = function()
 			local m = SPeditor.UI.Menu()
 			build(m)
@@ -747,6 +767,10 @@ function UI.Open()
 		end
 		-- steps of the gizmo while the snap key is held (b0.2.3)
 		local sn = m:AddSubMenu(string.format(L("view_snap"), C.Keys.Text("snap")))
+		-- b0.2.5: steps without holding the key; the key then frees the gizmo
+		sn:AddOption(string.format(L("view_snap_always"), C.Keys.Text("snap")), function() C.SetSnapAlways(not C.SnapAlways()) end)
+			:SetChecked(C.SnapAlways())
+		sn:AddSpacer()
 		local function steps(cv, list, fmt)
 			local now = GetConVar(cv):GetFloat()
 			for _, v in ipairs(list) do
@@ -754,12 +778,16 @@ function UI.Open()
 					:SetChecked(math.abs(now - v) < 0.001)
 			end
 		end
-		steps("gmfm_snap_move", { 1, 2, 4, 8, 16, 32, 64 }, "view_snap_move")
+		steps("gmfm_snap_move", { 1, 2, 4, 5, 8, 10, 16, 32, 64 }, "view_snap_move")
 		sn:AddSpacer()
-		steps("gmfm_snap_rot", { 5, 10, 15, 22.5, 45, 90 }, "view_snap_rot")
+		steps("gmfm_snap_rot", { 5, 10, 15, 22.5, 30, 45, 90 }, "view_snap_rot")
 		sn:AddSpacer()
 		steps("gmfm_snap_scale", { 0.05, 0.1, 0.25, 0.5 }, "view_snap_scale")
-		m:AddOption(L("ik_feet"), function() C.gizmo.ikFeet = not C.gizmo.ikFeet end):SetChecked(C.gizmo.ikFeet and true or false)
+		m:AddOption(L("ik_feet"), function() C.SetIKFeet(not C.gizmo.ikFeet) end):SetChecked(C.gizmo.ikFeet and true or false)
+		m:AddOption(L("ik_hands"), function() C.SetIKHands(not C.gizmo.ikHands) end):SetChecked(C.gizmo.ikHands and true or false)
+		local ul = m:AddOption(L("view_unlock"), function() UI.SetLimitsUnlocked(not UI.LimitsUnlocked()) end)
+		ul:SetChecked(UI.LimitsUnlocked())
+		ul:SetTooltip(L("view_unlock_tip"))
 		m:AddSpacer()
 		local gsub = m:AddSubMenu(L("view_guides"))
 		for _, g in ipairs(C.GUIDE_LIST) do

@@ -73,6 +73,21 @@ local function text(parent, str, col, font, top)
 	return l
 end
 
+-- The news of an update linked to its guide (How to use) and to the window, tab or menu where it
+-- is (b0.2.5): [news key] = { guides = { guide id, … }, open = { { language key, function }, … } }
+local SA = function() return SPeditor.Component("saeditor").SA end
+local function page(id) return function() if not Dock.ShowPage(id) then SPeditor.Notify("#about_link_closed", 0) end end end
+local function topMenu(key) return function() UI.OpenTopMenu(key) end end
+UI.NewsLinks = {
+	about_x1 = { guides = { "attach" }, open = { { "win_ase", page("ase") } } },
+	about_x2 = { guides = { "sa_bones" }, open = { { "sa_timeline", page("sa_timeline") } } },
+	about_x3 = { guides = { "posing" }, open = { { "menu_view", topMenu("menu_view") } } },
+	about_x4 = { guides = { "sa_face" }, open = { { "menu_view", topMenu("menu_view") } } },
+	about_x5 = { guides = { "sa_rec", "sa_import" }, open = { { "sa_rec_title", function() SA().OpenRecord() end } } },
+	about_x6 = { guides = { "sa_keys", "posing" }, open = { { "sa_timeline", page("sa_timeline") }, { "win_secondary", page("secondary") } } },
+	about_x7 = { guides = { "lights", "sa_render" }, open = { { "tab_shadows", page("shadows") } } },
+}
+
 function UI.OpenAbout()
 	if Dock.ShowPage("about") then return end
 	local W, H = 620, 680
@@ -197,12 +212,40 @@ function UI.OpenAbout()
 	tab("info", L("about_tab_info"), "icon16/information.png")
 	tab("news", L("about_tab_news"), "icon16/newspaper.png")
 
+	-- a link line under a piece of news
+	local function link(parent, str, fn)
+		local b = vgui.Create("DButton", parent)
+		b:Dock(TOP)
+		b:DockMargin(28, 1, 12, 0)
+		b:SetTall(UI.S(17))
+		b:SetText("")
+		b:SetCursor("hand")
+		b.Paint = function(s, w, h)
+			local col = s:IsHovered() and COL.ORANGE or COL.BLUE
+			draw.SimpleText(str, "SPeditor.Small", 0, h / 2, col, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		end
+		b.DoClick = fn
+	end
 	local function bullets(prefix, parent)
 		for i = 1, 40 do
 			local key = prefix .. i
 			local str = L(key)
 			if str == key then break end
 			text(parent or scroll, "•  " .. str, COL.TEXT, nil, 4)
+			-- (b0.2.5) where to read about it and where to find it
+			local nl = UI.NewsLinks[key]
+			if nl and parent then
+				for _, gid in ipairs(nl.guides or {}) do
+					local title = UI.GuideTitle and UI.GuideTitle(gid)
+					if title then link(parent, "→  " .. L("about_link_guide") .. ": " .. title, function() UI.OpenGuide(gid) end) end
+				end
+				for _, o in ipairs(nl.open or {}) do
+					link(parent, "→  " .. L("about_link_open") .. ": " .. L(o[1]), function()
+						local ok = pcall(o[2])
+						if not ok then SPeditor.Notify("#about_link_fail", 1) end
+					end)
+				end
+			end
 		end
 	end
 

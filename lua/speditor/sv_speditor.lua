@@ -408,13 +408,30 @@ end)
 ---------------------------------------------------------------------
 S.Attached = S.Attached or {}   -- [ent] = true
 
+-- Where the client draws body i of a ragdoll (b0.2.5): its turn as the body has it, its place
+-- down the skeleton from the pelvis with the model's bone lengths (S.RigidLinks). A body that
+-- was posed off those lengths (a hand dragged by IK, a pose of another model) is drawn up to
+-- several units away from where it is, and a knife attached to the body of the hand crept out
+-- of the drawn hand whenever the arm moved.
+local function drawnBody(ent, i, depth)
+	local p = ent:GetPhysicsObjectNum(i)
+	if not IsValid(p) then return nil end
+	local links = i > 0 and (depth or 0) < 32 and S.RigidLinks(ent)
+	local l = links and links[i]
+	if l then
+		local pp, pa = drawnBody(ent, l.parent, (depth or 0) + 1)
+		if pp then return (LocalToWorld(l.lpos, angle_zero, pp, pa)), p:GetAngles() end
+	end
+	return p:GetPos(), p:GetAngles()
+end
+
 -- parent frame: the position and angle the offset is stored relative to
 local function attachFrame(a)
 	local parent = a.parent
 	if not IsValid(parent) then return nil end
 	if a.phys >= 0 and S.IsRagdoll(parent) then
-		local p = parent:GetPhysicsObjectNum(a.phys)
-		if IsValid(p) then return p:GetPos(), p:GetAngles() end
+		local fp, fa = drawnBody(parent, a.phys)
+		if fp then return fp, fa end
 	end
 	return S.GetTransform(parent)
 end
@@ -430,6 +447,18 @@ function S.RefreshAttach(ent)
 	-- a point constraint keeps the offset in the world (the object does not swing round with the parent)
 	a.woff = pos - fp
 	a.fp, a.fa = fp, fa
+	S.SendAttachOffset(ent)
+end
+
+-- The offset goes to the client too (b0.2.5): it draws the object at the parent's bone as the
+-- bone is drawn in that very frame (SPeditor.LivePos), so the object neither trails a moving
+-- hand nor shakes against it.
+function S.SendAttachOffset(ent)
+	local a = ent.SPeditor_Attach
+	if not a or not a.lpos then return end
+	ent:SetNW2Vector("SPeditor_AttP", a.lpos)
+	ent:SetNW2Angle("SPeditor_AttA", a.lang)
+	ent:SetNW2Bool("SPeditor_AttRel", a.phys >= 0 and not a.mode and not a.wear)
 end
 
 function S.Detach(ent)
@@ -440,6 +469,7 @@ function S.Detach(ent)
 	ent:SetNW2Int("SPeditor_ParentBone", -1)
 	ent:SetNW2Bool("SPeditor_Merge", false)
 	ent:SetNW2String("SPeditor_AttachMode", "")
+	ent:SetNW2Bool("SPeditor_AttRel", false)
 end
 
 -- bone: bone index of the parent, -1 (the object root) or S.WEAR (-2): "wear" — clothing,
@@ -490,6 +520,23 @@ function S.Attach(ent, parent, bone)
 	ent:SetNW2String("SPeditor_AttachMode", mode or "")
 	ent:SetNW2Int("SPeditor_ParentBone", bone)
 	ent:SetNW2Bool("SPeditor_Merge", wear and true or false)
+	return true
+end
+
+-- (b0.2.5) Attached to a bone it is far from, an object is first put into that bone (a knife
+-- picked from a table into the left hand): attaching keeps the offset, so before it stayed
+-- where it lay and only followed the hand from afar — "it only goes into the right hand",
+-- where it had been put by hand. Near the bone (within its own size) it is left as it is.
+function S.SnapToBone(ent, parent, bone)
+	if not IsValid(ent) or not S.IsRagdoll(parent) or S.IsRagdoll(ent) then return false end
+	if not bone or bone < 0 or bone >= parent:GetBoneCount() then return false end
+	local phys = SPeditor.PhysOfBoneUp(parent, bone)
+	if not phys then return false end
+	local fp, fa = drawnBody(parent, phys)
+	if not fp then return false end
+	local center = S.IsAux(ent) and ent:GetPos() or ent:LocalToWorld(ent:OBBCenter())
+	if center:Distance(fp) <= math.max(ent:BoundingRadius(), 12) then return false end
+	S.SetTransform(ent, fp, fa)
 	return true
 end
 
@@ -695,6 +742,8 @@ function S.SpawnModel(ply, model, pos, ang)
 
 	S.Freeze(ent)
 	S.StoreInit(ent)
+	-- the face at rest: a TF2 mercenary (HWM) came with every slider at -1 — a crooked, pursed mouth
+	SPeditor.FlexRest(ent)
 	-- a model without physics is a prop_dynamic, and it plays its first animation over and
 	-- over: posed by bone offsets, it would sway under them. It stands still in the editor; the
 	-- animation and its moment are a choice of the base pose (look.seq, S.ApplyLook).
@@ -875,6 +924,19 @@ function S.ApplyLook(ent, d)
 	end
 	ent:SetNW2String("SPeditor_Locks", table.concat(parts, ";"))
 	if #parts > 0 then look.locks = locks end
+
+	-- hidden bones (b0.2.5, as SFM hides controls): not drawn in the skeleton and not picked
+	-- by a click, so the bones of one character do not get in the way of another's
+	local hidden = {}
+	if type(d.hidebones) == "table" then
+		local nb = ent:GetBoneCount()
+		for _, v in ipairs(d.hidebones) do
+			local b = math.floor(SPeditor.Num(v, -1))
+			if b >= 0 and b < nb and #hidden < 256 then hidden[#hidden + 1] = b end
+		end
+	end
+	ent:SetNW2String("SPeditor_HideBones", table.concat(hidden, ","))
+	if #hidden > 0 then look.hidebones = hidden end
 
 	-- the base pose of a model without physics: an animation of the model held at one moment
 	if ent:GetClass() == "prop_dynamic" and type(d.seq) == "string" and #d.seq < 128 then
@@ -1140,8 +1202,12 @@ end
 function S.SetFlex(ent, id, w)
 	id = math.floor(SPeditor.Num(id, -1))
 	if id < 0 or id >= ent:GetFlexNum() then return end
+	-- (b0.2.5) up to ten ranges past the model's own ends: the game draws such faces (a jaw
+	-- at 3 opens three times as wide), the sliders go there with their limits unlocked
 	local mn, mx = ent:GetFlexBounds(id)
-	ent:SetFlexWeight(id, SPeditor.Clamp(w, mn or -1, mx or 1, 0))
+	mn, mx = mn or -1, mx or 1
+	local r = math.max(mx - mn, 1)
+	SPeditor.FlexSet(ent, id, SPeditor.Clamp(w, mn - r * 10, mx + r * 10, 0))
 end
 
 -- For ragdolls v is local to the "eyes" attachment (see the wiki on SetEyeTarget)
@@ -1166,7 +1232,7 @@ local function resetBones(ent)
 end
 
 local function resetFlex(ent)
-	for i = 0, ent:GetFlexNum() - 1 do ent:SetFlexWeight(i, 0) end
+	SPeditor.FlexRest(ent)
 	S.SetEye(ent, nil)
 end
 
@@ -1261,7 +1327,7 @@ function S.CapturePose(ent)
 	end
 
 	for i = 0, ent:GetFlexNum() - 1 do
-		local w = ent:GetFlexWeight(i)
+		local w = SPeditor.FlexGet(ent, i)
 		if math.abs(w) > 0.001 then
 			pose.flex[tostring(i)] = math.Round(w, 4)
 			pose.names.flex[tostring(i)] = ent:GetFlexName(i)
@@ -1386,7 +1452,7 @@ function S.ApplyPose(ent, pose)
 	end
 
 	if type(pose.flex) == "table" then
-		for i = 0, ent:GetFlexNum() - 1 do ent:SetFlexWeight(i, 0) end
+		SPeditor.FlexRest(ent)
 		for k, w in pairs(pose.flex) do
 			local id = mapFlex(k)
 			if id then S.SetFlex(ent, id, w) end
@@ -1502,9 +1568,12 @@ S.Receive("Attach", function(ply)
 	if not ent then return end
 	if not parent then
 		S.Detach(ent)
-	elseif not S.Attach(ent, parent, bone) then
-		S.Notice(ply, "#err_attach", 1)
+		return
 	end
+	local old = ent.SPeditor_Attach
+	local same = old and old.parent == parent
+	if not same then S.SnapToBone(ent, parent, bone) end
+	if not S.Attach(ent, parent, bone) then S.Notice(ply, "#err_attach", 1) end
 end)
 
 -- A saved outfit (cl_presets.lua, b0.2.4): every item is made where the character stands and worn

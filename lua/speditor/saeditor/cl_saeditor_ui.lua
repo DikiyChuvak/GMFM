@@ -355,14 +355,18 @@ local function buildTimeline(page)
 	local scroll = 0
 	local drag            -- { kind = "scrub" } | { kind = "keys", from, to, lo, hi, … } | { kind = "box", x0, y0, x1, y1 } | sound
 
-	-- the row of the selected bone, under its object (bone keys): the keys that hold that bone
-	local function boneRow(ent, uid)
-		if ent ~= C.selected or C.selBone < 0 then return end
-		local parts = SA.BoneParts(ent, C.selBone)
+	-- the row of a bone, under its object (bone keys): the keys that hold that bone
+	local function boneRow(ent, uid, bone, keyedOnly)
+		local parts = SA.BoneParts(ent, bone)
 		if not parts then return end
 		local keys = {}
 		for _, k in ipairs(SA.tracks[uid] or {}) do
-			if SA.KeyHasParts(k, parts) then keys[#keys + 1] = k end
+			if SA.KeyHasParts(k, parts) then
+				-- the bone's own motion at that key, if it was given one (b0.2.5)
+				local e
+				for part in string.gmatch(parts, "[pb]%d+") do e = e or (k.pe and k.pe[part]) end
+				keys[#keys + 1] = e and setmetatable({ e = e }, { __index = k }) or k
+			end
 		end
 		-- shown when the mode is on, or when the track has bone keys at all
 		local any = SA.BoneKeysOn()
@@ -371,8 +375,41 @@ local function buildTimeline(page)
 			any = k.only ~= nil or k.skip ~= nil
 		end
 		if not any then return end
-		local name = string.gsub(ent:GetBoneName(C.selBone) or "", "^ValveBiped%.Bip01_", "")
+		if keyedOnly then
+			-- a bone that is not selected shows only when it has keys of its own
+			local own = false
+			for _, k in ipairs(keys) do
+				if k.only then own = true break end
+			end
+			if not own then return end
+		end
+		local name = string.gsub(ent:GetBoneName(bone) or "", "^ValveBiped%.Bip01_", "")
 		rows[#rows + 1] = { uid = uid, ent = ent, parts = parts, bone = true, name = name, keys = keys }
+	end
+
+	-- (b0.2.5) the selected object shows a row for every bone with keys of its own, not only for
+	-- the selected bone: the bone channels can be seen and edited side by side, as in SFM
+	local function boneRows(ent, uid)
+		if ent ~= C.selected then return end
+		local own = SA.OwnParts(uid)
+		local bones, seen = {}, {}
+		if C.selBone >= 0 then
+			bones[1] = C.selBone
+			seen[C.selBone] = true
+		end
+		for kind, idx in string.gmatch(own or "", "([pb])(%d+)") do
+			local b = tonumber(idx)
+			if kind == "p" then b = ent:TranslatePhysBoneToBone(b) end
+			if b and b >= 0 and not seen[b] then
+				seen[b] = true
+				bones[#bones + 1] = b
+			end
+		end
+		if #bones > 1 then table.sort(bones, function(x, y)
+			if x == y then return false end
+			return x == C.selBone or (y ~= C.selBone and x < y)
+		end) end
+		for _, b in ipairs(bones) do boneRow(ent, uid, b, b ~= C.selBone) end
 	end
 
 	local function buildRows()
@@ -396,7 +433,7 @@ local function buildTimeline(page)
 			if not (always or SA.tracks[uid] or SA.tracks[fid]) then return end
 			seen[uid] = true
 			rows[#rows + 1] = { uid = uid, ent = ent, name = name, keys = SA.tracks[uid] or {}, indent = indent }
-			boneRow(ent, uid)
+			boneRows(ent, uid)
 			-- the face track goes right under its object
 			if SA.tracks[fid] then
 				rows[#rows + 1] = { uid = fid, owner = uid, face = true, ent = ent, name = L("sa_face_row"), keys = SA.tracks[fid], indent = indent }
@@ -463,6 +500,31 @@ local function buildTimeline(page)
 		if at <= v0 then v0 = v0 + n end
 		if not vlen then vlen = SA.frames - n end
 	end, "timeline_view")
+	-- The scroll bar of the time (b0.2.5): a strip along the bottom of the timeline, its thumb the
+	-- part of the time in view — dragged, it scrolls (before, only Shift + wheel and the middle
+	-- button did, and nobody found them); a click beside the thumb pages there.
+	local function hbarH() return math.max(UI.S(7), 6) end
+	local function hbarRange()
+		local len = viewLen()
+		local a, b = math.min(0, v0), math.max(SA.frames, v0 + len)
+		return a, b, len
+	end
+	local function hbarThumb(w)
+		local a, b, len = hbarRange()
+		local x0, bw = NAME_W, math.max(w - NAME_W, 10)
+		local tx = x0 + (v0 - a) / (b - a) * bw
+		local tw = math.max(len / (b - a) * bw, 16)
+		return tx, tw, x0, bw
+	end
+	local function drawHBar(w, h)
+		local y, bh = h - hbarH(), hbarH()
+		local tx, tw, x0, bw = hbarThumb(w)
+		surface.SetDrawColor(0, 0, 0, 90)
+		surface.DrawRect(x0, y, bw, bh)
+		local hot = drag and drag.kind == "hbar"
+		surface.SetDrawColor(hot and COL.ORANGE or COL.BORDER)
+		surface.DrawRect(tx, y + 1, tw, bh - 2)
+	end
 	-- "0" (a0.9): to frame 0 with the whole animation in view
 	SA.TimelineHome = function()
 		v0, vlen = 0, nil
@@ -890,6 +952,7 @@ local function buildTimeline(page)
 			surface.DrawOutlinedRect(x, y, bw, bh)
 		end
 
+		drawHBar(w, h)
 		if SA.rendering then
 			local job = SA.rendering
 			draw.SimpleTextOutlined(string.format(L("sa_rnd_progress"), SA.RenderProgress(job)), "SPeditor.Bold",
@@ -1213,6 +1276,20 @@ local function buildTimeline(page)
 	tl.OnMousePressed = function(s, code)
 		local mx, my = s:CursorPos()
 		local w = s:GetWide()
+		-- the scroll bar along the bottom
+		if code == MOUSE_LEFT and mx >= NAME_W and my >= s:GetTall() - hbarH() - 2 then
+			local tx, tw, _, bw = hbarThumb(w)
+			local a, b = hbarRange()
+			vlen = viewLen()
+			if mx < tx or mx > tx + tw then
+				-- beside the thumb: the thumb's middle jumps there
+				v0 = a + (mx - NAME_W) / bw * (b - a) - vlen / 2
+				clampView()
+			end
+			drag = { kind = "hbar", mx = mx, v0 = v0, per = (b - a) / bw }
+			s:MouseCapture(true)
+			return
+		end
 		-- the middle button drags the view along the time
 		if code == MOUSE_MIDDLE and mx >= NAME_W then
 			drag = { kind = "pan", mx = mx, v0 = v0 }
@@ -1382,6 +1459,11 @@ local function buildTimeline(page)
 		local f = round(frameAt(mx, s:GetWide()))
 		if drag.kind == "pan" then
 			v0 = drag.v0 - (mx - drag.mx) / span(s:GetWide()) * viewLen()
+			clampView()
+			return
+		end
+		if drag.kind == "hbar" then
+			v0 = drag.v0 + (mx - drag.mx) * drag.per
 			clampView()
 			return
 		end
@@ -1562,15 +1644,18 @@ function SA.OpenImport(ent)
 	hint:SetAutoStretchVertical(true)
 	hint:DockMargin(8, 6, 8, 4)
 
-	local opts = { step = 2, loops = 1, speed = 1, root = true }
+	local opts = { step = 2, loops = 1, speed = 1, root = true, forward = 0 }
 	local foot = vgui.Create("DPanel", body)
 	foot:Dock(BOTTOM)
-	foot:SetTall(UI.S(138))
+	foot:SetTall(UI.S(166))
 	foot.Paint = function() end
 	UI.Slider(foot, L("sa_imp_step"), 1, 6, 0, opts.step, function(v) opts.step = round(v) end)
 	UI.Slider(foot, L("sa_imp_loops"), 1, 8, 0, opts.loops, function(v) opts.loops = round(v) end)
 	UI.Slider(foot, L("sa_imp_speed"), 0.25, 2, 2, opts.speed, function(v) opts.speed = v end)
 	UI.Check(foot, L("sa_imp_root"), opts.root, function(v) opts.root = v end)
+	-- (b0.2.5) a walk or a run made in place goes forward at this speed (grounded root motion)
+	UI.Slider(foot, L("sa_imp_forward"), 0, 400, 0, opts.forward, function(v) opts.forward = round(v) end)
+		:SetTooltip(L("sa_imp_forward_tip"))
 
 	local search = vgui.Create("DTextEntry", body)
 	search:Dock(TOP)

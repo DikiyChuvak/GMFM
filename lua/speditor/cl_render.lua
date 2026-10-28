@@ -408,7 +408,7 @@ SPeditor.Hook("PostRender", "SPeditor.ViewportLook", function()
 end)
 
 function R.Viewport(src, w, h, pass, frozen)
-	local ix, iy, iw, ih = C.FitRect(w, h, C.GetAspect())
+	local ix, iy, iw, ih = C.FitRect(w, h, C.GetAspect(pass))
 	if iw < 4 or ih < 4 then return end
 
 	pass = pass or "primary"

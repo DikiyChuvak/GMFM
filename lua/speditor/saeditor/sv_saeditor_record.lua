@@ -67,6 +67,32 @@ end
 
 local function isActor(e) return IsValid(e) and (e:IsNPC() or e:IsNextBot()) and (e:GetModel() or "") ~= "" end
 
+-- Vehicles (b0.2.5): the game's cars and boats and those of simfphys, Glide, LVS and the like
+-- near the player join the take — the body as a model keyed along its way, its bones (wheels,
+-- steering, suspension) as bone offsets, so the wheels turn in the animation; the separate
+-- wheel entities of simfphys and the parts parented to a car go in as models of their own.
+-- Seats that are not drawn stay out.
+local MAX_VEHICLES = 24
+local VEHICLE_CLASSES = { "^gmod_sent_vehicle_fphysics", "^glide_", "^base_glide", "^lvs_", "^simfphys", "^wac_", "^sw_" }
+local function vehicleClass(e)
+	local c = e:GetClass() or ""
+	for _, p in ipairs(VEHICLE_CLASSES) do
+		if string.find(c, p) then return true end
+	end
+	local base = e.Base
+	return isstring(base) and (string.find(base, "glide", 1, true) or string.find(base, "fphysics", 1, true)
+		or string.find(base, "lvs", 1, true)) and true or false
+end
+local function isVehicle(e)
+	if not IsValid(e) or e:IsPlayer() or e:IsNPC() or e:IsWeapon() or e:GetNW2Bool("SPeditor_Ent", false) then return false end
+	local m = e:GetModel() or ""
+	if m == "" or not string.find(string.lower(m), "^models/.+%.mdl$") or e:GetNoDraw() or e:GetColor().a == 0 then return false end
+	if e:IsVehicle() or vehicleClass(e) then return true end
+	-- a part of one: a wheel, a turret, a door parented to it
+	local p = e:GetParent()
+	return IsValid(p) and (p:IsVehicle() or vehicleClass(p))
+end
+
 -- the actor an entity stands for: a weapon -> its owner
 local function actorOf(rec, ent)
 	if not IsValid(ent) then return nil end
@@ -78,9 +104,11 @@ local function actorOf(rec, ent)
 end
 
 local function addSubject(rec, ent, kind)
-	if rec.subjects[ent] or (kind == "npc" and rec.nNpc >= MAX_NPCS) or (kind == "shot" and rec.nShot >= MAX_SHOTS) then return end
+	if rec.subjects[ent] or (kind == "npc" and rec.nNpc >= MAX_NPCS) or (kind == "shot" and rec.nShot >= MAX_SHOTS)
+		or (kind == "vehicle" and (rec.nVeh or 0) >= MAX_VEHICLES) then return end
 	if kind == "npc" then rec.nNpc = rec.nNpc + 1 end
 	if kind == "shot" then rec.nShot = rec.nShot + 1 end
+	if kind == "vehicle" then rec.nVeh = (rec.nVeh or 0) + 1 end
 	rec.subjects[ent] = {
 		kind = kind, ent = ent, model = string.lower(ent:GetModel() or ""), samples = {}, weapons = {},
 		skin = ent:GetSkin(), groups = {}, col = ent:GetColor(), mat = ent:GetMaterial(),
@@ -166,6 +194,24 @@ local function sample(rec, f)
 		elseif sub.kind == "shot" and IsValid(ent) and not sub.gone then
 			-- a projectile: one rigid body, its place is the pose
 			sub.samples[#sub.samples + 1] = { f = f, bones = { [0] = { ent:GetPos(), ent:GetAngles() } } }
+		elseif sub.kind == "vehicle" and IsValid(ent) and not sub.gone then
+			-- a vehicle: its place, and every bone in its parent's space (wheels, steering)
+			local smp = { f = f, bones = { [0] = { ent:GetPos(), ent:GetAngles() } } }
+			local n = ent:GetBoneCount()
+			if n > 1 then
+				ent:GetBonePosition(0)
+				local loc = {}
+				for b = 0, n - 1 do
+					local m, pb = ent:GetBoneMatrix(b), ent:GetBoneParent(b)
+					local pm = pb >= 0 and ent:GetBoneMatrix(pb)
+					if m and pm then
+						local lp, la = WorldToLocal(m:GetTranslation(), m:GetAngles(), pm:GetTranslation(), pm:GetAngles())
+						loc[b] = { lp, la }
+					end
+				end
+				smp.loc = loc
+			end
+			sub.samples[#sub.samples + 1] = smp
 		elseif IsValid(ent) and not sub.gone then
 			-- on the server bone positions are worked out on demand: asking for one brings the
 			-- whole skeleton up to this tick
@@ -211,11 +257,12 @@ COMP:Hook("Think", function()
 			if CurTime() - rec.t0 > MAX_SECONDS or f >= SA.MAX_FRAMES - rec.step then
 				SA.StopRecord(ply)
 			else
-				-- NPCs that came into the radius during the take
-				if rec.npcs and CurTime() >= (rec.nextScan or 0) then
+				-- NPCs (and vehicles) that came into the radius during the take
+				if (rec.npcs or rec.vehicles) and CurTime() >= (rec.nextScan or 0) then
 					rec.nextScan = CurTime() + 0.5
 					for _, e in ipairs(ents.FindInSphere(ply:GetPos(), rec.radius)) do
-						if isActor(e) then addSubject(rec, e, "npc") end
+						if rec.npcs and isActor(e) then addSubject(rec, e, "npc")
+						elseif rec.vehicles and isVehicle(e) then addSubject(rec, e, "vehicle") end
 					end
 				end
 				local kf = rec.f0 + math.floor((f - rec.f0) / rec.step) * rec.step
@@ -523,6 +570,7 @@ function SA.StartRecord(ply, opts)
 		subjects = {}, nNpc = 0, nShot = 0, corpse = {}, sound = {}, fx = {},
 		movers = {}, nMover = 0, moversOn = not opts.noPlayer, ply = ply,
 		view = (opts.view and not opts.noPlayer) and {} or nil,
+		vehicles = not opts.noPlayer and opts.vehicles ~= false,
 	}
 	R[ply] = rec
 	-- the NPCs of the marks come to life with the recording
@@ -554,9 +602,10 @@ function SA.StartRecord(ply, opts)
 			end
 		end
 	end
-	if rec.npcs then
+	if rec.npcs or rec.vehicles then
 		for _, e in ipairs(ents.FindInSphere(ply:GetPos(), rec.radius)) do
-			if isActor(e) then addSubject(rec, e, "npc") end
+			if rec.npcs and isActor(e) then addSubject(rec, e, "npc")
+			elseif rec.vehicles and isVehicle(e) then addSubject(rec, e, "vehicle") end
 		end
 	end
 	hookEffects(true)
@@ -706,8 +755,8 @@ local function makeActor(ply, sub)
 		S.ApplyLook(ent, { color = { sub.col.r, sub.col.g, sub.col.b, sub.col.a } })
 	end
 	if sub.pcol then ent:SetNW2Vector("SPeditor_PlayerColor", sub.pcol) end
-	-- a projectile flies on its keys, not on physics
-	if sub.kind == "shot" then
+	-- a projectile or a vehicle goes on its keys, not on physics
+	if sub.kind == "shot" or sub.kind == "vehicle" then
 		local phys = ent:GetPhysicsObject()
 		if IsValid(phys) then phys:EnableMotion(false) end
 	end
@@ -729,6 +778,22 @@ local function pose(ent, smp)
 	else
 		local m = smp.bones[0]
 		if m then S.SetTransform(ent, m[1], m[2]) end
+	end
+end
+
+-- the bones of a recorded vehicle at a sample: offsets that take the copy's rest pose to the
+-- pose the vehicle had (bone offsets are in the parent bone's space)
+local function vehicleBones(ent, rest, loc)
+	for b, r in pairs(rest) do
+		local s = loc[b]
+		if s then
+			local dp = s[1] - r[1]
+			local _, da = WorldToLocal(vector_origin, s[2], vector_origin, r[2])
+			if dp:LengthSqr() < 1e-4 then dp = vector_origin end
+			if math.abs(da.p) + math.abs(da.y) + math.abs(da.r) < 0.05 then da = angle_zero end
+			ent:ManipulateBonePosition(b, dp)
+			ent:ManipulateBoneAngles(b, da)
+		end
 	end
 end
 
@@ -829,14 +894,25 @@ function SA.StopRecord(ply)
 				ent:SetColor(color_white)
 				ent:SetRenderMode(RENDERMODE_NORMAL)
 			end
+			-- a vehicle's bones: the copy's own rest pose is the base the offsets are taken from
+			local rest
+			if sub.kind == "vehicle" and first.loc then
+				rest = {}
+				ent:GetBonePosition(0)
+				for b in pairs(first.loc) do
+					local m, pm = ent:GetBoneMatrix(b), ent:GetBoneMatrix(ent:GetBoneParent(b))
+					if m and pm then rest[b] = { WorldToLocal(m:GetTranslation(), m:GetAngles(), pm:GetTranslation(), pm:GetAngles()) } end
+				end
+			end
 			for _, smp in ipairs(sub.samples) do
 				pose(ent, smp)
+				if rest and smp.loc then vehicleBones(ent, rest, smp.loc) end
 				SA.SetKey(ply, ent, smp.f, "spline")
 				made.keys = made.keys + 1
 			end
 			local last = sub.samples[#sub.samples].f
 			-- gone before the end of the take (died, removed, exploded): hidden from the next frame on
-			if sub.kind == "shot" and not sub.gone and not IsValid(sub.ent) then sub.gone = last + rec.step end
+			if (sub.kind == "shot" or sub.kind == "vehicle") and not sub.gone and not IsValid(sub.ent) then sub.gone = last + rec.step end
 			if sub.gone and sub.gone > last then
 				pose(ent, sub.samples[#sub.samples])
 				ent:SetColor(Color(255, 255, 255, 0))
@@ -990,6 +1066,9 @@ function SA.StopRecord(ply)
 			cam.SPeditor_Name = name
 			cam:SetNW2String("SPeditor_Name", name)
 			local inHead = rec.eyes and body and #body.samples >= 2
+			-- the camera of the take is the player's own eyes: its views do not draw the body at
+			-- all, as the game does not (cl_saeditor_record.lua, b0.2.5)
+			cam:SetNW2Bool("SPeditor_RecEyes", true)
 			if inHead then
 				for _, smp in ipairs(body.samples) do
 					if smp.f >= view[1].f then

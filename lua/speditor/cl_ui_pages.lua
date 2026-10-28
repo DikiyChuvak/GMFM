@@ -226,6 +226,7 @@ function UI.BuildShadowsPage(host)
 	form.Think = function()
 		local text = string.format(L("shadows_active"), Sh.ActiveCount())
 		if Sh.SkippedCount() > 0 then text = text .. "   ·   " .. string.format(L("shadows_skipped"), Sh.SkippedCount()) end
+		if Sh.OverCount() > 0 then text = text .. "   ·   " .. string.format(L("shadows_over"), Sh.OverCount()) end
 		if text ~= shown then
 			shown = text
 			active:SetText(text)
