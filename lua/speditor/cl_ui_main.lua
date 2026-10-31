@@ -428,6 +428,8 @@ local function buildViewport(title, key, pass)
 			if vp.pass == "secondary" and not frozen then frozen = vp2Frozen(src, pw, ph) end
 			local ix, iy, iw, ih = SPeditor.Render.Viewport(src, pw, ph, vp.pass or "primary", frozen)
 			if ix then C.DrawGuides(ix, iy, iw, ih) end
+			-- the focal distance while it is changed (b0.2.6, as SFM; cl_camera.lua)
+			if ix and C.DrawFocusLabel then C.DrawFocusLabel(src.ent, ix, iy, iw, ih) end
 			-- the selection box (cl_gizmo.lua)
 			if vp.pass == "primary" and C.DrawMarquee then C.DrawMarquee(vp.view:LocalToScreen(0, 0)) end
 			-- labels and hints of other parts over the frame (b0.2.1: the NPCs of a take)
@@ -620,6 +622,8 @@ function UI.Open()
 		end):SetIcon("icon16/disk.png")
 		m:AddOption(L("load_scene") .. "…", function() Dock.ShowPage("scene") end):SetIcon("icon16/folder_go.png")
 		m:AddOption(L("act_render") .. "…", function() UI.OpenRenderDialog() end):SetIcon("icon16/picture_save.png")
+		-- b0.2.6: SFM's Export Poster — a still refined pass by pass
+		m:AddOption(L("poster_title") .. "…", function() UI.OpenPoster() end):SetIcon("icon16/picture.png")
 		-- b0.2: SFM's Export Shot List
 		local SAc = SPeditor.Component("saeditor").SA
 		if SAc and SAc.ExportShotList then
@@ -632,7 +636,7 @@ function UI.Open()
 		end):SetChecked(GetConVar("gmfm_autosave"):GetBool())
 		m:AddSpacer()
 		m:AddOption(L("act_clear"), function()
-			Derma_Query(L("clear_confirm"), "GM:FM", L("yes"), function() C.SendCleanup() end, L("cancel"), function() end)
+			Derma_Query(L("clear_confirm"), "GM:FM", L("yes"), function() C.ClearScene() end, L("cancel"), function() end)
 		end):SetIcon("icon16/bin.png")
 		SPeditor.Components.RunMenu("file", m)
 		m:AddSpacer()
@@ -705,6 +709,7 @@ function UI.Open()
 			if page then m:AddOption(page.title, function() Dock.ShowPage(id) end) end
 		end
 		m:AddOption(L("win_browser"), function() UI.ToggleBrowser() end)
+		m:AddOption(L("win_ref"), function() UI.OpenRef() end):SetIcon("icon16/film.png")
 		m:AddOption(L("render_title"), function() UI.OpenRenderDialog() end)
 		m:AddOption(L("shaders_title"), function() UI.OpenShaders() end):SetIcon("icon16/wand.png")
 		m:AddOption(L("env_title"), function() UI.OpenEnvironment() end):SetIcon("icon16/weather_sun.png")
@@ -785,6 +790,12 @@ function UI.Open()
 		steps("gmfm_snap_scale", { 0.05, 0.1, 0.25, 0.5 }, "view_snap_scale")
 		m:AddOption(L("ik_feet"), function() C.SetIKFeet(not C.gizmo.ikFeet) end):SetChecked(C.gizmo.ikFeet and true or false)
 		m:AddOption(L("ik_hands"), function() C.SetIKHands(not C.gizmo.ikHands) end):SetChecked(C.gizmo.ikHands and true or false)
+		-- ambient occlusion in the viewports (b0.2.6, gmfm_vp_ssao)
+		local ao = m:AddSubMenu(L("view_vp_ao"))
+		local cur = SPeditor.Render.ViewportAOMode and SPeditor.Render.ViewportAOMode() or 1
+		for i = 0, 2 do
+			ao:AddOption(L("view_vp_ao_" .. i), function() RunConsoleCommand("gmfm_vp_ssao", tostring(i)) end):SetChecked(cur == i)
+		end
 		local ul = m:AddOption(L("view_unlock"), function() UI.SetLimitsUnlocked(not UI.LimitsUnlocked()) end)
 		ul:SetChecked(UI.LimitsUnlocked())
 		ul:SetTooltip(L("view_unlock_tip"))
@@ -901,6 +912,7 @@ function UI.Open()
 	-- Status bar
 	-----------------------------------------------------------------
 	local status = UI.Skin(vgui.Create("DPanel"))
+	UI.StatusBar = status
 	status:SetPos(0, scrH - STATUS_H)
 	status:SetSize(scrW, STATUS_H)
 	status:MakePopup()
@@ -1021,7 +1033,7 @@ function UI.Close()
 	setKeyboardInput(false)
 	Dock.Clear()
 	if IsValid(UI.ColorPopup) then UI.ColorPopup:Remove() end
-	for _, name in ipairs({ "TopBar", "HintBar", "EmptyHint" }) do
+	for _, name in ipairs({ "TopBar", "HintBar", "EmptyHint", "StatusBar" }) do
 		if IsValid(UI[name]) then UI[name]:Remove() end
 		UI[name] = nil
 	end
@@ -1074,6 +1086,29 @@ function UI.Rebuild()
 			w:SetPos(math.Clamp(e.x, 0, ScrW() - ww), math.Clamp(e.y, MENU_H, math.max(ScrH() - STATUS_H - hh, MENU_H)))
 		end
 	end
+end
+
+-- (b0.2.6) The editor's windows are not drawn while a video renders (cl_saeditor_video.lua): every
+-- game frame painted all of them, a few milliseconds each, and a video frame takes several game
+-- frames. They stay where they are and keep working; only their drawing is skipped.
+function UI.SetPaintedForRender(on)
+	if not on then
+		for _, p in ipairs(UI.renderHidden or {}) do
+			if IsValid(p) then p:SetPaintedManually(false) end
+		end
+		UI.renderHidden = nil
+		return
+	end
+	if UI.renderHidden then return end
+	local list = {}
+	for _, name in ipairs({ "TopBar", "HintBar", "EmptyHint", "StatusBar" }) do
+		if IsValid(UI[name]) then list[#list + 1] = UI[name] end
+	end
+	for _, w in ipairs(Dock.windows) do
+		if IsValid(w) then list[#list + 1] = w end
+	end
+	for _, p in ipairs(list) do p:SetPaintedManually(true) end
+	UI.renderHidden = list
 end
 
 SPeditor.OpenUI  = function() UI.Open()  end

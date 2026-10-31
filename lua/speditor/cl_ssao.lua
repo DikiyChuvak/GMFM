@@ -19,10 +19,18 @@ that DirectX level 90 runs them too): a hemisphere of 25 fixed points around
 the normal, turned by a 4 x 4 pattern that does not change from frame to frame, SFM's range
 check, and a 16-point Poisson-disc blur that stops at depth edges. "classic" is the a0.7 one.
 
+b0.2.6 (round 7): the SFM mode redone after SFM's real one — sfm_ambientocclusion_ps30 and the
+code of its material in stdshader_dx9.dll (gmfm_sfmao4b / gmfm_sfmaoblur4b): SFM's camera
+settings SSAORadius / SSAOStrength / SSAOBias with their meaning and defaults (15, 1, 0.0005;
+strength is how deep the occluders reach, not a darkness), 16 directions of SFM's kernel, a new
+noise in every pass, (1 - occluded / 16)^2. A camera has its own (Render → Camera effects →
+"SSAO of this camera", or the Animation Set Editor).
+
 R.RenderBase (renders, the preview, the viewport render look, video) and the engine frame
-call R.ApplySSAO when it is on. Settings (Render window, saved with the scene):
-  gmfm_ssao 0/1, gmfm_ssao_radius (units), gmfm_ssao_strength, gmfm_ssao_passes (round 6:
-  SFM's progressive occlusion — that many passes with new directions averaged in renders).
+call R.ApplySSAO when it is on; with depth of field every pass of the frame takes the occlusion
+of its own view. Settings (Render window, saved with the scene):
+  gmfm_ssao 0/1, gmfm_ssao_radius (units), gmfm_ssao_strength, gmfm_ssao_bias, gmfm_ssao_passes
+  (round 6: SFM's progressive occlusion — that many passes with new noise averaged in renders).
 The shaders are compiled from shaders_src/*.hlsl and packed by shaders_src/build_vcs.py into
 shaders/fxc/*.vcs.
 ]]
@@ -31,8 +39,10 @@ local R = SPeditor.Render
 local C = SPeditor.Client
 
 local cvOn       = CreateClientConVar("gmfm_ssao", "0", true, false)
-local cvRadius   = CreateClientConVar("gmfm_ssao_radius", "24", true, false)
-local cvStrength = CreateClientConVar("gmfm_ssao_strength", "1.5", true, false)
+-- SFM's defaults of a camera (SSAORadius 15, SSAOStrength 1, SSAOBias 0.0005)
+local cvRadius   = CreateClientConVar("gmfm_ssao_radius", "15", true, false)
+local cvStrength = CreateClientConVar("gmfm_ssao_strength", "1", true, false)
+local cvBias     = CreateClientConVar("gmfm_ssao_bias", "0.0005", true, false, "Ambient occlusion (SFM): the start point off the surface, a part of its distance", 0, 0.05)
 local cvMode     = CreateClientConVar("gmfm_ssao_mode", "sfm", true, false, "Ambient occlusion: sfm (Source Filmmaker's) or classic (a0.7)")
 local cvPasses   = CreateClientConVar("gmfm_ssao_passes", "16", true, false,
 	"Progressive ambient occlusion of renders (SFM's mode): passes with new directions, averaged (1 = one pass)", 1, 64)
@@ -40,6 +50,42 @@ local cvPasses   = CreateClientConVar("gmfm_ssao_passes", "16", true, false,
 local SSAO_FAR = 8192            -- the far end of the depth pass, units
 
 function R.SSAOOn() return cvOn:GetBool() end
+
+-- (b0.2.6) The occlusion of a view: on?, radius, strength, bias — the camera's own settings over
+-- the scene's (Render window). A camera's: its "SSAO of this camera" (camera effects, as SFM's
+-- SSAORadius / SSAOStrength / SSAOBias) turns it on with those; the mode of the Animation Set
+-- Editor (0 as the scene, 1 on, 2 off) — 1 with the older radius / strength fields.
+function R.SSAOParams(src)
+	local cam = src and src.ent
+	local mode = IsValid(cam) and cam.GetCamAO and math.floor(cam:GetCamAO() + 0.5) or 0
+	local radius, strength, bias = cvRadius:GetFloat(), cvStrength:GetFloat(), cvBias:GetFloat()
+	if mode == 2 then return false, radius, strength, bias end
+	local FX = SPeditor.FX
+	local fx = IsValid(cam) and FX and C.GetCameraFX and C.GetCameraFX(cam) or nil
+	if fx and FX.IsOn(fx, "ssao") then
+		return true, FX.Get(fx, "ssao", "radius"), FX.Get(fx, "ssao", "strength"), FX.Get(fx, "ssao", "bias")
+	end
+	if mode == 1 then
+		if cam:GetAORadius() > 0 then radius = cam:GetAORadius() end
+		if cam:GetAOStrength() > 0 then strength = cam:GetAOStrength() end
+		return true, radius, strength, bias
+	end
+	return cvOn:GetBool(), radius, strength, bias
+end
+
+-- Occlusion in the viewports (b0.2.6, SFM shows it while you work): gmfm_vp_ssao 0 — none,
+-- 1 — when the viewport looks through a camera of the scene, 2 — in every view
+local cvVp = CreateClientConVar("gmfm_vp_ssao", "1", true, false,
+	"Ambient occlusion in the viewports: 0 off, 1 through the cameras of the scene, 2 always", 0, 2)
+function R.ViewportAOMode() return cvVp:GetInt() end
+function R.ViewportAO(src, fullbright)
+	if fullbright or not src then return false end
+	local m = cvVp:GetInt()
+	if m == 0 then return false end
+	local cam = IsValid(src.ent) and src.ent:GetClass() == "speditor_camera"
+	if m == 1 and not cam then return false end
+	return (R.SSAOParams(src))
+end
 
 local matDepthWorld = CreateMaterial("speditor_ao_depth_world", "UnlitGeneric", {
 	["$basetexture"] = "vgui/white", ["$color"] = "[0 0 0]",
@@ -69,9 +115,10 @@ local function ensureMats()
 	matAO   = screenMat("speditor_ao2_main", "speditor_ao2_ps20b")
 	matBlur = screenMat("speditor_ao2_blur", "speditor_ao2_blur_ps20b")
 	-- SFM's, Shader Model 2 (b0.2.1): the ps_3_0 ones of b0.2 are not run at all in a game at
-	-- DirectX level 90 (the Linux build) — the frame came out black, the preview "stopped working"
-	matSfmAO   = screenMat("gmfm_sfmao2b_main", "gmfm_sfmao2b_ps20b")
-	matSfmBlur = screenMat("gmfm_sfmaoblur2b", "gmfm_sfmaoblur2b_ps20b")
+	-- DirectX level 90 (the Linux build) — the frame came out black, the preview "stopped working".
+	-- "4b" (b0.2.6 round 7): SFM's own math, read out of SFM's shader and its material's code
+	matSfmAO   = screenMat("gmfm_sfmao4b_main", "gmfm_sfmao4b_ps20b")
+	matSfmBlur = screenMat("gmfm_sfmaoblur4b", "gmfm_sfmaoblur4b_ps20b")
 end
 local matShow = CreateMaterial("speditor_ssao_show", "UnlitGeneric", { ["$nolod"] = "1" })
 
@@ -167,7 +214,7 @@ function R.RenderDepth(src, W, H, aspect)
 	depthPass = true
 	R.ownView = true
 	-- the characters the view is in the head of are not in the depth either
-	local off = C.HiddenInView and C.HiddenInView(src.origin) or {}
+	local off = C.HiddenInView and C.HiddenInView(src.origin, src.ent) or {}
 	for i, e in ipairs(off) do
 		if e:GetNoDraw() then off[i] = false else e:SetNoDraw(true) end
 	end
@@ -181,6 +228,8 @@ function R.RenderDepth(src, W, H, aspect)
 		x = 0, y = 0, w = W, h = H, aspect = aspect or (W / H),
 		drawviewer = true, drawhud = false, drawviewmodel = false, dopostprocess = false, drawmonitors = false,
 		znear = R.ZNear and R.ZNear(src) or nil,
+		-- the lens and the smoothing of the pass (cl_render.lua): the depth of the same view
+		offcenter = R.OffCenter and R.OffCenter(src, W, H, aspect or (W / H)) or nil,
 	})
 	cam.End2D()
 	unmute()
@@ -212,33 +261,44 @@ end
 -- The visibility of the view src as a W x H texture (white — open, dark — occluded), or nil
 -- when SSAO is off. R.MultiplyAO(rt, mask) darkens a frame of any size with it.
 -- passes (b0.2 round 6, SFM mode): as SFM's progressive render, the occlusion is taken that many
--- times, every time with the hemisphere turned another way (the seed of the pass), and averaged —
--- the noise of one pass goes, so the blur after it can be much narrower. 1 — one pass.
-function R.SSAOMask(src, W, H, aspect, passes)
-	if not cvOn:GetBool() or not src then return nil end
+-- times, every time with a new noise (the seed of the pass), and averaged — the noise of one
+-- pass goes. 1 — one pass; seed — which pass of a progressive frame it is (b0.2.6 round 7: a
+-- frame with depth of field takes one pass of its own view in each of its passes).
+local SFM_DISC = 0.00416      -- SFM's blur: the disc's radius, a part of the frame's height
+
+-- the seed of the i-th pass: a golden-ratio step, the first one is the stable pattern
+local function seedOf(i)
+	if not i or i <= 1 then return 0, 0 end
+	return (i * 0.618034) % 1 * 97.13, (i * 0.754878) % 1 * 53.71
+end
+
+function R.SSAOMask(src, W, H, aspect, passes, seed)
+	local on, rad, str, bias = R.SSAOParams(src)
+	if not on or not src then return nil end
 	ensureMats()
 	aspect = aspect or (W / H)
 	local depth = R.RenderDepth(src, W, H, aspect)
 	if not depth then return nil end
 	local a, b = aoRT(1, W, H), aoRT(2, W, H)
-	local radius = math.Clamp(cvRadius:GetFloat(), 2, 256)
 	local tx = math.tan(math.rad(math.Clamp(src.fov, 1, 170)) / 2)
 
 	if R.SSAOMode() == "sfm" then
+		local radius = math.Clamp(rad, 0.5, 512)
 		local m = matSfmAO
 		m:SetTexture("$basetexture", depth)
 		m:SetFloat("$c0_x", radius)
-		m:SetFloat("$c0_y", math.Clamp(cvStrength:GetFloat(), 0, 4))
+		m:SetFloat("$c0_y", 1 / (radius * math.Clamp(str, 0.05, 20)))
 		m:SetFloat("$c0_z", SSAO_FAR)
-		m:SetFloat("$c0_w", radius * 0.04)
+		m:SetFloat("$c0_w", math.Clamp(bias or 0.0005, 0, 0.05))
 		m:SetFloat("$c1_x", tx)
 		m:SetFloat("$c1_y", tx / aspect)
 		m:SetFloat("$c1_z", 1 / W)
 		m:SetFloat("$c1_w", 1 / H)
 		passes = math.Clamp(math.floor(passes or 1), 1, 64)
+		local sx, sy = seedOf(seed)
 		if passes <= 1 then
-			m:SetFloat("$c2_x", 0)
-			m:SetFloat("$c2_y", 0)
+			m:SetFloat("$c2_x", sx)
+			m:SetFloat("$c2_y", sy)
 			pass(b, m)
 		else
 			local acc = accRT(W, H)
@@ -246,9 +306,9 @@ function R.SSAOMask(src, W, H, aspect, passes)
 			render.Clear(255, 255, 255, 255)
 			render.PopRenderTarget()
 			for i = 1, passes do
-				-- the first pass is the stable pattern, the others shift it by a golden-ratio step
-				m:SetFloat("$c2_x", i == 1 and 0 or (i * 0.618034) % 1 * 97.13)
-				m:SetFloat("$c2_y", i == 1 and 0 or (i * 0.754878) % 1 * 53.71)
+				local px, py = seedOf(i)
+				m:SetFloat("$c2_x", px)
+				m:SetFloat("$c2_y", py)
 				pass(b, m)
 				-- the alpha of the pass is not 1 (the engine keeps depth there): opaque before blending
 				render.PushRenderTarget(b)
@@ -275,25 +335,25 @@ function R.SSAOMask(src, W, H, aspect, passes)
 			render.DrawScreenQuad()
 			render.PopRenderTarget()
 		end
-		-- one blur, as SFM: the disc a little wider on big frames; after many passes there is
-		-- little noise left, so it only softens
-		local disc = math.Clamp(H / 270, 3, 12)
-		if passes > 1 then disc = math.max(disc / math.sqrt(passes) * 2, 1.5) end
+		-- one blur, SFM's disc: the average of blurred passes is the blur of their average
 		matSfmBlur:SetTexture("$basetexture", b)
 		matSfmBlur:SetTexture("$texture1", depth)
 		matSfmBlur:SetFloat("$c0_x", 1 / W)
 		matSfmBlur:SetFloat("$c0_y", 1 / H)
 		matSfmBlur:SetFloat("$c0_z", SSAO_FAR)
-		matSfmBlur:SetFloat("$c0_w", disc)
+		matSfmBlur:SetFloat("$c0_w", math.max(H * SFM_DISC, 1.5))
 		matSfmBlur:SetFloat("$c1_x", 0.02)
+		matSfmBlur:SetFloat("$c1_y", sx)
+		matSfmBlur:SetFloat("$c1_z", sy)
 		pass(a, matSfmBlur)
 		R.lastAO, R.lastDepth = a, depth
 		return a
 	end
 
+	local radius = math.Clamp(rad, 2, 256)
 	matAO:SetTexture("$basetexture", depth)
 	matAO:SetFloat("$c0_x", radius)
-	matAO:SetFloat("$c0_y", math.Clamp(cvStrength:GetFloat(), 0, 4))
+	matAO:SetFloat("$c0_y", math.Clamp(str, 0, 4))
 	matAO:SetFloat("$c0_z", SSAO_FAR)
 	matAO:SetFloat("$c0_w", 0.1)
 	matAO:SetFloat("$c1_x", tx)
@@ -314,6 +374,16 @@ function R.SSAOMask(src, W, H, aspect, passes)
 
 	R.lastAO, R.lastDepth = a, depth
 	return a
+end
+
+-- the picture in the pushed render target (its rectangle 0, 0, w, h) times the visibility
+function R.MultiplyAORect(mask, w, h)
+	if not mask then return end
+	render.OverrideBlend(true, BLEND_DST_COLOR, BLEND_ZERO, BLENDFUNC_ADD, BLEND_ZERO, BLEND_ONE, BLENDFUNC_ADD)
+	matShow:SetTexture("$basetexture", mask)
+	render.SetMaterial(matShow)
+	render.DrawScreenQuadEx(0, 0, w, h)
+	render.OverrideBlend(false)
 end
 
 -- the frame times the visibility

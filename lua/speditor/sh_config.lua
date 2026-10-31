@@ -3,12 +3,13 @@
 SPeditor = SPeditor or {}
 SPeditor.Name     = "GM:FM"
 SPeditor.FullName = "Garry's Mod Filmmaker"
-SPeditor.Version = "b0.2.5"
+SPeditor.Version = "b0.2.6"
 SPeditor.VersionBase = "b0.2"   -- the release the patch builds on: About lists its news under the patch's
-SPeditor.VersionPrev = "b0.2.4" -- the patch before this one
+SPeditor.VersionPrev = "b0.2.5" -- the patch before this one
 -- every update since b0.1, newest first: version, release date, prefix of its news in the
 -- language files (About → What's new, b0.2.4)
 SPeditor.History = {
+	{ "b0.2.6", "2026-10-31", "about_y" },
 	{ "b0.2.5", "2026-10-28", "about_x" },
 	{ "b0.2.4", "2026-10-24", "about_w" },
 	{ "b0.2.3", "2026-10-23", "about_u" },
@@ -60,6 +61,7 @@ SPeditor.Net = {
 	Attach        = "SPeditor_Attach",
 	Outfit        = "SPeditor_Outfit",      -- b0.2.4: put a saved outfit on a character (cl_presets.lua)
 	Aim           = "SPeditor_Aim",
+	FocusOn       = "SPeditor_FocusOn",
 	Look          = "SPeditor_Look",
 	CameraFX      = "SPeditor_CameraFX",
 	ShadowCtl     = "SPeditor_ShadowCtl",
@@ -97,6 +99,8 @@ SPeditor.LightFields = {
 	{ key = "glowb", nw = "GlowBright",  min = 0,    max = 4,    default = 1 },
 	{ key = "vol",   nw = "VolStrength", min = 0,    max = 1,    default = 0 },     -- visible beam in the air
 	{ key = "voll",  nw = "VolLength",   min = 0.05, max = 1,    default = 0.5 },   -- beam length as a share of the distance
+	-- b0.2.6 (SFM's verticalFOV): the height of the beam apart from its width; 0 — as wide as high
+	{ key = "vfov",  nw = "LightVFOV",   min = 0,    max = 170,  default = 0 },
 }
 SPeditor.DefaultLightTexture = "effects/flashlight001"
 
@@ -115,6 +119,11 @@ SPeditor.CameraFields = {
 	{ key = "shakefreq", nw = "ShakeFreq", min = 0.2, max = 20, default = 3 },
 	{ key = "smooth",    nw = "CamSmooth", min = 0,   max = 3,  default = 0 },
 	{ key = "znear",     nw = "ZNear",     min = 0.1, max = 100, default = 3 },
+	-- ambient occlusion of this camera (b0.2.6, as SFM's): 0 — as the scene's Render settings,
+	-- 1 — on with its own radius / strength (0 = the scene's), 2 — off for this camera
+	{ key = "ao",         nw = "CamAO",      min = 0, max = 2,   default = 0 },
+	{ key = "aoradius",   nw = "AORadius",   min = 0, max = 256, default = 0 },
+	{ key = "aostrength", nw = "AOStrength", min = 0, max = 4,   default = 0 },
 }
 
 -- Effect objects (a0.3, the speditor_effect entity). An effect is one of:

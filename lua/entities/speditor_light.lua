@@ -28,6 +28,7 @@ function ENT:SetupDataTables()
 	self:NetworkVar("Float", 14, "GlowBright")
 	self:NetworkVar("Float", 15, "VolStrength")    -- visible beam in the air (0 — none)
 	self:NetworkVar("Float", 16, "VolLength")      -- its length as a share of the light distance
+	self:NetworkVar("Float", 17, "LightVFOV")      -- b0.2.6: the vertical angle of the beam (0 — the same as LightFOV)
 	self:NetworkVar("Bool", 2, "LightOrtho")       -- parallel beam ("sun") instead of a cone
 	self:NetworkVar("String", 0, "LightTexture")   -- light mask (the LampTextures list)
 	self:NetworkVar("Bool", 0, "LightEnabled")
@@ -210,7 +211,15 @@ if CLIENT then
 			-- near limit: closer than this the light does not shine and casts no shadows
 			local near = self:GetShadowNear()
 			pt:SetNearZ(math.Clamp(near > 0 and near or 10, 1, math.max(radius - 8, 1)))
-			pt:SetFOV(math.Clamp(self:GetLightFOV(), 5, 120))
+			local hf = math.Clamp(self:GetLightFOV(), 5, 170)
+			local vf = self.GetLightVFOV and self:GetLightVFOV() or 0
+			if vf > 0 then
+				-- a wide, low strip of light (SFM's horizontal and vertical field of view)
+				pt:SetHorizontalFOV(hf)
+				pt:SetVerticalFOV(math.Clamp(vf, 5, 170))
+			else
+				pt:SetFOV(hf)
+			end
 			-- parallel beam: shadows do not spread from the source (as from the sun)
 			if self:GetLightOrtho() then
 				local s = math.Clamp(self:GetOrthoSize(), 8, 4000)
@@ -312,7 +321,7 @@ if CLIENT then
 					prevA, prevB = a, b
 				end
 			else
-				local half   = math.rad(math.Clamp(self:GetLightFOV(), 5, 120) / 2)
+				local half   = math.rad(math.Clamp(self:GetLightFOV(), 5, 170) / 2)
 				local baseR  = radius * math.tan(half)
 				local prev
 				for i = 0, 32 do

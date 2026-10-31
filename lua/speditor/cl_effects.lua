@@ -499,7 +499,11 @@ function E.Update(ent)
 	st.lastT = T
 	if moved and not advancing and (live or st.age > 0) then st.movedAt = now end
 	local resim = false
-	if st.movedAt and now - st.movedAt > E.MOVE_REST then
+	-- (b0.2.6) a video renders without the rest: an effect that follows a moving weapon at a
+	-- moment that stands still waited 0.2 s of every frame for it, and was started over anyway
+	-- (a particle system only: an effect that plays by itself would be fired again every frame)
+	local rest = (not live and SPeditor.Render and SPeditor.Render.busy) and 0 or E.MOVE_REST
+	if st.movedAt and now - st.movedAt >= rest then
 		st.movedAt = nil
 		resim = true
 	end

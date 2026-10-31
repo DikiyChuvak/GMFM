@@ -497,32 +497,62 @@ function Sd.KeyedCount(fx)
 	return n, on
 end
 
--- Put a camera's keyed variables on for one engine frame; returns what to put back
+-- Put a camera's keyed variables on for an engine frame. (b0.2.6, Workshop: "65 GB of RAM, a
+-- crash — rendering shader addons") They were put back after every frame, so the effects of a
+-- camera were switched on and off twice a frame through the whole render: an addon that makes its
+-- buffers or meshes when its effect is switched on made them anew every frame. Now the camera's
+-- values stay on while engine frames keep coming and the player's own come back once, half a second
+-- after the last one (SPeditor.Shaders held / RestoreKeyed below); a variable the next camera
+-- does not key gets the player's value back at once.
+Sd.held = Sd.held or {}         -- [variable] = the player's own value while a camera's is on it
+local HOLD = 0.5
+
 function Sd.ApplyKeyed(fx)
-	if not istable(fx) then return nil end
-	local back
-	for id, t in pairs(fx) do
+	local want = {}
+	for id, t in pairs(istable(fx) and fx or {}) do
 		if istable(t) and t.on and string.sub(id, 1, #Sd.KEY_PREFIX) == Sd.KEY_PREFIX then
 			for name, v in pairs(t) do
-				local cv = name ~= "on" and GetConVar(name)
-				if cv then
-					local s = isnumber(v) and tostring(math.Round(v, 4)) or tostring(v)
-					local had = cv:GetString()
-					if had ~= s and (tonumber(had) == nil or tonumber(had) ~= tonumber(s)) then
-						back = back or {}
-						if back[name] == nil then back[name] = had end
-						pcall(cv.SetString, cv, s)
-					end
+				if name ~= "on" and GetConVar(name) then
+					want[name] = isnumber(v) and tostring(math.Round(v, 4)) or tostring(v)
 				end
 			end
 		end
 	end
-	return back
+	for name, own in pairs(Sd.held) do
+		if want[name] == nil then
+			local cv = GetConVar(name)
+			if cv and cv:GetString() ~= own then pcall(cv.SetString, cv, own) end
+			Sd.held[name] = nil
+		end
+	end
+	for name, s in pairs(want) do
+		local cv = GetConVar(name)
+		local had = cv:GetString()
+		if had ~= s and (tonumber(had) == nil or tonumber(had) ~= tonumber(s)) then
+			if Sd.held[name] == nil then Sd.held[name] = had end
+			pcall(cv.SetString, cv, s)
+		end
+	end
+	Sd.heldAt = RealTime()
+	return next(Sd.held) ~= nil or nil
 end
 
-function Sd.RestoreKeyed(back)
-	for name, s in pairs(back or {}) do
-		local cv = GetConVar(name)
-		if cv then pcall(cv.SetString, cv, s) end
-	end
+-- the frame is shot: the player's values come back once no engine frame has asked for a while
+function Sd.RestoreKeyed()
+	Sd.heldAt = RealTime()
 end
+
+function Sd.RestoreAllKeyed()
+	for name, own in pairs(Sd.held) do
+		local cv = GetConVar(name)
+		if cv then pcall(cv.SetString, cv, own) end
+	end
+	Sd.held = {}
+end
+
+SPeditor.Hook("Think", "SPeditor.ShadersHeld", function()
+	if next(Sd.held) == nil or RealTime() - (Sd.heldAt or 0) < HOLD then return end
+	if SPeditor.Export and SPeditor.Export.Busy and SPeditor.Export.Busy() then return end
+	Sd.RestoreAllKeyed()
+end)
+SPeditor.Hook("ShutDown", "SPeditor.ShadersHeld", function() Sd.RestoreAllKeyed() end)

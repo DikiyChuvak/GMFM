@@ -66,7 +66,10 @@ local preview
 local function listen(path)
 	if IsValid(preview) then preview:Stop() end
 	preview = nil
+	local Web = SPeditor.WebAudio
+	if Web then Web.StopPreview() end
 	if not path then return end
+	if Web and Web.Play(path, 1) then return end
 	sound.PlayFile(path, "noblock", function(ch)
 		if not IsValid(ch) then
 			SPeditor.Notify("#snd_pick_failed|" .. path, 1)

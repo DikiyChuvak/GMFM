@@ -184,6 +184,7 @@ function C.GetLook(ent)
 		l.stretch, l.noshadow = l.stretch or { 1, 1, 1 }, l.noshadow or false
 		l.locks, l.tints = l.locks or {}, l.tints or {}
 		l.flexscale = l.flexscale or 1
+		if not l.vmfov and ent:GetNW2Float("SPeditor_VMFov", 0) > 0 then l.vmfov = ent:GetNW2Float("SPeditor_VMFov", 0) end
 		return l
 	end
 	local c = ent:GetColor()
@@ -199,6 +200,8 @@ function C.GetLook(ent)
 	if #hb > 0 then look.hidebones = hb end
 	look.tints = C.GetTints(ent)
 	look.flexscale = ent:GetNW2Float("SPeditor_FlexScale", 1)
+	local vmf = ent:GetNW2Float("SPeditor_VMFov", 0)
+	if vmf > 0 then look.vmfov = vmf end
 	-- the base pose of a model without physics (prop_dynamic): its animation and moment
 	if ent:GetClass() == "prop_dynamic" then
 		look.seq, look.cycle = ent:GetSequenceName(ent:GetSequence()), math.max(ent:GetNW2Float("SPeditor_Cycle", 0), 0)
@@ -284,7 +287,20 @@ function C.SendCameraFX(ent, fx, now, noHist)
 	end)
 end
 
--- Attach ent to parent (bone: ragdoll bone index, or -1 — to the object itself);
+-- (b0.2.6) Where an object (at pos, ang as it is drawn) sits in a bone the client draws itself: the
+-- offset the server keeps (S.DrawnBone). A bone of a model with a skeleton, or a bone with no body of
+-- its own (a finger, hair) of a ragdoll; nil for the others (the server works those out from bodies).
+function C.DrawnOffset(parent, bone, pos, ang)
+	if not (IsValid(parent) and bone and bone >= 0) then return nil end
+	if C.IsRagdoll(parent) and C.PhysIndexOfBone(parent, bone) ~= nil then return nil end
+	parent:SetupBones()
+	local m = parent:GetBoneMatrix(bone)
+	if not m then return nil end
+	local p, a = WorldToLocal(pos, ang, m:GetTranslation(), m:GetAngles())
+	return { p = p, a = a }
+end
+
+-- Attach ent to parent (bone: a bone index of the parent, or -1 — to the object itself);
 -- parent = nil — detach.
 function C.SendAttach(ent, parent, bone, noHist)
 	if not IsValid(ent) then return end
@@ -325,11 +341,36 @@ function C.SendAttach(ent, parent, bone, noHist)
 	net.WriteEntity(ent)
 	net.WriteEntity(IsValid(parent) and parent or NULL)
 	net.WriteInt(bone or -1, 16)
+	-- (b0.2.6) where the object sits in the bone as it is drawn now: the server keeps that offset.
+	-- Far from a ragdoll's bone the object is put into it, as S.SnapToBone does (zero offset)
+	local pos, ang = SPeditor.LivePos(ent)
+	local off = IsValid(parent) and C.DrawnOffset(parent, bone, pos, ang) or nil
+	if off and C.IsRagdoll(parent) then
+		local bm = parent:GetBoneMatrix(bone)
+		local center = LocalToWorld(ent:OBBCenter(), angle_zero, pos, ang)
+		if bm and center:Distance(bm:GetTranslation()) > math.max(ent:BoundingRadius(), 12) then
+			off = { p = vector_origin, a = angle_zero }
+		end
+	end
+	net.WriteBool(off ~= nil)
+	if off then
+		SPeditor.WriteVecF(off.p)
+		SPeditor.WriteAngF(off.a)
+	end
 	net.SendToServer()
 end
 
 -- Look-at (a0.7): the camera / light ent keeps turning to target (bone: a ragdoll bone, -1 —
 -- the head of a character or the middle of a prop); target = nil — it stops.
+-- (b0.2.6) keep the camera's focus on an object (nil — off)
+function C.SendFocusOn(cam, target)
+	if not IsValid(cam) then return end
+	net.Start(Net.FocusOn)
+	net.WriteEntity(cam)
+	net.WriteEntity(IsValid(target) and target or NULL)
+	net.SendToServer()
+end
+
 function C.SendAim(ent, target, bone, noHist)
 	if not IsValid(ent) then return end
 	if not noHist then
@@ -364,12 +405,25 @@ function C.SendDuplicate(ent)
 end
 
 function C.SendTransform(ent, pos, ang, now)
+	-- (b0.2.6) an object held at a bone the client draws: its offset from that bone goes with the place
+	local par = ent:GetNW2Entity("SPeditor_Parent")
+	local off = nil
+	if ent:GetNW2Bool("SPeditor_AttDrawn", false) and IsValid(par) then
+		off = C.DrawnOffset(par, ent:GetNW2Int("SPeditor_ParentBone", -1), pos, ang)
+	else
+		pos, ang = SPeditor.LiveToNet(ent, pos, ang)
+	end
 	dispatch("tr" .. ent:EntIndex(), now, function()
 		if not IsValid(ent) then return end
 		net.Start(Net.Transform)
 		net.WriteEntity(ent)
 		SPeditor.WriteVecF(pos)
 		SPeditor.WriteAngF(ang)
+		net.WriteBool(off ~= nil)
+		if off then
+			SPeditor.WriteVecF(off.p)
+			SPeditor.WriteAngF(off.a)
+		end
 		net.SendToServer()
 	end)
 end
@@ -749,6 +803,13 @@ function C.SendCleanup()
 	net.SendToServer()
 end
 
+-- "Clear the scene" of the menus (b0.2.6): the objects and whatever else belongs to the scene on
+-- this client — the NPC marks of a take (they stayed and had to be removed in the Record window)
+function C.ClearScene()
+	C.SendCleanup()
+	hook.Run("SPeditor_ClearScene")
+end
+
 function C.SendPoseApply(ent, pose)
 	if not IsValid(ent) or type(pose) ~= "table" then return end
 	net.Start(Net.PoseApply)
@@ -800,6 +861,7 @@ end
 ---------------------------------------------------------------------
 net.Receive(Net.State, function()
 	C.active = net.ReadBool()
+	C.stateAt = RealTime()
 	hook.Run("SPeditor_StateChanged", C.active)
 end)
 

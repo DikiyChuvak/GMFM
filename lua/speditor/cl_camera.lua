@@ -114,6 +114,15 @@ SPeditor.Hook("CalcView", "SPeditor.CalcView", function()
 	return { origin = pos, angles = ang, fov = fov, drawviewer = false, znear = znear }
 end)
 
+-- The engine's own motion blur (mat_motion_blur_enabled, Options → Video → Motion blur) works
+-- out the blur from how far the main view moved since its last frame. In the editor the main view
+-- jumps between the work camera and the camera of an "engine frame", so a video rendered in that
+-- mode came out smeared sideways in every frame (b0.2.6 round 7, shootout_construct at 60 fps).
+-- It is off while the editor is open: the renders blur motion themselves (the shutter).
+SPeditor.Hook("GetMotionBlurValues", "SPeditor.NoEngineBlur", function()
+	if C.active then return 0, 0, 0, 0 end
+end)
+
 -- The main game frame is not needed in the editor: windows cover it entirely and the
 -- viewports draw the scene. Without this hook the engine drew the scene once more, full screen.
 -- Returning true cancels drawing of the world and the HUD; the interface (VGUI) is drawn as usual.
@@ -586,7 +595,7 @@ local FRAME_CVARS = {
 	"gmfm_exposure", "gmfm_aspect", "gmfm_render_side", "gmfm_render_custom",
 	"gmfm_render_w", "gmfm_render_h", "gmfm_render_fullbright", "gmfm_render_ss",
 	"gmfm_dof", "gmfm_dof_aperture", "gmfm_dof_samples",
-	"gmfm_ssao", "gmfm_ssao_radius", "gmfm_ssao_strength", "gmfm_ssao_mode", "gmfm_ssao_passes",
+	"gmfm_ssao", "gmfm_ssao_radius", "gmfm_ssao_strength", "gmfm_ssao_mode", "gmfm_ssao_passes", "gmfm_ssao_bias",
 }
 
 -- Cameras that record their own moves (a0.7): every move, turn or field of view change of
@@ -683,4 +692,175 @@ function C.CenterOf(ent)
 	end
 	if C.IsAux(ent) then return ent:GetPos() end
 	return ent:LocalToWorld(ent:OBBCenter())
+end
+
+---------------------------------------------------------------------
+-- (b0.2.6, as SFM) The focus of a scene camera made visible. While its focal distance or aperture
+-- is changed (and for a moment after) the views draw the plane that is in focus: a view through
+-- that camera tints what is BEHIND the plane inside a lilac square (what is in front of it stays
+-- clear) and shows the distance under the frame; any other view draws the camera's frustum out
+-- to that plane with the square's outline. A selected camera with its own depth of field keeps
+-- the outline in the other views.
+---------------------------------------------------------------------
+-- (b0.2.6 round 8) drawn as SFM draws it (the user's SFM screenshot): a small lilac SQUARE at the
+-- focal distance in the middle of the frame — through the camera it is a translucent square that
+-- tints what is behind the plane (what is in front stays clear), in the other views its outline at
+-- the end of the camera's frustum lines. Before, the whole frame was tinted. Round 9: the square
+-- has one size in the world (SFM's: about 36 units, 0.86 of the frame at 39 units in the
+-- screenshot), so through the camera it grows as the plane comes nearer and shrinks as it goes —
+-- of a constant size on the screen it did not seem to move at all.
+local FOCUS_COL = Color(200, 120, 235)
+local FOCUS_SIDE = 36       -- the square's side, units
+C.focusEdit = C.focusEdit or nil
+
+-- the focus distance of a camera's own depth of field (camera effects, cl_postfx.lua) and its
+-- aperture, or nil when the camera has no depth of field
+function C.CameraFocus(ent)
+	local FX = SPeditor.FX
+	if not C.IsCamera(ent) or not FX then return nil end
+	local dof = FX.DOF(C.GetCameraFX(ent))
+	if not dof then return nil end
+	return dof.focus, dof.aperture
+end
+
+-- show the focus of ent for `sec` seconds (an edit of the focus calls it on every change)
+function C.ShowFocus(ent, sec)
+	C.focusEdit = { ent = ent, untilT = RealTime() + (sec or 1.5) }
+end
+
+local function editingFocus()
+	local fe = C.focusEdit
+	if fe and IsValid(fe.ent) and RealTime() < fe.untilT then return fe.ent end
+end
+C.FocusEditing = editingFocus
+
+-- the half size of the frame `dist` in front of the camera (across, down)
+local function frameHalf(fov, dist)
+	local W, H = C.GetRenderSize()
+	fov = C.FrameFOV(fov, W / math.max(H, 1))
+	local hw = dist * math.tan(math.rad(math.Clamp(fov, 1, 170)) / 2)
+	return hw, hw * H / math.max(W, 1)
+end
+
+-- the corners of SFM's focus square `dist` in front of the camera
+local function focusSquare(pos, ang, fov, dist)
+	local half = FOCUS_SIDE / 2
+	local c = pos + ang:Forward() * dist
+	local r, u = ang:Right() * half, ang:Up() * half
+	return c + r + u, c - r + u, c - r - u, c + r - u
+end
+
+SPeditor.Hook("PostDrawTranslucentRenderables", "GMFM.FocusPlane", function(depth, sky)
+	if depth or sky or not C.active or C.hideUI or C.exporting or C.vpPass == "export" then return end
+	-- not into the depth picture of the viewport's occlusion (cl_ssao.lua)
+	local R = SPeditor.Render
+	if R and R.DepthPassActive and R.DepthPassActive() then return end
+	local edit = editingFocus()
+	local sel = C.selected
+	local list = {}
+	if edit then list[1] = edit end
+	if IsValid(sel) and sel ~= edit and C.IsCamera(sel) then list[#list + 1] = sel end
+	for _, cam in ipairs(list) do
+		local focus = C.CameraFocus(cam)
+		if focus then
+			local pos, ang = C.CameraPose(cam)
+			local fov = cam:GetCameraFOV()
+			local a, b, c, d = focusSquare(pos, ang, fov, focus)
+			if C.renderViewEnt == cam then
+				-- the view through the camera: the square itself, depth-tested, while it is changed
+				if cam == edit then
+					render.SetColorMaterial()
+					local col = Color(FOCUS_COL.r, FOCUS_COL.g, FOCUS_COL.b, 90)
+					render.DrawQuad(a, b, c, d, col)
+					render.DrawQuad(d, c, b, a, col)
+				end
+			else
+				-- other views: the frustum out to the plane (the frame's corners) and the square
+				local hw, hh = frameHalf(fov, focus)
+				local fc = pos + ang:Forward() * focus
+				local r, u = ang:Right() * hw, ang:Up() * hh
+				local restore = SPeditor.Render.HelperLighting()
+				render.SetColorMaterialIgnoreZ()
+				local col = Color(FOCUS_COL.r, FOCUS_COL.g, FOCUS_COL.b, cam == edit and 230 or 160)
+				local thin = Color(255, 255, 255, 50)
+				for _, p in ipairs({ fc + r + u, fc - r + u, fc - r - u, fc + r - u }) do render.DrawBeam(pos, p, 0.15, 0, 1, thin) end
+				local w = 0.35
+				render.DrawBeam(a, b, w, 0, 1, col)
+				render.DrawBeam(b, c, w, 0, 1, col)
+				render.DrawBeam(c, d, w, 0, 1, col)
+				render.DrawBeam(d, a, w, 0, 1, col)
+				restore()
+				if cam == edit then
+					render.SetColorMaterial()
+					local fill = Color(FOCUS_COL.r, FOCUS_COL.g, FOCUS_COL.b, 50)
+					render.DrawQuad(a, b, c, d, fill)
+					render.DrawQuad(d, c, b, a, fill)
+				end
+			end
+		end
+	end
+end)
+
+-- (round 9, SFM's "Set Camera Focal Distance") The next click in the Primary Viewport puts the focal
+-- plane of the camera ent on what is under the cursor: the world and props by a trace, characters
+-- by their bones (a client trace goes through ragdolls) — the nearest along the ray.
+local function pointUnderCursor()
+	local o, dir = C.MouseRay()
+	local best
+	local tr = util.TraceLine({ start = o, endpos = o + dir * 32768, mask = MASK_SOLID,
+		filter = function(e) return e ~= LocalPlayer() and not C.IsCamera(e) and not C.IsLight(e) end })
+	if tr.Hit then best = tr.HitPos end
+	local bestAlong = best and (best - o):Dot(dir) or math.huge
+	for _, e in ipairs(C.Objects()) do
+		if IsValid(e) and not C.IsCamera(e) and not C.IsLight(e) and e:GetBoneCount() > 1 and not e:GetNoDraw() then
+			e:SetupBones()
+			for b = 0, e:GetBoneCount() - 1 do
+				local m = e:GetBoneMatrix(b)
+				if m then
+					local p = m:GetTranslation()
+					local along = (p - o):Dot(dir)
+					if along > 1 and along < bestAlong then
+						local off = (p - o - dir * along):Length()
+						if off < math.max(3, along * 0.015) then best, bestAlong = p, along end
+					end
+				end
+			end
+		end
+	end
+	return best
+end
+
+function C.PickFocus(ent)
+	if not C.IsCamera(ent) then return end
+	SPeditor.Notify("#cam_focus_pick_hint", 0)
+	local tool
+	-- not taken for 20 s: the click goes back to selecting
+	timer.Create("GMFM.PickFocus", 20, 1, function() if C.placeTool == tool then C.placeTool = nil end end)
+	tool = {
+		click = function()
+			C.placeTool = nil
+			if not IsValid(ent) then return end
+			local p = pointUnderCursor()
+			if not p then return end
+			local pos, ang = C.CameraPose(ent)
+			local d = math.Clamp((p - pos):Dot(ang:Forward()), 8, 4000)
+			local fx = table.Copy(C.GetCameraFX(ent) or {})
+			fx.dof = istable(fx.dof) and fx.dof or {}
+			fx.dof.on = true
+			fx.dof.focus = math.Round(d, 1)
+			C.SendCameraFX(ent, fx, true)
+			C.ShowFocus(ent, 2.5)
+			surface.PlaySound("garrysmod/ui_click.wav")
+		end,
+	}
+	C.placeTool = tool
+end
+
+-- the distance under the frame of a view through the camera whose focus is being changed
+function C.DrawFocusLabel(ent, ix, iy, iw, ih)
+	if not IsValid(ent) or ent ~= editingFocus() then return end
+	local focus = C.CameraFocus(ent)
+	if not focus then return end
+	draw.SimpleTextOutlined(string.format("%.1f", focus), "SPeditor.Time", ix + iw / 2, iy + ih - 6,
+		color_white, TEXT_ALIGN_CENTER, TEXT_ALIGN_BOTTOM, 1, color_black)
 end

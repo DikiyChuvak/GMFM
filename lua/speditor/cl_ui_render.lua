@@ -57,7 +57,7 @@ local SETTINGS = {
 	"gmfm_aspect", "gmfm_render_side", "gmfm_render_custom", "gmfm_render_w", "gmfm_render_h",
 	"gmfm_render_fullbright", "gmfm_render_ss", "gmfm_dof", "gmfm_dof_aperture", "gmfm_exposure",
 	"gmfm_render_engine", "gmfm_softlight_samples",
-	"gmfm_ssao", "gmfm_ssao_radius", "gmfm_ssao_strength", "gmfm_ssao_mode", "gmfm_ssao_passes",
+	"gmfm_ssao", "gmfm_ssao_radius", "gmfm_ssao_strength", "gmfm_ssao_mode", "gmfm_ssao_passes", "gmfm_ssao_bias",
 }
 
 local function settingsKey(camera)
@@ -110,15 +110,58 @@ SPeditor.Hook("PostRender", "SPeditor.RenderPreview", function()
 	local moving = now - (pv.movedAt or 0) < 0.4 or (C.ScenePlaying and C.ScenePlaying())
 	-- a game with frames to spare re-shoots a moving preview every frame (b0.2.4, UI.FrameRateGood)
 	local fastStep = (moving and UI.FrameRateGood and UI.FrameRateGood()) and 0 or PREVIEW_FAST
+	-- the depth of field the preview shows: the Render window's (focus on the selection or the middle)
+	-- or the camera's own; the Animation tab shows the video as it will be — with depth of field only
+	-- when the video keeps it (b0.2.4, "Depth of field" of the Animation tab)
+	local anim = UI.renderTab == "anim" and not GetConVar("gmfm_render_dof"):GetBool()
+	local function previewDOF()
+		local dof
+		if GetConVar("gmfm_dof"):GetBool() and not anim then
+			dof = { aperture = math.Clamp(GetConVar("gmfm_dof_aperture"):GetFloat(), 0.05, 20),
+				samples = math.min(math.Clamp(GetConVar("gmfm_dof_samples"):GetInt(), 2, 128), PREVIEW_SAMPLES), focus = SPeditor.Export.FocusDistance(src) }
+		end
+		local own = not anim and SPeditor.Export.TrackFocus(src, FX.DOF(fx))
+		if own then dof = { aperture = own.aperture, samples = math.min(own.samples, PREVIEW_SAMPLES), focus = own.focus } end
+		return dof
+	end
 	if R.EngineFor(GetConVar("gmfm_render_fullbright"):GetBool()) then
 		-- "engine frame": the engine shoots the scene in the next game frame, here we take the finished one
 		R.FinishEngineFrame()
 		local E = R.Engine
+		-- (round 10) with depth of field every engine frame is one pass of the lens, cut out shifted and
+		-- added to the ones before (cl_render.lua R.EngineLens); a change starts the passes anew
+		local dof = previewDOF()
+		local lkey = dof and string.format("%s|%s|%s|%.2f|%.1f|%d", key, place, tostring(C.SceneTime and C.SceneTime() or 0),
+			dof.aperture, dof.focus, dof.samples) or nil
 		if E.info and E.info.owner == pv and E.serial ~= pv.engSerial then
 			pv.engSerial = E.serial
-			local ok, rt = pcall(R.EngineToRT, pw, ph, aspect)
-			pv.base = ok and rt or nil
+			local lens = E.info.lens
+			if lens and pv.lens and lens.key == pv.lens.key and lens.pass == pv.lens.done + 1 then
+				local ok = pcall(function()
+					local rt = R.EngineLensToRT(pw, ph, aspect)
+					if rt then R.LensAccumulate(rt, lens.pass, pw, ph) end
+				end)
+				if ok then
+					pv.lens.done = lens.pass
+					pv.base = R.LensAccumulated(pw, ph)
+					pv.samples = pv.lens.done
+				end
+			elseif not lens then
+				local ok, rt = pcall(R.EngineToRT, pw, ph, aspect)
+				pv.base = ok and rt or nil
+			end
 		end
+		if dof then
+			if not pv.lens or pv.lens.key ~= lkey then pv.lens = { key = lkey, done = 0, n = dof.samples, dof = dof } end
+			if pv.lens.done < pv.lens.n and not E.want then
+				local lens = R.EngineLens(pv.lens.dof, pv.lens.done + 1, pv.lens.n, pw, ph, wide.fov)
+				lens.pass, lens.key = pv.lens.done + 1, lkey
+				R.RequestEngineFrame(R.EngineLensSource(wide, lens), { fullbright = GetConVar("gmfm_render_fullbright"):GetBool(),
+					aspect = aspect, owner = pv, lens = lens })
+			end
+			return
+		end
+		pv.lens = nil
 		-- The previous frame stays on screen until a new one is shot, and a new one is ordered no
 		-- more often than once per PREVIEW_FAST. A settings change used to drop the frame and order
 		-- the next one at once; for a camera with an animated field of view (SAeditor) the key
@@ -135,16 +178,13 @@ SPeditor.Hook("PostRender", "SPeditor.RenderPreview", function()
 		local opts = { fullbright = GetConVar("gmfm_render_fullbright"):GetBool(), aspect = aspect,
 			ss = (GetConVar("gmfm_render_ss"):GetBool() and pw < 1280) and 2 or 1 }
 		pv.samples = nil
-		-- the Animation tab shows the video as it will be: with depth of field only when the
-		-- video keeps it (b0.2.4, "Depth of field" of the Animation tab)
-		local anim = UI.renderTab == "anim" and not GetConVar("gmfm_render_dof"):GetBool()
 		if GetConVar("gmfm_dof"):GetBool() and not anim then
 			pv.samples = math.min(math.Clamp(GetConVar("gmfm_dof_samples"):GetInt(), 2, 128), PREVIEW_SAMPLES)
 			opts.dof = { aperture = math.Clamp(GetConVar("gmfm_dof_aperture"):GetFloat(), 0.05, 20), samples = pv.samples,
 				focus = SPeditor.Export.FocusDistance(src) }
 		end
 		-- a camera with its own depth of field (camera effects) uses it instead
-		local own = not anim and FX.DOF(fx)
+		local own = not anim and SPeditor.Export.TrackFocus(src, FX.DOF(fx))
 		if own then
 			pv.samples = math.min(own.samples, PREVIEW_SAMPLES)
 			opts.dof = { aperture = own.aperture, samples = pv.samples, focus = own.focus }
@@ -583,7 +623,8 @@ UI.ToggleRow(host, title, function() return FX.IsOn(C.GetCameraFX(cam), def.id) 
 											set = function(ch, str, final) edit(def.id, prm.key .. "_" .. ch, str, final) end,
 									})
 								else
-									UI.Control(host, { label = "    " .. L("fxp_" .. prm.key), min = prm.min, max = prm.max, default = prm.default,
+									UI.Control(host, { label = "    " .. L(prm.label or ("fxp_" .. prm.key)), min = prm.min, max = prm.uimax or prm.max, default = prm.default,
+											step = prm.step, pow = prm.pow, wheel = prm.wheel,
 											decimals = prm.decimals or 2, value = FX.Get(fx, def.id, prm.key),
 											onChange = function(v, final) edit(def.id, prm.key, v, final) end,
 											getter = function() return IsValid(cam) and FX.Get(C.GetCameraFX(cam), def.id, prm.key) or nil end })
@@ -953,7 +994,7 @@ function UI.OpenRenderDialog(cam)
 	dofBox:SetValue(GetConVar("gmfm_dof"):GetBool() and 1 or 0)
 	dofBox.OnChange = function(_, v) RunConsoleCommand("gmfm_dof", v and "1" or "0") end
 
-	UI.Slider(body, L("render_dof_aperture"), 0.05, 6, 2, GetConVar("gmfm_dof_aperture"):GetFloat(), function(v)
+	UI.Slider(body, L("render_dof_aperture"), 0.05, 2, 2, GetConVar("gmfm_dof_aperture"):GetFloat(), function(v)
 		RunConsoleCommand("gmfm_dof_aperture", tostring(math.Round(v, 2)))
 	end)
 
@@ -996,12 +1037,17 @@ function UI.OpenRenderDialog(cam)
 	aoMode:AddChoice(L("render_ssao_classic"), "classic", curMode == "classic")
 	aoMode.OnSelect = function(_, _, _, data) RunConsoleCommand("gmfm_ssao_mode", data) end
 	aoMode:SetTooltip(L("render_ssao_mode_tip"))
-	UI.Slider(body, L("render_ssao_radius"), 4, 128, 0, GetConVar("gmfm_ssao_radius"):GetFloat(), function(v)
-		RunConsoleCommand("gmfm_ssao_radius", tostring(math.Round(v)))
-	end)
-	UI.Slider(body, L("render_ssao_strength"), 0.1, 4, 2, GetConVar("gmfm_ssao_strength"):GetFloat(), function(v)
+	-- (round 7) SFM's camera settings and meaning: SSAORadius 15, SSAOStrength 1 (how deep the
+	-- occluders reach), SSAOBias 0.0005; a scene camera may have its own (Camera effects)
+	UI.Slider(body, L("render_ssao_radius"), 1, 128, 1, GetConVar("gmfm_ssao_radius"):GetFloat(), function(v)
+		RunConsoleCommand("gmfm_ssao_radius", tostring(math.Round(v, 1)))
+	end):SetTooltip(L("render_ssao_radius_tip"))
+	UI.Slider(body, L("render_ssao_strength"), 0.1, 10, 2, GetConVar("gmfm_ssao_strength"):GetFloat(), function(v)
 		RunConsoleCommand("gmfm_ssao_strength", tostring(math.Round(v, 2)))
-	end)
+	end):SetTooltip(L("render_ssao_strength_tip"))
+	UI.Slider(body, L("render_ssao_bias"), 0, 0.01, 4, GetConVar("gmfm_ssao_bias"):GetFloat(), function(v)
+		RunConsoleCommand("gmfm_ssao_bias", tostring(math.Round(v, 4)))
+	end):SetTooltip(L("render_ssao_bias_tip"))
 	-- round 6: SFM's progressive occlusion — the passes averaged in a render (SFM mode)
 	UI.Slider(body, L("render_ssao_passes"), 1, 64, 0, GetConVar("gmfm_ssao_passes"):GetInt(), function(v)
 		RunConsoleCommand("gmfm_ssao_passes", tostring(math.Round(v)))

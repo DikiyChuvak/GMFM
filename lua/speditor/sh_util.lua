@@ -103,25 +103,47 @@ function SPeditor.LivePos(ent)
 		local par = ent:GetNW2Entity("SPeditor_Parent")
 		if IsValid(par) then
 			local np, na = ent:GetNetworkOrigin(), ent:GetNetworkAngles()
-			if par:GetClass() == "prop_ragdoll" then
-				-- b0.2.5: at its offset from the bone of the hand as the hand is drawn now
-				local bone = ent:GetNW2Int("SPeditor_ParentBone", -1)
-				if bone >= 0 and ent:GetNW2Bool("SPeditor_AttRel", false) then
-					if par.SPeditor_BonesAt ~= FrameNumber() then
-						par.SPeditor_BonesAt = FrameNumber()
-						par:SetupBones()
-					end
-					local m = par:GetBoneMatrix(bone)
-					if m then return LocalToWorld(ent:GetNW2Vector("SPeditor_AttP"), ent:GetNW2Angle("SPeditor_AttA"), m:GetTranslation(), m:GetAngles()) end
+			-- b0.2.5: at its offset from the bone of the hand as the hand is drawn now; (b0.2.6) the same
+			-- for a bone of any model with a skeleton, and for a finger / hair of a ragdoll
+			local bone = ent:GetNW2Int("SPeditor_ParentBone", -1)
+			if bone >= 0 and ent:GetNW2Bool("SPeditor_AttRel", false) then
+				if par.SPeditor_BonesAt ~= FrameNumber() then
+					par.SPeditor_BonesAt = FrameNumber()
+					par:SetupBones()
 				end
-				-- a ragdoll is drawn at the places its bodies were sent with
-				return np, na
+				local m = par:GetBoneMatrix(bone)
+				if m then return LocalToWorld(ent:GetNW2Vector("SPeditor_AttP"), ent:GetNW2Angle("SPeditor_AttA"), m:GetTranslation(), m:GetAngles()) end
 			end
+			-- a ragdoll is drawn at the places its bodies were sent with
+			if par:GetClass() == "prop_ragdoll" then return np, na end
 			local lp, la = WorldToLocal(np, na, par:GetNetworkOrigin(), par:GetNetworkAngles())
 			return LocalToWorld(lp, la, par:GetPos(), par:GetAngles())
 		end
 	end
 	return ent:GetPos(), ent:GetAngles()
+end
+
+-- The other way round (b0.2.6): a place in the drawn world of an object held at a hand -> the
+-- place to send to the server, so that its offset from the server's bone is the offset from the
+-- bone as drawn here. On some characters the two bones are a little apart (bones between the
+-- physics bodies drawn otherwise than the server works them out): the object was moved from where
+-- it is drawn but kept the server's offset, and jumped aside at every touch of the gizmo.
+function SPeditor.LiveToNet(ent, pos, ang)
+	if not CLIENT or not IsValid(ent) then return pos, ang end
+	local par = ent:GetNW2Entity("SPeditor_Parent")
+	local bone = ent:GetNW2Int("SPeditor_ParentBone", -1)
+	if not IsValid(par) or bone < 0 or not ent:GetNW2Bool("SPeditor_AttRel", false) then return pos, ang end
+	if par.SPeditor_BonesAt ~= FrameNumber() then
+		par.SPeditor_BonesAt = FrameNumber()
+		par:SetupBones()
+	end
+	local m = par:GetBoneMatrix(bone)
+	if not m then return pos, ang end
+	-- the server's frame of the bone: where the object is there, less its offset
+	local ip, ia = WorldToLocal(vector_origin, angle_zero, ent:GetNW2Vector("SPeditor_AttP"), ent:GetNW2Angle("SPeditor_AttA"))
+	local fp, fa = LocalToWorld(ip, ia, ent:GetNetworkOrigin(), ent:GetNetworkAngles())
+	local lp, la = WorldToLocal(pos, ang, m:GetTranslation(), m:GetAngles())
+	return LocalToWorld(lp, la, fp, fa)
 end
 
 -- Face sliders (b0.2.5). The game takes a flex weight as a share of the controller's range
@@ -146,6 +168,49 @@ end
 -- a face at rest: every slider at zero (sliders from -1 to 1 at their middle)
 function SPeditor.FlexRest(ent)
 	for i = 0, (ent:GetFlexNum() or 0) - 1 do SPeditor.FlexSet(ent, i, 0) end
+end
+
+local function twoSided(ent, i)
+	local mn, mx = ent:GetFlexBounds(i)
+	return mn and mx and mn < 0 and mx > 0, mn
+end
+
+-- A face nobody has set (b0.2.6): every two-sided slider at the bottom of its range — the engine's
+-- weight 0. A TF2 mercenary (HWM) spawned from the Q menu and taken into the scene comes like that:
+-- lids, brows, the jaw pushed sideways — and lip sync then kept that crooked face in every key.
+-- Such a face is put at rest (the one-sided sliders, already at zero, are left alone).
+function SPeditor.FlexRestIfUnset(ent)
+	if not IsValid(ent) then return false end
+	local n, any = ent:GetFlexNum() or 0, false
+	for i = 0, n - 1 do
+		if twoSided(ent, i) then
+			if ent:GetFlexWeight(i) ~= 0 then return false end
+			any = true
+		end
+	end
+	if not any then return false end
+	for i = 0, n - 1 do
+		if twoSided(ent, i) then SPeditor.FlexSet(ent, i, 0) end
+	end
+	return true
+end
+
+-- The same face written into a scene ({ [flex id] = slider value }, a pose or a key): many
+-- two-sided sliders exactly at their bottom. Those are dropped (= at rest); true — it was such a face.
+function SPeditor.FlexFixUnset(ent, flex)
+	if not IsValid(ent) or not istable(flex) then return false end
+	local n, total, low = ent:GetFlexNum() or 0, 0, {}
+	for i = 0, n - 1 do
+		local two, mn = twoSided(ent, i)
+		if two then
+			total = total + 1
+			local v = tonumber(flex[i])
+			if v and math.abs(v - mn) < 1e-4 then low[#low + 1] = i end
+		end
+	end
+	if #low < 4 or #low < total * 0.4 then return false end
+	for _, i in ipairs(low) do flex[i] = nil end
+	return true
 end
 
 -- The physics body of exactly this bone, or nil (a finger, a toe)

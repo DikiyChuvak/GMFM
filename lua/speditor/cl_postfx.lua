@@ -110,14 +110,26 @@ end
 ---------------------------------------------------------------------
 -- focalDistance / aperture / depthOfFieldQuality of an SFM camera. Without this effect the
 -- depth of field of the Render window is used (focus on the selected object).
+-- (round 9) the sliders: the focus on a curve (most of it for the near distances, the wheel steps
+-- it), the aperture 0..2 in steps of 0.1 (Shift: 0.01) — above 0.4 the frame is already very soft;
+-- larger values of older scenes are kept (max 20). SFM's default aperture 0.2.
 define({ id = "dof", cat = "sfm", scene = true, params = {
-			{ key = "focus", min = 8, max = 4000, default = 200, decimals = 0 },
-			{ key = "aperture", min = 0.05, max = 20, default = 0.6 },
+			{ key = "focus", min = 8, max = 4000, default = 200, decimals = 1, pow = 3, wheel = true },
+			{ key = "aperture", min = 0, max = 20, uimax = 2, step = 0.1, wheel = true, default = 0.2 },
 			{ key = "samples", min = 2, max = 128, default = 32, decimals = 0 },
 } })
 
 -- toneMapScale: brightness of this camera's picture (multiplies the editor's exposure)
 define({ id = "tonemap", cat = "sfm", scene = true, params = { { key = "scale", min = 0.1, max = 4, default = 1 } } })
+
+-- (b0.2.6 round 7) SSAORadius / SSAOStrength / SSAOBias of an SFM camera, with SFM's defaults:
+-- this camera's ambient occlusion, on even when the Render window's is off (cl_ssao.lua,
+-- R.SSAOParams). Strength is how deep behind a surface the occluders still count (SFM's meaning).
+define({ id = "ssao", cat = "sfm", scene = true, params = {
+			{ key = "radius", label = "fxp_ssao_radius", min = 1, max = 128, default = 15, decimals = 1 },
+			{ key = "strength", label = "fxp_ssao_strength", min = 0.1, max = 10, default = 1 },
+			{ key = "bias", label = "fxp_ssao_bias", min = 0, max = 0.01, default = 0.0005, decimals = 4 },
+} })
 
 local GRID = 48
 
@@ -408,6 +420,52 @@ define({ id = "bloom", cat = "shaders", params = {
 			render.PopRenderTarget()
 		end })
 
+-- (b0.2.6 round 7) bloomScale / bloomWidth of an SFM camera: SFM blurs its linear frame with a
+-- Gaussian (sfm_blurfilterx / y, sigma = bloomWidth pixels) and adds it times bloomScale
+-- (sfm_integercombine) — no threshold, the bright parts glow because they are bright. Here the
+-- frame goes into linear light in a quarter-size texture (shaders_src/gmfm_sfmbloom2b.hlsl), is
+-- blurred there, and is added back in linear light. The width is taken for SFM's 720-line
+-- viewport and scaled with the frame, so the preview, the viewport and the render match.
+local matSfmBloom
+local function sfmBloomMat()
+	matSfmBloom = matSfmBloom or CreateMaterial("gmfm_sfmbloom2b", "screenspace_general", {
+		["$pixshader"] = "gmfm_sfmbloom2b_ps20b",
+		["$basetexture"] = "vgui/white", ["$texture1"] = "vgui/white",
+		["$ignorez"] = "1", ["$vertextransform"] = "1", ["$copyalpha"] = "0",
+		["$linearread_basetexture"] = "1", ["$linearread_texture1"] = "1", ["$linearwrite"] = "1",
+		["$alpha_blend"] = "0", ["$alpha_blend_color_overlay"] = "0",
+	})
+	return matSfmBloom
+end
+define({ id = "sfmbloom", cat = "sfm", params = {
+			{ key = "scale", label = "fxp_bloom_scale", min = 0, max = 2, default = 0.28 },
+			{ key = "width", label = "fxp_bloom_width", min = 1, max = 40, default = 9, decimals = 1 },
+		},
+		apply = function(ctx, p)
+			if p.scale <= 0 then return end
+			local m = sfmBloomMat()
+			local tex = render.GetBloomTex0()
+			local tw, th = tex:Width(), tex:Height()
+			m:SetTexture("$basetexture", ctx.cur)
+			m:SetFloat("$c0_x", 0)
+			render.PushRenderTarget(tex)
+			render.SetMaterial(m)
+			render.DrawScreenQuad()
+			render.PopRenderTarget()
+			-- sigma in the frame's pixels (ctx.fh: a picture in a part of the texture, the viewport),
+			-- then in the texels of the (stretched) quarter texture
+			local sigma = p.width * (ctx.fh or ctx.h) / 720
+			render.BlurRenderTarget(tex, sigma * tw / ctx.w, sigma * th / ctx.h, 2)
+			m:SetTexture("$texture1", tex)
+			m:SetFloat("$c0_x", 1)
+			m:SetFloat("$c0_y", p.scale)
+			render.PushRenderTarget(ctx.other)
+			render.SetMaterial(m)
+			render.DrawScreenQuad()
+			render.PopRenderTarget()
+			ctx.cur, ctx.other = ctx.other, ctx.cur
+		end })
+
 local matSharpen = Material("pp/sharpen")
 define({ id = "sharpen", cat = "shaders", params = {
 			{ key = "contrast", min = 0, max = 10, default = 1 },
@@ -571,7 +629,7 @@ FX.Cats = { "sfm", "lens", "color", "shaders", "custom", "texturize", "overlay" 
 
 -- Order of application: geometry, tone and colour, then shaders (stock and custom),
 -- overlay and vignette
-local ORDER = { "fisheye", "hdr", "curves", "bloom", "sharpen", "sobel", "toytown", "shader1", "shader2", "shader3",
+local ORDER = { "fisheye", "sfmbloom", "hdr", "curves", "bloom", "sharpen", "sobel", "toytown", "shader1", "shader2", "shader3",
 	"texturize", "overlay", "vignette" }
 FX.Order = {}
 for _, id in ipairs(ORDER) do
@@ -609,6 +667,18 @@ function FX.For(ent)
 		if FX.IsOn(fx, def.id) then return fx end
 	end
 	return nil
+end
+
+-- (b0.2.6 round 8) The camera's SFM bloom in a viewport looking through it, as SFM's viewport shows
+-- it (the other camera effects stay for the preview and the render): rt (w x h) holds the picture in
+-- its top left part, fh pixels high. Returns the texture with the result (rt or spare).
+function FX.ViewBloom(rt, spare, w, h, fx, fh)
+	if not FX.IsOn(fx, "sfmbloom") then return rt end
+	local p = { scale = FX.Get(fx, "sfmbloom", "scale"), width = FX.Get(fx, "sfmbloom", "width") }
+	local ctx = { w = w, h = h, fh = fh, cur = rt, other = spare }
+	local ok, err = pcall(FX.ById.sfmbloom.apply, ctx, p)
+	if not ok then ErrorNoHalt("[GM:FM] viewport bloom: " .. tostring(err) .. "\n") return rt end
+	return ctx.cur
 end
 
 -- Depth of field of a camera: { focus, aperture, samples }, or nil if the camera has none

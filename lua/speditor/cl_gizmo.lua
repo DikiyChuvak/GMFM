@@ -158,6 +158,9 @@ end
 local function getTarget()
 	local ent = C.selected
 	if not IsValid(ent) then return nil end
+	-- (b0.2.6 round 7, as SFM) the Clip Editor only shows: things are moved in the Motion or
+	-- Graph editor (cl_saeditor_ui.lua C.ClipEditor)
+	if C.ClipEditor and C.ClipEditor() then return nil end
 	if ent == C.camera.viewEnt or C.IsLocked(ent) then return nil end
 	if C.selBone < 0 or C.IsAux(ent) then
 		local p, a = C.GetEntityTransform(ent)
@@ -400,15 +403,25 @@ local function buildItems(tgt)
 		return items
 	end
 	if tgt.kind == "manip" then
-		-- a bone offset is given in the space of the parent bone
-		local par, pa = ent:GetBoneParent(tgt.bone), nil
-		if par and par >= 0 then pa = select(2, C.GetBoneWorld(ent, par)) end
-		return { {
-				m0pos = ent:GetManipulateBonePosition(tgt.bone),
-				m0ang = ent:GetManipulateBoneAngles(tgt.bone),
-				m0scale = ent:GetManipulateBoneScale(tgt.bone),
-				parentAng = pa or ent:GetAngles(),
-		} }
+		-- (b0.2.7) every bone of the selection that has no physics object moves together with
+		-- the one the gizmo is on (fingers of a hand, say); each one keeps its own offset
+		local items = {}
+		for _, b in ipairs(C.SelectedBones()) do
+			if b == tgt.bone or (b >= 0 and C.PhysIndexOfBone(ent, b) == nil) then
+				-- a bone offset is given in the space of the parent bone
+				local par, pa = ent:GetBoneParent(b), nil
+				if par and par >= 0 then pa = select(2, C.GetBoneWorld(ent, par)) end
+				local _, wa = C.GetBoneWorld(ent, b)
+				items[#items + 1] = {
+					bone = b, wa0 = wa,
+					m0pos = ent:GetManipulateBonePosition(b),
+					m0ang = ent:GetManipulateBoneAngles(b),
+					m0scale = ent:GetManipulateBoneScale(b),
+					parentAng = pa or ent:GetAngles(),
+				}
+			end
+		end
+		return items
 	end
 	local items = {}
 	for b = 0, ent:GetBoneCount() - 1 do
@@ -737,9 +750,10 @@ local function applyMove(d, off)
 	if d.ik then applyIK(d, off) return end
 	if d.mik then applyManipIK(d, off) return end
 	if d.kind == "manip" then
-		local it = d.items[1]
-		it.m1pos = it.m0pos + WorldToLocal(off, angle_zero, vector_origin, it.parentAng)
-		C.SendBoneManip(d.ent, d.bone, it.m1pos, it.m0ang, it.m0scale)
+		for _, it in ipairs(d.items) do
+			it.m1pos = it.m0pos + WorldToLocal(off, angle_zero, vector_origin, it.parentAng)
+			C.SendBoneManip(d.ent, it.bone or d.bone, it.m1pos, it.m0ang, it.m0scale)
+		end
 		return
 	end
 	for _, it in ipairs(d.items) do
@@ -753,16 +767,17 @@ local function applyTurn(d, M)
 	if d.kind == "manip" then
 		-- the bone in the world = base * manip (the manip turn is the bone's own, applied
 		-- last), so the new manip turn is base⁻¹ * M * the bone at the start
-		local it = d.items[1]
-		if not it.w0 then
-			it.w0 = Matrix()
-			it.w0:SetAngles(d.startAng)
-			local m0 = Matrix()
-			m0:SetAngles(it.m0ang)
-			it.baseInv = (it.w0 * m0:GetInverseTR()):GetInverseTR()
+		for _, it in ipairs(d.items) do
+			if not it.w0 then
+				it.w0 = Matrix()
+				it.w0:SetAngles(it.wa0 or d.startAng)
+				local m0 = Matrix()
+				m0:SetAngles(it.m0ang)
+				it.baseInv = (it.w0 * m0:GetInverseTR()):GetInverseTR()
+			end
+			it.m1ang = (it.baseInv * (M * it.w0)):GetAngles()
+			C.SendBoneManip(d.ent, it.bone or d.bone, it.m0pos, it.m1ang, it.m0scale)
 		end
-		it.m1ang = (it.baseInv * (M * it.w0)):GetAngles()
-		C.SendBoneManip(d.ent, d.bone, it.m0pos, it.m1ang, it.m0scale)
 		return
 	end
 	for _, it in ipairs(d.items) do
@@ -780,13 +795,14 @@ local function applyRotate(d, total)
 		return
 	end
 	if d.kind == "manip" then
-		local it = d.items[1]
-		local a = Angle(it.m0ang.p, it.m0ang.y, it.m0ang.r)
-		if d.axisIndex == 1 then a.r = a.r + total
-		elseif d.axisIndex == 2 then a.p = a.p + total
-		else a.y = a.y + total end
-		it.m1ang = a
-		C.SendBoneManip(d.ent, d.bone, it.m0pos, a, it.m0scale)
+		for _, it in ipairs(d.items) do
+			local a = Angle(it.m0ang.p, it.m0ang.y, it.m0ang.r)
+			if d.axisIndex == 1 then a.r = a.r + total
+			elseif d.axisIndex == 2 then a.p = a.p + total
+			else a.y = a.y + total end
+			it.m1ang = a
+			C.SendBoneManip(d.ent, it.bone or d.bone, it.m0pos, a, it.m0scale)
+		end
 		return
 	end
 	for _, it in ipairs(d.items) do
@@ -805,11 +821,12 @@ end
 local function applyScale(d, factor)
 	local axis = (not d.free) and d.axisIndex or nil
 	if d.kind == "manip" then
-		local it = d.items[1]
-		local s = Vector(it.m0scale.x, it.m0scale.y, it.m0scale.z)
-		if axis then s[axis] = s[axis] * factor else s = s * factor end
-		it.m1scale = Vector(math.Clamp(s.x, 0.01, 20), math.Clamp(s.y, 0.01, 20), math.Clamp(s.z, 0.01, 20))
-		C.SendBoneManip(d.ent, d.bone, it.m0pos, it.m0ang, it.m1scale)
+		for _, it in ipairs(d.items) do
+			local s = Vector(it.m0scale.x, it.m0scale.y, it.m0scale.z)
+			if axis then s[axis] = s[axis] * factor else s = s * factor end
+			it.m1scale = Vector(math.Clamp(s.x, 0.01, 20), math.Clamp(s.y, 0.01, 20), math.Clamp(s.z, 0.01, 20))
+			C.SendBoneManip(d.ent, it.bone or d.bone, it.m0pos, it.m0ang, it.m1scale)
+		end
 		return
 	end
 	for _, it in ipairs(d.items) do
@@ -986,7 +1003,12 @@ local function endDrag()
 			end
 		end
 	elseif d.kind == "manip" then
+		-- every bone the drag moved gets its key: the IK chain (applyManipIK) and the bones of the
+		-- selection (b0.2.7); or the others would fall back to their old keys on the next frame
 		parts[1] = "b" .. d.bone
+		for _, it in ipairs(d.items) do
+			if it.bone and it.bone ~= d.bone then parts[#parts + 1] = "b" .. it.bone end
+		end
 	end
 	C.lastEditParts = { ent = d.ent, parts = table.concat(parts, ","), t = RealTime() }
 	C.PushHistory(d.mode,
@@ -1007,13 +1029,14 @@ function pickClick()
 		C.gizmo.mode = rc.kind == "fk" and "rotate" or "move"
 		return
 	end
-	if IsValid(ent) and not C.IsAux(ent) and C.showSkeleton and not adding then
+	if IsValid(ent) and not C.IsAux(ent) and C.showSkeleton then
 		local b = C.PickBone(ent, 16)
 		-- a click on the body of the selected ragdoll away from the markers: the body part under
 		-- the cursor (the markers are small and hard to hit while animating)
 		if not b and C.IsRagdoll(ent) and C.PickEntity() == ent then b = C.PickBodyBone(ent) end
 		if b then
-			C.Select(ent, b)
+			-- (b0.2.7) Shift / Ctrl + click adds the bone to the bones the gizmo moves together
+			if adding then C.ToggleBone(ent, b) else C.Select(ent, b) end
 			return
 		end
 	end
@@ -1245,7 +1268,7 @@ local function drawSkeleton(ent)
 					local pp = C.GetBoneWorld(ent, par)
 					if pp then render.DrawBeam(pp, p, math.Clamp(p:Distance(vp) * 0.0012 * size, 0.02, 0.35), 0, 1, COL_LINE) end
 				end
-				local isSel = (b == C.selBone)
+				local isSel = (b == C.selBone) or (C.boneSet and C.boneSet[b]) or false
 				local hot   = (b == C.hoverBone and ent == C.selected)
 				local phys  = C.PhysIndexOfBone(ent, b) ~= nil
 				local col   = isSel and COL_SEL or (hot and COL_BONE_HOVER or (phys and COL_PHYS or COL_MANIP))

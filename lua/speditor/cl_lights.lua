@@ -413,7 +413,7 @@ function Lt.DrawVolume(ent, col, bri, vol)
 	local len = ent:GetLightRadius() * math.Clamp(ent:GetVolLength(), 0.05, 1)
 	local ortho = ent:GetLightOrtho()
 	local r0 = ortho and math.Clamp(ent:GetOrthoSize(), 8, 4000) or math.max(ent:GetSourceSize(), 3)
-	local spread = ortho and 0 or math.tan(math.rad(math.Clamp(ent:GetLightFOV(), 5, 120) / 2))
+	local spread = ortho and 0 or math.tan(math.rad(math.Clamp(ent:GetLightFOV(), 5, 170) / 2))
 	local k = math.Clamp(vol, 0, 1) * math.min(bri / 2, 2)
 	local tex = ent:GetLightTexture()
 	if tex == "" then tex = SPeditor.DefaultLightTexture end
@@ -517,7 +517,7 @@ function Lt.DrawEffects(ent)
 		toEye:Mul(1 / dist)
 		local facing = 1
 		if spot then
-			local half = math.rad(math.Clamp(ent:GetLightFOV(), 5, 120) / 2)
+			local half = math.rad(math.Clamp(ent:GetLightFOV(), 5, 170) / 2)
 			local d = fwd:Dot(toEye)
 			-- inside the cone — full brightness, then a smooth falloff down to 12 %
 			facing = 0.12 + 0.88 * math.Clamp((d - math.cos(math.min(half * 2.2, math.pi))) / math.max(math.cos(half) - math.cos(math.min(half * 2.2, math.pi)), 0.01), 0, 1) ^ 2

@@ -59,7 +59,8 @@ local function send(action, t)
 end
 
 -- the view samples not sent yet go to the server (before the stop, so the take has them all)
-local function flushView()
+local closeRun
+local function flushView(final)
 	local r = SA.rec
 	if not r then return end
 	-- the sounds only this client played (a0.9)
@@ -70,6 +71,17 @@ local function flushView()
 	if r.cfx and #r.cfx > 0 then
 		send(5, r.cfx)
 		r.cfx = {}
+	end
+	if final then
+		for key, run in pairs(r.streamRuns or {}) do closeRun(r, key, run) end
+	end
+	if r.cstream and #r.cstream > 0 then
+		send(7, r.cstream)
+		r.cstream = {}
+	end
+	if r.ride and #r.ride > 0 then
+		send(3, r.ride)
+		r.ride = {}
 	end
 	if not r.view then return end
 	if #r.view.batch > 0 then send(2, r.view.batch) end
@@ -125,6 +137,184 @@ COMP:Hook("Think", function()
 		r.cfx = {}
 	end
 end, "record_sounds")
+
+---------------------------------------------------------------------
+-- Sounds the game keeps playing and changing (b0.2.6). An engine of Glide is a few looped files
+-- (sound.PlayFile) whose volume and pitch follow the revs; looped sounds of other addons are
+-- CreateSound patches. The game reports neither as a sound, so a take had no engine at all.
+-- Every channel and patch other addons open is remembered (weakly, the game's own are left as
+-- they are); during a take the playing ones are looked at every keyed frame and become clips
+-- with a volume / pitch line (SA.SoundEnvAt), sent with the other sounds (Rec action 7).
+---------------------------------------------------------------------
+local streams = SA.recStreams or setmetatable({}, { __mode = "k" })     -- channel -> path
+local patches = SA.recPatches or setmetatable({}, { __mode = "k" })     -- patch -> { path, ent }
+SA.recStreams, SA.recPatches = streams, patches
+local function foreign()
+	local info = debug.getinfo(3, "S")
+	return not (info and info.short_src and string.find(info.short_src, "speditor", 1, true))
+end
+SA.RealPlayFile = SA.RealPlayFile or sound.PlayFile
+SA.RealCreateSound = SA.RealCreateSound or CreateSound
+sound.PlayFile = function(path, flags, cb, ...)
+	if not foreign() or not isstring(path) then return SA.RealPlayFile(path, flags, cb, ...) end
+	return SA.RealPlayFile(path, flags, function(ch, ...)
+		if IsValid(ch) then streams[ch] = string.lower(string.gsub(path, "\\", "/")) end
+		if cb then return cb(ch, ...) end
+	end, ...)
+end
+CreateSound = function(ent, path, ...)
+	local p = SA.RealCreateSound(ent, path, ...)
+	if p and isstring(path) and foreign() then patches[p] = { path = path, ent = ent } end
+	return p
+end
+function SA.OwnChannel(ch) streams[ch] = nil end
+
+-- the file of a sound name (a sound script gives its first file)
+local function soundFile(name)
+	local path = soundPath(name)
+	if not path then return nil end
+	if file.Exists(path, "GAME") then return path end
+	local p = sound.GetProperties(string.gsub(name, "^[%^%)%(%#%*%$%<%>%!%?%@%&%~%%]+", ""))
+	local snd = p and p.sound
+	if istable(snd) then snd = snd[1] end
+	path = isstring(snd) and soundPath(snd)
+	return path and file.Exists(path, "GAME") and path or nil
+end
+
+-- the vehicle the player sits in (its copy in the take carries the engine)
+local function myVehicle()
+	local me = LocalPlayer()
+	local v = me.GlideGetVehicle and me:GlideGetVehicle()
+	if IsValid(v) then return v end
+	v = me:GetVehicle()
+	if IsValid(v) then return IsValid(v:GetParent()) and v:GetParent() or v end
+end
+
+closeRun = function(r, key, run)
+	r.streamRuns[key] = nil
+	local len = run.lastF - run.f0 + (r.step or 2)
+	if len < 2 or #run.env == 0 then return end
+	r.cstream = r.cstream or {}
+	if #r.cstream >= 200 then return end
+	r.cstream[#r.cstream + 1] = { run.f0, run.path, len, run.loop and 1 or 0, math.Round(run.ofs or 0, 3), run.owner or 0, run.env }
+end
+
+local function sampleStreams(r, f)
+	r.streamRuns = r.streamRuns or {}
+	local seen = {}
+	local function put(key, path, vol, pitch, loop, ofs, owner)
+		if not path or vol < 0.002 then return end
+		local run = r.streamRuns[key]
+		if run and run.path ~= path then closeRun(r, key, run) run = nil end
+		if not run then
+			run = { f0 = f, path = path, env = {}, loop = loop, ofs = ofs, owner = owner, lastF = f }
+			r.streamRuns[key] = run
+		end
+		seen[key] = true
+		local env, df = run.env, f - run.f0
+		local n = #env
+		-- a point where the line bends, or every half second
+		if n == 0 or math.abs(env[n - 1] - vol) > 0.02 or math.abs(env[n] - pitch) > 1.5 or df - env[n - 2] >= 12 then
+			if #env < SA.MAX_ENV * 3 - 3 then
+				env[n + 1], env[n + 2], env[n + 3] = df, math.Round(vol, 3), math.Round(pitch, 1)
+			end
+		end
+		run.lastF = f
+	end
+	local veh = myVehicle()
+	local vehIdx = IsValid(veh) and veh:EntIndex() or 0
+	-- Glide's engines: its Web Audio backend plays them in a browser panel, past the game's sound.
+	-- The layers and the inputs (revs, throttle) are known here, so the volume and pitch of every
+	-- layer are worked out as Glide works them out for its other backend.
+	local glideCh = {}
+	if Glide and istable(Glide.streamInstances) then
+		local cfg = Glide.Config
+		local carVol = cfg and cfg.GetVolume and cfg.GetVolume("carVolume") or 1
+		for _, st in pairs(Glide.streamInstances) do
+			local parent = istable(st) and st.parent
+			if st.isPlaying and IsValid(parent) and istable(st.layers) and istable(st.inputs)
+				and parent:GetPos():DistToSqr(LocalPlayer():GetPos()) < (r.radius or 1500) ^ 2 then
+				-- (the Web Audio backend keeps its own fade-in; volumeMultiplier stays 0 there)
+				local base = (st.volume or 1) * (st.isWebAudio and 1 or (st.volumeMultiplier or 1)) * carVol
+				for name, layer in pairs(st.layers) do
+					if istable(layer) and isstring(layer.path) then
+						if layer.channel then glideCh[layer.channel] = true end
+						local out = { volume = 1, pitch = 1 }
+						for _, c in ipairs(layer.controllers or {}) do
+							local v = math.Clamp(tonumber(st.inputs[c[1]]) or 0, c[2], c[3])
+							v = math.Remap(v, c[2], c[3], c[5], c[6])
+							if out[c[4]] then out[c[4]] = out[c[4]] * v end
+						end
+						put(layer, "sound/" .. string.lower(layer.path), layer.isMuted and 0 or out.volume * base,
+							out.pitch * (st.pitch or 1) * 100, true, 0, parent:EntIndex())
+					end
+				end
+			end
+		end
+	end
+	for ch, path in pairs(streams) do
+		if IsValid(ch) and not glideCh[ch] and ch:GetState() == GMOD_CHANNEL_PLAYING then
+			-- a stream of the game's own interface or of the map far away is not part of the take;
+			-- a 3D one is placed by the game, a plain one belongs to the player (or the ride)
+			put(ch, path, ch:GetVolume(), ch:GetPlaybackRate() * 100, ch:IsLooping(), ch:GetTime(), vehIdx)
+		end
+	end
+	for p, d in pairs(patches) do
+		if p:IsPlaying() then
+			local owner = IsValid(d.ent) and d.ent:EntIndex() or vehIdx
+			local near = not IsValid(d.ent) or d.ent:GetPos():DistToSqr(LocalPlayer():GetPos()) < (r.radius or 1500) ^ 2
+			if near then
+				d.file = d.file or soundFile(d.path) or false
+				put(p, d.file or nil, p:GetVolume(), p:GetPitch(), true, 0, owner)
+			end
+		end
+	end
+	for key, run in pairs(r.streamRuns) do
+		if not seen[key] then closeRun(r, key, run) end
+	end
+end
+
+-- The rider's pose (b0.2.6): Glide bends the player on a motorbike (leaning, feet on the pegs,
+-- hands on the bars) by bone offsets on this client only, so the server's copy of the take sat
+-- upright with its legs through the bike. While the player rides, the pose drawn here is taken
+-- every keyed frame, in the vehicle's space, and sent to the server (Rec action 3, with the vehicle).
+local function sampleRide(r, f, veh)
+	local me = LocalPlayer()
+	if not IsValid(veh) or not me:Alive() then return end
+	-- in first person the game does not draw the player, and Glide then does not bend it: done here
+	if Glide and Glide.ApplyBoneManipulations and veh.GetSeatBoneManipulations and me.GlideGetSeatIndex then
+		local pose = veh:GetSeatBoneManipulations(me:GlideGetSeatIndex())
+		if pose then Glide.ApplyBoneManipulations(me, pose) end
+	end
+	me:InvalidateBoneCache()
+	me:SetupBones()
+	local vp, va = veh:GetPos(), veh:GetAngles()
+	local bones = {}
+	for b = 0, me:GetBoneCount() - 1 do
+		local m = me:GetBoneMatrix(b)
+		if m then
+			local p, a = WorldToLocal(m:GetTranslation(), m:GetAngles(), vp, va)
+			bones[#bones + 1] = { b, math.Round(p.x, 2), math.Round(p.y, 2), math.Round(p.z, 2),
+				math.Round(a.p, 1), math.Round(a.y, 1), math.Round(a.r, 1) }
+		end
+	end
+	r.ride = r.ride or {}
+	r.ride[#r.ride + 1] = { f, bones, veh:EntIndex() }
+end
+
+COMP:Hook("Think", function()
+	local r = SA.rec
+	local f = takeFrame()
+	if not f then return end
+	if f < (r.nextStreamF or -1) then return end
+	r.nextStreamF = f + (r.step or 2)
+	if r.csnd then sampleStreams(r, f) end
+	sampleRide(r, f, myVehicle())
+	if r.ride and #r.ride >= 6 then
+		send(3, r.ride)
+		r.ride = {}
+	end
+end, "record_streams")
 
 ---------------------------------------------------------------------
 -- Effects of this client (a0.9): weapon bases (ARC9, TFA, ArcCW, MW…) make their muzzle flashes,
@@ -256,7 +446,7 @@ surface.PlaySound = function(name, ...)
 end
 
 local function stopTake()
-	flushView()
+	flushView(true)
 	send(0)
 end
 
@@ -303,6 +493,17 @@ function SA.StartPhysicsTake(uids, from)
 	if SA.rec then return end
 	local list = uids or physObjects(false)
 	if #list == 0 then list = physObjects(true) end
+	-- (b0.2.7) the selected objects that have no physics to fall with are left out, and the editor says so
+	if not uids and #list > 0 then
+		local skipped = 0
+		for _, e in ipairs(C.SelectionList()) do
+			local cls = IsValid(e) and e:GetClass() or ""
+			if not C.IsAux(e) and cls ~= "prop_ragdoll" and cls ~= "prop_physics" or (IsValid(e) and C.AttachParent(e)) then
+				skipped = skipped + 1
+			end
+		end
+		if skipped > 0 then SPeditor.Notify("#sa_rec_phys_skipped|" .. skipped, 2) end
+	end
 	if #list == 0 then
 		SPeditor.Notify("#sa_rec_phys_none", 1)
 		return
@@ -356,6 +557,7 @@ COMP:NetReceive("Rec", function()
 		SA.rec.on, SA.rec.t0 = true, RealTime()
 		-- for the sounds of this client: the take's clock and the option of the interface sounds
 		SA.rec.t0srv, SA.rec.f0, SA.rec.fps = tonumber(t.t0) or CurTime(), tonumber(t.f0) or 0, tonumber(t.fps) or 24
+		SA.rec.step = tonumber(t.step) or 2
 		if cvSounds:GetBool() and not SA.rec.inEditor then SA.rec.csnd, SA.rec.uiSounds = {}, cvUISnd:GetBool() end
 		if cvEffects:GetBool() and not SA.rec.inEditor then
 			SA.rec.cfx, SA.rec.radius = {}, cvRadius:GetFloat()
@@ -412,6 +614,129 @@ COMP:Hook("RenderScene", function(origin, angles, fov)
 	end
 	if RealTime() - v.sentAt > 0.5 then flushView() end
 end, "record_view")
+
+-- The gun in front of the eyes (b0.2.6): in a first-person take the view model — the weapon with
+-- the hands, as the game draws it over the world with its own field of view — is taken every keyed
+-- frame: its place in the view, every bone (in its parent bone's space) and the ratio of its field
+-- of view to the view's. The take makes a model of it hanging on the view camera
+-- (sv_saeditor_record.lua), drawn in that camera's view as the game draws it (see "view model" below).
+-- every bone of a drawn model in its parent bone's space (the root ones in the model's), with the
+-- scale the model was given (weapon bases hide parts by scaling bones to nothing)
+-- rp, ra: what the root bones are taken from instead of the model's own place (the hands: the
+-- view model they are merged on — their own origin lags behind while the player moves)
+local function boneList(ent, rp, ra)
+	local out = {}
+	local ep, ea = rp or ent:GetPos(), ra or ent:GetAngles()
+	for b = 0, ent:GetBoneCount() - 1 do
+		local m = ent:GetBoneMatrix(b)
+		if m then
+			local pb = ent:GetBoneParent(b)
+			local pm = pb >= 0 and ent:GetBoneMatrix(pb)
+			local lp, la
+			if pm then lp, la = WorldToLocal(m:GetTranslation(), m:GetAngles(), pm:GetTranslation(), pm:GetAngles())
+			else lp, la = WorldToLocal(m:GetTranslation(), m:GetAngles(), ep, ea) end
+			local sc = ent:GetManipulateBoneScale(b)
+			local k = math.Round((sc.x + sc.y + sc.z) / 3, 3)
+			out[#out + 1] = { b, math.Round(lp.x, 3), math.Round(lp.y, 3), math.Round(lp.z, 3),
+				math.Round(la.p, 2), math.Round(la.y, 2), math.Round(la.r, 2), k ~= 1 and k or nil }
+		end
+	end
+	return out
+end
+
+-- the bodygroups a weapon base set (parts of the gun shown and hidden as it is reloaded, modded)
+local function groupsOf(ent)
+	local out = {}
+	for i = 0, ent:GetNumBodyGroups() - 1 do
+		local v = ent:GetBodygroup(i)
+		if v ~= 0 then out[tostring(i)] = v end
+	end
+	return out
+end
+
+-- the pose a copy of the model is drawn in before its bone offsets (a model without physics
+-- stands in its first animation; the server knows only the model's bind pose)
+local function restOf(model)
+	local csm = ClientsideModel(model, RENDERGROUP_OPAQUE)
+	if not IsValid(csm) then return nil end
+	csm:SetNoDraw(true)
+	csm:SetPos(vector_origin)
+	csm:SetAngles(angle_zero)
+	csm:ResetSequence(0)
+	csm:SetCycle(0)
+	csm:SetPlaybackRate(0)
+	csm:SetIK(false)
+	csm:InvalidateBoneCache()
+	csm:SetupBones()
+	local rest = boneList(csm)
+	csm:Remove()
+	return rest
+end
+
+COMP:Hook("PostDrawViewModel", function(vm, ply, wep)
+	local v = SA.rec and SA.rec.on and SA.rec.view
+	if not v or ply ~= LocalPlayer() or ply:ShouldDrawLocalPlayer() or not IsValid(vm) then return end
+	local f = v.f0 + math.floor((CurTime() - v.t0) * v.fps / v.step) * v.step
+	if f <= (v.vmLast or -1) then return end
+	local model = string.lower(vm:GetModel() or "")
+	if model == "" or vm:GetNoDraw() then return end
+	v.vmLast = f
+	local vs = render.GetViewSetup()
+	local k = 1
+	if vs and vs.fov and vs.fovviewmodel and vs.fov > 1 then
+		k = math.tan(math.rad(vs.fovviewmodel / 2)) / math.tan(math.rad(vs.fov / 2))
+	end
+	local eye, ea = EyePos(), EyeAngles()
+	local function place(ent)
+		local p, a = WorldToLocal(ent:GetPos(), ent:GetAngles(), eye, ea)
+		return { p.x, p.y, p.z, a.p, a.y, a.r }
+	end
+	v.vmRest = v.vmRest or {}
+	local function restOnce(m)
+		if v.vmRest[m] then return nil end
+		v.vmRest[m] = true
+		return restOf(m)
+	end
+	local smp = { model = model, skin = vm:GetSkin(), k = math.Round(k, 4), rest = restOnce(model), root = place(vm), bones = boneList(vm), bg = groupsOf(vm) }
+	-- the hands as they are drawn (b0.2.6): their own bones, not worn on the copy of the gun —
+	-- weapon bases pose them themselves (ARC9's left hand on the grip floated beside the gun).
+	-- (round 8) Taken where the game has just drawn them (PostDrawPlayerHands below): here, before
+	-- the gamemode draws them, their bones could still be the ones set up earlier in the frame, before
+	-- the view model was swayed into place — the hands of a custom model hung beside the gun. Here
+	-- only as a fallback, with the bones set up anew.
+	local hands = ply:GetHands()
+	local hm = IsValid(hands) and not hands:GetNoDraw() and string.lower(hands:GetModel() or "") or ""
+	if hm ~= "" then
+		hands:InvalidateBoneCache()
+		hands:SetupBones()
+		smp.hands = { model = hm, skin = hands:GetSkin(), col = ply:GetPlayerColor(), rest = restOnce(hm), root = place(vm),
+			bones = boneList(hands, vm:GetPos(), vm:GetAngles()), bg = groupsOf(hands) }
+	end
+	v.batch[#v.batch + 1] = { f, "vm", smp }
+	v.vmSmp, v.vmFrame, v.vmEye = smp, FrameNumber(), { eye, ea }
+end, "record_vm")
+
+-- the hands right after the game drew them over the view model: exactly the pose on the screen
+COMP:Hook("PostDrawPlayerHands", function(hands, vm, ply)
+	local v = SA.rec and SA.rec.on and SA.rec.view
+	if not v or ply ~= LocalPlayer() or not v.vmSmp or v.vmFrame ~= FrameNumber() or not IsValid(hands) then return end
+	local smp, eye = v.vmSmp, v.vmEye
+	v.vmSmp = nil
+	local hm = string.lower(hands:GetModel() or "")
+	if hm == "" then return end
+	-- placed by the view model they are merged on: the hands' own origin is the player's, a tick
+	-- behind — measured on a take, the hands of a walking player hung 7-10 units beside the gun
+	local ref = IsValid(vm) and vm or hands
+	local p, a = WorldToLocal(ref:GetPos(), ref:GetAngles(), eye[1], eye[2])
+	local rest = smp.hands and smp.hands.model == hm and smp.hands.rest or nil
+	if not rest and not (v.vmRest and v.vmRest[hm]) then
+		v.vmRest = v.vmRest or {}
+		v.vmRest[hm] = true
+		rest = restOf(hm)
+	end
+	smp.hands = { model = hm, skin = hands:GetSkin(), col = ply:GetPlayerColor(), rest = rest, root = { p.x, p.y, p.z, a.p, a.y, a.r },
+		bones = boneList(hands, ref:GetPos(), ref:GetAngles()), bg = groupsOf(hands) }
+end, "record_vm")
 
 concommand.Add("gmfm_record", function() SA.StartRecording() end)
 concommand.Add("gmfm_record_stop", function() SA.StopRecording() end)
@@ -661,10 +986,24 @@ end)
 -- they wear): the depth pass of SSAO hides them with NoDraw before its view (cl_ssao.lua) — the
 -- draw callback did not keep them out of it, and their outline darkened the frame ("an invisible
 -- silhouette" in the player)
-function C.HiddenInView(eye)
+local recBodyOf             -- set below
+function C.HiddenInView(eye, viewEnt)
 	local out = {}
+	-- the gun of a first-person take, drawn over its own view after its depth (b0.2.6) and in no
+	-- other view (round 8)
+	for _, e in ipairs(C.Objects()) do
+		local cam = IsValid(e) and e:GetNW2Float("SPeditor_VMFov", 0) > 0 and e:GetNW2Entity("SPeditor_Parent")
+		if cam then
+			out[#out + 1] = e
+			for _, w in ipairs(C.Objects()) do
+				local csm = IsValid(w) and w.SPWorn
+				if IsValid(csm) and csm:GetParent() == e then out[#out + 1] = csm end
+			end
+		end
+	end
+	local recBody = IsValid(viewEnt) and viewEnt:GetNW2Bool("SPeditor_RecEyes", false) and recBodyOf and recBodyOf(viewEnt, eye) or nil
 	for rag, worn in pairs(bodies) do
-		if IsValid(rag) and inEyesAt and inEyesAt(rag, eye) then
+		if IsValid(rag) and (rag == recBody or (inEyesAt and inEyesAt(rag, eye))) then
 			out[#out + 1] = rag
 			for _, csm in ipairs(worn) do out[#out + 1] = csm end
 			for _, e in ipairs(C.Objects()) do
@@ -676,7 +1015,9 @@ function C.HiddenInView(eye)
 end
 
 local function drawNothing() end
+local handsName, handsOffset   -- set below (the hands of older takes glued to the gun)
 local hidden = nil          -- { [ent] = { its own draw callback, the one put instead } } while a view hides someone
+local vmDraw = nil          -- the view models drawn over this view (b0.2.6)
 
 -- (b0.2.5) A body seen from its own eyes: only the head is cut away (a clip plane at the neck),
 -- the body, the arms and the legs stay, as in a first person game. Before, the whole character
@@ -754,9 +1095,40 @@ local function inEyes(ent, eye)
 end
 inEyesAt = inEyes
 
+-- (b0.2.6 round 8) The body whose eyes a take's own camera is: by the names the take gave them
+-- ("<nick> view (rec) 2" — "<nick> (rec) 2"), else the body nearest to the camera. It goes from that
+-- camera whatever its model — a custom model's head may sit far from the game's eye point, and the
+-- skull of a skeleton model filled the view (the distance test above did not take it).
+local REC_BODY_REACH = 64
+function recBodyOf(vcam, eye)
+	local name = vcam:GetNW2String("SPeditor_Name", "")
+	local want = string.gsub(name, " view %(rec%)", " (rec)", 1)
+	local best, bestD = nil, REC_BODY_REACH * REC_BODY_REACH
+	for rag in pairs(bodies) do
+		if IsValid(rag) then
+			if want ~= name and rag:GetNW2String("SPeditor_Name", "") == want then return rag end
+			local at = eyesOf(rag) or rag:WorldSpaceCenter()
+			local d = at:DistToSqr(eye)
+			if d < bestD then best, bestD = rag, d end
+		end
+	end
+	return best
+end
+
+local hiddenKey = nil
 COMP:Hook("PreDrawOpaqueRenderables", function(depth, skybox, sky3d)
 	if skybox or sky3d then return end
-	if hidden and hiddenFrame == FrameNumber() then return end
+	local eye = EyePos()
+	-- the camera of a recorded take (the player's own eyes, b0.2.5): the whole body goes, as in the
+	-- game's first person; any other camera at the eyes shows the body without the head
+	local vcam = C.renderViewEnt
+	if not IsValid(vcam) and SA.show and IsValid(SA.show.cam) then vcam = SA.show.cam end
+	if not IsValid(vcam) and C.camera then vcam = C.camera.viewEnt end
+	-- (round 9) kept for the rest of the same view only: a view whose translucent pass is skipped (the
+	-- depth pass of the occlusion) left its set behind, and the next view of the frame took it — the
+	-- take's own camera showed the skull of its body and no gun while a viewport had occlusion on
+	local key = tostring(vcam) .. string.format("%.1f %.1f %.1f", eye.x, eye.y, eye.z)
+	if hidden and hiddenFrame == FrameNumber() and hiddenKey == key then return end
 	if hidden then
 		for e, keep in pairs(hidden) do
 			if IsValid(e) and e.RenderOverride == keep[2] then e.RenderOverride = keep[1] end
@@ -764,21 +1136,41 @@ COMP:Hook("PreDrawOpaqueRenderables", function(depth, skybox, sky3d)
 	end
 	givePacBack()
 	hidden, hidePlayer = {}, false
-	local eye = EyePos()
-	-- the camera of a recorded take (the player's own eyes, b0.2.5): the whole body goes, as in the
-	-- game's first person; any other camera at the eyes shows the body without the head
-	local vcam = C.renderViewEnt
-	if not IsValid(vcam) and SA.show and IsValid(SA.show.cam) then vcam = SA.show.cam end
-	if not IsValid(vcam) and C.camera then vcam = C.camera.viewEnt end
+	hiddenKey = key
 	local recEyes = IsValid(vcam) and (vcam:GetNW2Bool("SPeditor_RecEyes", false)
 		or string.find(vcam:GetNW2String("SPeditor_Name", ""), "view (rec)", 1, true) ~= nil)
-	for rag, worn in pairs(bodies) do
-		if IsValid(rag) and inEyes(rag, eye) then
+	-- only a camera of the scene at the eyes is a first-person view: the free work camera brought up
+	-- to a face (to pose it) or into a body keeps everything drawn (b0.2.6; the head went before)
+	local recBody = recEyes and recBodyOf(vcam, eye) or nil
+	for rag, worn in pairs(IsValid(vcam) and bodies or {}) do
+		if IsValid(rag) and (rag == recBody or inEyes(rag, eye)) then
 			local n, d
 			if cvFPBody:GetBool() and not recEyes then n, d = neckPlane(rag) end
 			local draw = n and clippedDraw({ n, d }) or nil
 			hide(rag, draw)
 			for _, csm in ipairs(worn) do hide(csm, draw) end
+		end
+	end
+	-- the gun of a first-person take hanging on this camera: kept out of the world's drawing and
+	-- drawn over it with its own field of view (PostDrawTranslucentRenderables below). (round 8) In
+	-- every other view the view models are not drawn at all, as in the game: drawn in the world they
+	-- were long thin sticks (stretched for their field of view) and hands hanging beside the body.
+	vmDraw = nil
+	for _, e in ipairs(C.Objects()) do
+		if IsValid(e) and e:GetNW2Float("SPeditor_VMFov", 0) > 0 then
+			local mine = IsValid(vcam) and e:GetNW2Entity("SPeditor_Parent") == vcam
+			if mine then
+				vmDraw = vmDraw or {}
+				vmDraw[#vmDraw + 1] = e
+			end
+			hide(e)
+			for _, w in ipairs(C.Objects()) do
+				local csm = IsValid(w) and w.SPWorn
+				if IsValid(csm) and csm:GetParent() == e then
+					if mine then vmDraw[#vmDraw + 1] = csm end
+					hide(csm)
+				end
+			end
 		end
 	end
 	-- the player itself, standing where the take ended (the editor and the player of the
@@ -802,8 +1194,78 @@ COMP:Hook("PrePlayerDraw", function(p)
 	if hidePlayer and p == LocalPlayer() then return true end
 end, "eye_hide")
 
+-- (b0.2.6 round 8) The hands of takes recorded before round 8 hang beside the gun while the player
+-- walked (their origin was a tick behind, all bones shifted alike). In the game they are merged on
+-- the gun's bones, so where both hands are off the gun's hand bones by the same shift, they are
+-- drawn moved by it. A take recorded since then has no shift and is drawn as it is.
+function handsName(e)
+	return string.find(e:GetNW2String("SPeditor_Name", ""), "(view hands)", 1, true) ~= nil
+end
+local HAND_BONES = { "ValveBiped.Bip01_R_Hand", "ValveBiped.Bip01_L_Hand" }
+function handsOffset(hands, gun)
+	local offs = {}
+	hands:SetupBones()
+	gun:SetupBones()
+	for i, name in ipairs(HAND_BONES) do
+		local bh, bg = hands:LookupBone(name), gun:LookupBone(name)
+		local mh, mg = bh and hands:GetBoneMatrix(bh), bg and gun:GetBoneMatrix(bg)
+		if not mh or not mg then return nil end
+		offs[i] = mg:GetTranslation() - mh:GetTranslation()
+	end
+	local d = offs[1]
+	if d:LengthSqr() < 0.04 or d:LengthSqr() > 30 * 30 or d:DistToSqr(offs[2]) > 1 then return nil end
+	return d
+end
+
+-- the view model pass: the depth is cleared (the gun never goes into a wall) and the model drawn
+-- with the field of view the game gave it, as a share of this view's
+local function drawViewModels()
+	local list = vmDraw
+	vmDraw = nil
+	local vs = render.GetViewSetup(true)
+	if not list or not vs or not vs.fov then return end
+	local k = 1
+	for _, e in ipairs(list) do
+		local f = IsValid(e) and e:GetNW2Float("SPeditor_VMFov", 0) or 0
+		if f > 0 then k = f break end
+	end
+	local fov = math.deg(2 * math.atan(k * math.tan(math.rad(vs.fov / 2))))
+	cam.Start3D(vs.origin, vs.angles, fov, vs.x, vs.y, vs.width, vs.height, 1, 4096)
+	render.ClearDepth()
+	-- the translucent pass leaves its blend behind (the gun came out see-through)
+	local blend = render.GetBlend()
+	render.SetBlend(1)
+	local gun
+	for _, e in ipairs(list) do
+		if IsValid(e) and e:GetColor().a > 0 and not handsName(e) then gun = e break end
+	end
+	for _, e in ipairs(list) do
+		if IsValid(e) and e:GetColor().a > 0 then
+			-- DrawModel goes through the entity's RenderOverride (the "draw nothing" of this view):
+			-- its own drawing is put back for the moment
+			local keep = hidden and hidden[e]
+			local now = e.RenderOverride
+			e.RenderOverride = keep and keep[1] or nil
+			local off = gun and handsName(e) and handsOffset(e, gun)
+			if off then
+				e:SetRenderOrigin(e:GetPos() + off)
+				e:InvalidateBoneCache()
+			end
+			e:DrawModel()
+			if off then
+				e:SetRenderOrigin()
+				e:InvalidateBoneCache()
+			end
+			e.RenderOverride = now
+		end
+	end
+	render.SetBlend(blend)
+	cam.End3D()
+end
+
 COMP:Hook("PostDrawTranslucentRenderables", function(depth, skybox, sky3d)
 	if skybox or sky3d or not hidden then return end
+	if vmDraw then drawViewModels() end
 	for e, keep in pairs(hidden) do
 		if IsValid(e) and e.RenderOverride == keep[2] then e.RenderOverride = keep[1] end
 	end

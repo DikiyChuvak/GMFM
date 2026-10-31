@@ -14,6 +14,9 @@ Widgets:
       drag left / right with the mouse (Shift — finer, Ctrl — coarser),
       double click — the default value, right click — a menu (reset,
       enter a value). Follows the value from getter while it is not being dragged.
+      b0.2.6: o.step — the value snaps to it while dragged (Shift: free); o.pow — the slider is
+      that power of its position (more room for the small values); o.wheel — the mouse wheel
+      steps it (a step, or 1% of the slider; Shift — a tenth of that).
 ]]
 SPeditor = SPeditor or {}
 SPeditor.UI = SPeditor.UI or {}
@@ -651,6 +654,9 @@ function CTRL:Setup(o)
 	self.onChange = o.onChange
 	self.getter   = o.getter
 	self.hard     = o.hard
+	self.step     = o.step
+	self.pow      = (o.pow and o.pow > 1) and o.pow or nil
+	self.wheel    = o.wheel
 	self.value    = fit(self, o.value or self.default)
 	self:SetTooltip(o.tooltip)
 	return self
@@ -663,6 +669,24 @@ function CTRL:SetValue(v, fire, final)
 end
 
 function CTRL:GetValue() return self.value end
+
+-- (b0.2.6) the slider's position 0..1 of a value, and back (o.pow: a curved slider)
+function CTRL:PosOf(v)
+	local range = self.max - self.min
+	if range <= 0 then return 0 end
+	local t = (v - self.min) / range
+	if self.pow and t > 0 then t = t ^ (1 / self.pow) end
+	return t
+end
+function CTRL:ValueAt(t)
+	if self.pow then t = (t > 0 and t ^ self.pow) or (t < 0 and -((-t) ^ self.pow)) or 0 end
+	return self.min + (self.max - self.min) * t
+end
+local function snapped(self, v)
+	local st = self.step
+	if not st or input.IsKeyDown(KEY_LSHIFT) or input.IsKeyDown(KEY_RSHIFT) then return v end
+	return math.Round(v / st) * st
+end
 
 function CTRL:Paint(w, h)
 	surface.SetDrawColor(self.alt and COL.ROW_B or COL.ROW_A)
@@ -680,7 +704,7 @@ function CTRL:Paint(w, h)
 			surface.SetDrawColor(COL.BORDER)
 			surface.DrawRect(zx, 0, 1, h)
 		else
-			surface.DrawRect(0, 1, math.Clamp((self.value - self.min) / range, 0, 1) * w, h - 2)
+			surface.DrawRect(0, 1, math.Clamp(self:PosOf(self.value), 0, 1) * w, h - 2)
 		end
 	end
 
@@ -707,7 +731,7 @@ function CTRL:OnMousePressed(code)
 		return
 	end
 	self.lastClick = now
-	self.drag = { x = gui.MouseX(), v = self.value }
+	self.drag = { x = gui.MouseX(), v = self.value, t = self:PosOf(self.value) }
 	self:MouseCapture(true)
 end
 
@@ -716,10 +740,38 @@ function CTRL:OnCursorMoved()
 	if not d then return end
 	local w = math.max(self:GetWide(), 40)
 	local per = (self.max - self.min) / w
-	if input.IsKeyDown(KEY_LSHIFT) or input.IsKeyDown(KEY_RSHIFT) then per = per * 0.1 end
-	if input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL) then per = per * 4 end
-	local v = d.v + (gui.MouseX() - d.x) * per
+	local shift = input.IsKeyDown(KEY_LSHIFT) or input.IsKeyDown(KEY_RSHIFT)
+	local k = shift and 0.1 or 1
+	if input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL) then k = k * 4 end
+	local v
+	if self.pow then
+		-- a curved slider: the drag moves the position, the value follows the curve
+		v = self:ValueAt(d.t + (gui.MouseX() - d.x) / w * k)
+	else
+		v = d.v + (gui.MouseX() - d.x) * per * k
+	end
+	v = snapped(self, v)
 	if math.abs(v - self.value) > 1e-6 then self:SetValue(v, true, false) end
+end
+
+-- (b0.2.6) the wheel steps a control made with o.wheel; the last notch is final a moment later
+function CTRL:OnMouseWheeled(delta)
+	if not self.wheel then return end
+	local shift = input.IsKeyDown(KEY_LSHIFT) or input.IsKeyDown(KEY_RSHIFT)
+	local v
+	if self.step then
+		v = self.value + delta * self.step * (shift and 0.1 or 1)
+		if not shift then v = math.Round(v / self.step) * self.step end
+	else
+		v = self:ValueAt(self:PosOf(self.value) + delta * (shift and 0.001 or 0.01))
+	end
+	self:SetValue(v, true, false)
+	self.lastEdit = RealTime()
+	local id = "SPeditorControlWheel" .. tostring(self)
+	timer.Create(id, 0.4, 1, function()
+		if IsValid(self) and self.onChange then self.onChange(self.value, true) end
+	end)
+	return true
 end
 
 function CTRL:OnMouseReleased(code)

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<!--
+GM:FM — the sound of the editor through the Web Audio API (b0.2.6, cl_webaudio.lua opens this page
+in a hidden browser panel). It plays the clips of the timeline (precise starts, smooth volume,
+pan and speed), decodes any file the browser can (WAV, MP3, OGG) into samples for the sound track
+of a video, and measures the loudness of a voice for lip sync. Files are read from the game's
+own file system (asset://garrysmod/<path>).
+-->
+<html>
+<head><meta charset="utf-8"><title>GM:FM audio</title></head>
+<body>
+<script>
+"use strict";
+
+const ctx = new AudioContext({ latencyHint: "interactive" });
+const master = ctx.createGain();
+master.connect(ctx.destination);
+
+// path -> { promise, buf }
+const files = new Map();
+
+function fetchBuffer(path) {
+    let e = files.get(path);
+    if (e) return e.promise;
+    e = { buf: null };
+    e.promise = new Promise((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", "asset://garrysmod/" + encodeURI(path), true);
+        xhr.responseType = "arraybuffer";
+        xhr.onload = () => {
+            const data = xhr.response;
+            if (!data || data.byteLength === 0) { resolve(null); return; }
+            ctx.decodeAudioData(data).then(
+                (b) => { e.buf = b; resolve(b); },
+                () => resolve(null));
+        };
+        xhr.onerror = () => resolve(null);
+        xhr.onabort = () => resolve(null);
+        xhr.send();
+    });
+    files.set(path, e);
+    return e.promise;
+}
+
+// A file is loaded: its length in seconds goes back (-1: it could not be read)
+function load(path) {
+    fetchBuffer(path).then((b) => gmfm.loaded(path, b ? b.duration : -1));
+}
+
+function forget(path) { files.delete(path); }
+
+function setMaster(v) { master.gain.setTargetAtTime(v, ctx.currentTime, 0.03); }
+
+// The voices of the timeline: id -> { src, gain, pan, path, at, pos, rate, loop, len, body }
+const voices = new Map();
+
+function stopVoice(id) {
+    const v = voices.get(id);
+    if (!v) return;
+    try { v.src.stop(); } catch (err) { }
+    v.src.disconnect();
+    v.gain.disconnect();
+    v.pan.disconnect();
+    voices.delete(id);
+}
+
+// list: the clips that sound now, [{ i: id, p: path, t: place in the file (s), v: volume,
+// n: pan -1..1, r: speed, l: loops (1/0), c0: cut at the start (s), c1: cut at the end (s) }].
+// A voice the list does not name stops; one that drifted from its place starts again there.
+function update(list) {
+    if (ctx.state !== "running") ctx.resume();
+    const now = ctx.currentTime;
+    const seen = new Set();
+    for (const u of list) {
+        seen.add(u.i);
+        const e = files.get(u.p);
+        const buf = e && e.buf;
+        let v = voices.get(u.i);
+        if (v && v.path !== u.p) { stopVoice(u.i); v = null; }
+        if (v) {
+            let pos = v.pos + (now - v.at) * v.rate;
+            if (v.loop && v.body > 0.01 && pos > v.len - v.c1) pos = v.c0 + ((pos - v.c0) % v.body);
+            if (Math.abs(pos - u.t) > 0.12) { stopVoice(u.i); v = null; }
+            else { v.pos = pos; v.at = now; }
+        }
+        if (!v) {
+            if (!buf) { if (!e) fetchBuffer(u.p); continue; }
+            const src = ctx.createBufferSource();
+            src.buffer = buf;
+            const gain = ctx.createGain();
+            const pan = ctx.createStereoPanner();
+            gain.gain.value = u.v;
+            pan.pan.value = u.n;
+            src.playbackRate.value = u.r;
+            src.connect(gain).connect(pan).connect(master);
+            const c0 = u.c0 || 0, c1 = u.c1 || 0;
+            if (u.l) {
+                src.loop = true;
+                src.loopStart = c0;
+                src.loopEnd = Math.max(buf.duration - c1, c0 + 0.01);
+            }
+            src.start(0, Math.max(Math.min(u.t, buf.duration - 0.001), 0));
+            v = { src, gain, pan, path: u.p, at: now, pos: u.t, rate: u.r, loop: !!u.l,
+                  len: buf.duration, c0, c1, body: buf.duration - c0 - c1 };
+            voices.set(u.i, v);
+            src.onended = () => { if (voices.get(u.i) === v) voices.delete(u.i); };
+            continue;
+        }
+        v.rate = u.r;
+        v.src.playbackRate.setTargetAtTime(u.r, now, 0.02);
+        v.gain.gain.setTargetAtTime(u.v, now, 0.015);
+        v.pan.pan.setTargetAtTime(u.n, now, 0.015);
+    }
+    for (const id of Array.from(voices.keys())) {
+        if (!seen.has(id)) stopVoice(id);
+    }
+}
+
+// One sound played through (the sound picker, a preview)
+let preview = null;
+function play(path, vol) {
+    if (ctx.state !== "running") ctx.resume();
+    stopPreview();
+    fetchBuffer(path).then((b) => {
+        if (!b) return;
+        const src = ctx.createBufferSource();
+        src.buffer = b;
+        const gain = ctx.createGain();
+        gain.gain.value = vol;
+        src.connect(gain).connect(master);
+        src.start();
+        preview = src;
+    });
+}
+function stopPreview() {
+    if (preview) { try { preview.stop(); } catch (err) { } preview = null; }
+}
+
+// The samples of a file for the sound track of a video: 16-bit, up to two channels, in pieces
+// of base64 (gmfm.pcm(request, piece, pieces, rate, channels, frames, data); piece -1: failed)
+const PIECE = 393216;
+function pcm(path, req) {
+    fetchBuffer(path).then((b) => {
+        if (!b) { gmfm.pcm(req, -1, 0, 0, 0, 0, ""); return; }
+        const ch = Math.min(b.numberOfChannels, 2);
+        const n = b.length;
+        const out = new Int16Array(n * ch);
+        for (let c = 0; c < ch; c++) {
+            const d = b.getChannelData(c);
+            for (let i = 0; i < n; i++) {
+                let s = d[i];
+                s = s < -1 ? -1 : (s > 1 ? 1 : s);
+                out[i * ch + c] = s < 0 ? s * 32768 : s * 32767;
+            }
+        }
+        const bytes = new Uint8Array(out.buffer);
+        const total = Math.max(Math.ceil(bytes.length / PIECE), 1);
+        for (let k = 0; k < total; k++) {
+            const part = bytes.subarray(k * PIECE, Math.min((k + 1) * PIECE, bytes.length));
+            let bin = "";
+            for (let j = 0; j < part.length; j += 8192) {
+                bin += String.fromCharCode.apply(null, part.subarray(j, Math.min(j + 8192, part.length)));
+            }
+            gmfm.pcm(req, k, total, b.sampleRate, ch, n, btoa(bin));
+        }
+    });
+}
+
+// The loudness of a file every `step` seconds (root mean square of both channels), for lip sync
+function envelope(path, step, req) {
+    fetchBuffer(path).then((b) => {
+        if (!b) { gmfm.envelope(req, ""); return; }
+        const per = Math.max(Math.floor(b.sampleRate * step), 1);
+        const chans = [];
+        for (let c = 0; c < Math.min(b.numberOfChannels, 2); c++) chans.push(b.getChannelData(c));
+        const out = [];
+        for (let i = 0; (i + 1) * per <= b.length; i++) {
+            let sum = 0;
+            for (const d of chans) {
+                for (let s = i * per; s < (i + 1) * per; s++) sum += d[s] * d[s];
+            }
+            out.push(Math.sqrt(sum / (per * chans.length)).toFixed(4));
+        }
+        gmfm.envelope(req, out.join(","));
+    });
+}
+
+window.onload = () => { if (window.gmfm && gmfm.ready) gmfm.ready(ctx.sampleRate); };
+</script>
+</body>
+</html>

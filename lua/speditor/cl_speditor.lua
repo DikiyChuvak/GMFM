@@ -68,6 +68,36 @@ concommand.Add("gmfm_toggle", function()
 	C.SendToggle(not C.active)
 end)
 
+-- Shift + F4 (b0.2.6): out of the editor whatever holds it (a window stuck over everything, a
+-- broken layout). In Sandbox the editor closes at once; in the GM:FM gamemode, where it is the
+-- game itself, it asks first and then stays closed until gmfm_toggle (it reopens by itself there).
+-- If the server does not answer, the editor is closed here all the same.
+function C.ForceExit()
+	local function out()
+		if SPeditor.FilmMode() then C.forcedOut = true end
+		C.SendToggle(false)
+		local asked = RealTime()
+		timer.Simple(1.5, function()
+			-- the server answered (or the editor was opened again since): nothing to force
+			if not C.active or (C.stateAt or 0) >= asked then return end
+			C.active = false
+			ProtectedCall(function() hook.Run("SPeditor_StateChanged", false) end)
+			if SPeditor.UI and SPeditor.UI.Close then ProtectedCall(SPeditor.UI.Close) end
+		end)
+	end
+	if not SPeditor.FilmMode() then out() return end
+	if IsValid(C.forceAsk) then return end
+	C.forceAsk = Derma_Query(L("force_exit_q"), "GM:FM", L("yes"), out, L("no"), function() end)
+end
+
+-- Shift + F4: Esc opened the game's menu over it
+local f4Was = false
+SPeditor.Hook("Think", "SPeditor.ForceExit", function()
+	local down = input.IsKeyDown(KEY_F4) and input.IsShiftDown()
+	if down and not f4Was and C.active then C.ForceExit() end
+	f4Was = down
+end)
+
 -- Shadow of the player and their weapon: the body is hidden through PrePlayerDraw, but the shadow
 -- kept falling from the player's real position (a "black blob" near the camera).
 local function setLocalShadows(hide)

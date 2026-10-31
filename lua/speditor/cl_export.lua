@@ -68,10 +68,8 @@ function SPeditor.Export.Render(opts)
 		if not opts.silent then SPeditor.Notify(L("render_busy"), 1) end
 		return false
 	end
-	if not SPeditor.Export.SceneCamera(opts.camera) then
-		if not opts.silent then SPeditor.Notify(L("render_need_camera"), 1) end
-		return false
-	end
+	-- (b0.2.6) without a camera in the scene the picture is shot through the work camera
+	if not SPeditor.Export.SceneCamera(opts.camera) and not opts.silent then SPeditor.Notify("#sa_rnd_workcam", 0) end
 	local fmt = opts.format or GetConVar("gmfm_render_format"):GetString()
 	SPeditor.Export.pending = {
 		camera     = opts.camera,
@@ -125,13 +123,15 @@ function SPeditor.Export.SceneCamera(camera)
 end
 
 local function sourceFor(job)
+	-- a free frame wider than 16:9 is shot wider (Hor+, C.FrameFOV in cl_scene.lua)
+	local W, H = C.GetRenderSize()
 	local e = SPeditor.Export.SceneCamera(job.camera)
 	if e then
 		local pos, ang = C.CameraPose(e)
-		return { origin = pos, angles = ang, fov = e:GetCameraFOV(), ent = e }
+		return { origin = pos, angles = ang, fov = C.FrameFOV(e:GetCameraFOV(), W / H), ent = e }
 	end
 	local pos, ang, fov = C.GetView()
-	return { origin = pos, angles = ang, fov = fov, ent = C.GetViewCamera() }
+	return { origin = pos, angles = ang, fov = C.FrameFOV(fov, W / H), ent = C.GetViewCamera() }
 end
 
 SPeditor.Export.Source = function(camera) return sourceFor({ camera = camera }) end
@@ -156,11 +156,33 @@ local function focusDistance(src)
 end
 SPeditor.Export.FocusDistance = focusDistance
 
+-- A camera's own depth of field. (b0.2.6 round 8) The focus is the camera's focal distance only, as in
+-- SFM: there is no "focus kept on an object" there — the focus is set by hand and keyed. A focus
+-- object set earlier (NW2 SPeditor_FocusOn, still read from old scenes) no longer moves it.
+function SPeditor.Export.TrackFocus(src, dof)
+	return dof
+end
+
 -- "Engine frame": the engine itself shoots the scene (with all addon shaders), one game
 -- frame per attempt. The first frames are skipped: effects that accumulate the picture
 -- over time, and auto exposure, need a few frames to settle.
 local ENGINE_WARMUP  = 6
 local ENGINE_TIMEOUT = 5
+
+-- (b0.2.6 round 10) the depth of field an engine frame takes: the same choice as the editor's own
+-- pass (the Render window's, or the camera's own), its passes scaled as RenderBase scales them;
+-- nil — none
+local function engineDOF(job, src)
+	local dof
+	if job.dof then dof = { aperture = job.aperture, samples = job.samples, focus = focusDistance(src) } end
+	local own = (not job.nodof or job.camdof) and SPeditor.FX and SPeditor.Export.TrackFocus(src, SPeditor.FX.DOF(SPeditor.FX.For(src.ent)))
+	if own then dof = own end
+	if not dof or (dof.aperture or 0) <= 0 then return nil end
+	local n = math.Clamp(math.floor(dof.samples or 32), 2, 256)
+	local scale = math.Clamp(tonumber(job.sampleScale) or 1, 0.05, 1)
+	if scale < 1 and not (own and job.camdof) then n = math.max(math.floor(n * scale + 0.5), math.min(n, 12)) end
+	return { aperture = dof.aperture, focus = dof.focus, n = n }
+end
 
 -- Returns ok, rt; nil — the frame is not ready yet (the job stays in the queue)
 local function engineFrame(job, src, W, H)
@@ -168,20 +190,72 @@ local function engineFrame(job, src, W, H)
 	R.FinishEngineFrame()
 	local E = R.Engine
 	job.t0 = job.t0 or RealTime()
-	if E.info and E.info.owner == job and E.serial ~= job.serial then
+	local fresh = E.info and E.info.owner == job and E.serial ~= job.serial
+	if fresh then
 		job.serial = E.serial
 		job.frames = (job.frames or 0) + 1
 	end
 	local fx = SPeditor.FX and SPeditor.FX.For(src.ent) or nil
+	local base = R.FXSource(src, fx)
 	if (job.frames or 0) < (job.warmup or ENGINE_WARMUP) then
 		if RealTime() - job.t0 > ENGINE_TIMEOUT then return false, "engine frame timeout" end
-		R.RequestEngineFrame(R.FXSource(src, fx), { fullbright = job.fullbright, aspect = W / H, owner = job })
+		R.RequestEngineFrame(base, { fullbright = job.fullbright, aspect = W / H, owner = job })
 		return nil
+	end
+	-- (round 10) depth of field: one engine frame for every point of the lens, cut out shifted and
+	-- averaged (cl_render.lua R.EngineLens). A moment of motion blur takes its share of the points
+	-- (every m-th, as RenderBase does), so the moments together make the whole lens once.
+	if job.lens == nil then
+		local dof = engineDOF(job, src)
+		if dof then
+			local list = {}
+			local m = job.accum and math.max(job.accum.n, 1) or 1
+			local first = job.accum and math.Clamp(job.accum.i, 1, m) or 1
+			for i = first, math.max(dof.n, m), m do list[#list + 1] = i end
+			job.lens = { dof = dof, list = list, n = math.max(dof.n, m), done = 0, t0 = RealTime() }
+		else
+			job.lens = false
+		end
+	end
+	local L = job.lens
+	if L then
+		if fresh and E.info.lens and E.info.lens.pass == L.done + 1 then
+			local ok, err = pcall(function()
+				local rt = R.EngineLensToRT(W, H, W / H)
+				if rt then R.LensAccumulate(rt, L.done + 1, W, H) end
+			end)
+			if not ok then return false, err end
+			L.done = L.done + 1
+		end
+		if L.done < #L.list then
+			if RealTime() - L.t0 > ENGINE_TIMEOUT + #L.list * 0.5 then return false, "engine frame timeout (depth of field)" end
+			local lens = R.EngineLens(L.dof, L.list[L.done + 1], L.n, W, H, base.fov)
+			lens.pass = L.done + 1
+			R.RequestEngineFrame(R.EngineLensSource(base, lens), { fullbright = job.fullbright, aspect = W / H, owner = job, lens = lens })
+			return nil
+		end
+		return pcall(function()
+			return R.ApplyFX(R.LensAccumulated(W, H), fx, W, H)
+		end)
 	end
 	return pcall(function()
 		local rt = R.EngineToRT(W, H, W / H)
 		return rt and R.ApplyFX(rt, fx, W, H) or nil
 	end)
+end
+
+-- (b0.2.6) Order the engine frame of the waiting job at once. Called before the game frame's
+-- view (the server's answer, Think): the engine draws the frame in this very game frame and its
+-- PostRender takes it — a frame of a video no longer waits a game frame for the order.
+function SPeditor.Export.Prime()
+	local job = SPeditor.Export.pending
+	if not job or not job.engine or job.primed or not C.active then return end
+	job.primed = true
+	local W, H = C.GetRenderSize()
+	local src = sourceFor(job)
+	local fx = SPeditor.FX and SPeditor.FX.For(src.ent) or nil
+	job.t0 = job.t0 or RealTime()
+	SPeditor.Render.RequestEngineFrame(SPeditor.Render.FXSource(src, fx), { fullbright = job.fullbright, aspect = W / H, owner = job })
 end
 
 SPeditor.Hook("PostRender", "SPeditor.Export", function()
@@ -215,10 +289,12 @@ SPeditor.Hook("PostRender", "SPeditor.Export", function()
 		SPeditor.Export.pending = nil
 	else
 		SPeditor.Export.pending = nil
-		local opts = { fullbright = job.fullbright, ss = job.ss, sampleScale = job.sampleScale }
+		local opts = { fullbright = job.fullbright, ss = job.ss, sampleScale = job.sampleScale,
+			-- motion blur: this moment takes its share of the frame's passes (b0.2.6, as SFM)
+			slice = job.accum and { job.accum.i, job.accum.n } or nil }
 		if job.dof then opts.dof = { aperture = job.aperture, samples = job.samples, focus = focusDistance(src) } end
 		-- a camera with its own depth of field (camera effects) uses it instead
-		local own = (not job.nodof or job.camdof) and SPeditor.FX and SPeditor.FX.DOF(SPeditor.FX.For(src.ent))
+		local own = (not job.nodof or job.camdof) and SPeditor.FX and SPeditor.Export.TrackFocus(src, SPeditor.FX.DOF(SPeditor.FX.For(src.ent)))
 		if own then
 			opts.dof = own
 			if job.camdof then opts.dofFull = true end
@@ -260,6 +336,8 @@ SPeditor.Hook("PostRender", "SPeditor.Export", function()
 		end
 		rt = R.AccumulatedRT(W, H)
 	end
+	-- the finished frame for whoever shows it (the progress window of a video, b0.2.6)
+	hook.Run("GMFM_RenderedFrame", rt, W, H)
 
 	if job.rtCapture then
 		local okCb, res = pcall(job.rtCapture, rt, W, H)
@@ -331,3 +409,29 @@ function SPeditor.Export.ToSteam(path)
 	end)
 	return true
 end
+
+---------------------------------------------------------------------
+-- (b0.2.6) A render is not broken off by the keyboard: while a video or a picture is being shot,
+-- Esc does not open the game's menu and the console (~ / Ё) is closed at once — the game paused
+-- under them and the render stopped half way.
+---------------------------------------------------------------------
+function SPeditor.Export.Busy()
+	local comp = SPeditor.Component and SPeditor.Component("saeditor")
+	return SPeditor.Export.pending ~= nil or (comp and comp.SA and comp.SA.rendering ~= nil)
+		or (SPeditor.Poster and SPeditor.Poster.Busy and SPeditor.Poster.Busy()) or false
+end
+
+SPeditor.Hook("OnPauseMenuShow", "SPeditor.RenderGuard", function()
+	if SPeditor.Export.Busy() then return false end
+end)
+
+-- drawn every frame also while the game is paused under the menu (Think is not)
+local warned = 0
+SPeditor.Hook("PostRenderVGUI", "SPeditor.RenderGuard", function()
+	if not SPeditor.Export.Busy() or not gui.IsGameUIVisible() then return end
+	gui.HideGameUI()
+	if RealTime() > warned then
+		warned = RealTime() + 5
+		SPeditor.Notify("#render_guard", 0)
+	end
+end)

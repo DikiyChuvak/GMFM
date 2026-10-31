@@ -161,6 +161,7 @@ end
 -- Sampling
 ---------------------------------------------------------------------
 local function sample(rec, f)
+	local ft = frameNow(rec)
 	-- map movers: their local place (a door on a train moves with the train); new ones near
 	-- the player join about once a second
 	rec.scanAt = rec.scanAt or 0
@@ -189,14 +190,14 @@ local function sample(rec, f)
 				else
 					bones[0] = { ent:GetPos(), ent:GetAngles() }
 				end
-				sub.samples[#sub.samples + 1] = { f = f, bones = bones }
+				sub.samples[#sub.samples + 1] = { f = f, ft = ft, bones = bones }
 			end
 		elseif sub.kind == "shot" and IsValid(ent) and not sub.gone then
 			-- a projectile: one rigid body, its place is the pose
-			sub.samples[#sub.samples + 1] = { f = f, bones = { [0] = { ent:GetPos(), ent:GetAngles() } } }
+			sub.samples[#sub.samples + 1] = { f = f, ft = ft, bones = { [0] = { ent:GetPos(), ent:GetAngles() } } }
 		elseif sub.kind == "vehicle" and IsValid(ent) and not sub.gone then
 			-- a vehicle: its place, and every bone in its parent's space (wheels, steering)
-			local smp = { f = f, bones = { [0] = { ent:GetPos(), ent:GetAngles() } } }
+			local smp = { f = f, ft = ft, bones = { [0] = { ent:GetPos(), ent:GetAngles() } } }
 			local n = ent:GetBoneCount()
 			if n > 1 then
 				ent:GetBonePosition(0)
@@ -233,7 +234,7 @@ local function sample(rec, f)
 			-- the player's eyes and aim (a0.9): the first-person camera of the take is put here, also
 			-- when the game showed the player from behind (a third-person view of an addon)
 			local eye = sub.kind == "player" and { ent:EyePos(), ent:EyeAngles() } or nil
-			sub.samples[#sub.samples + 1] = { f = f, bones = bones, eye = eye, dead = sub.kind == "player" and not ent:Alive() or nil }
+			sub.samples[#sub.samples + 1] = { f = f, ft = ft, bones = bones, eye = eye, dead = sub.kind == "player" and not ent:Alive() or nil }
 			local wep = ent.GetActiveWeapon and ent:GetActiveWeapon()
 			local wm = IsValid(wep) and string.lower(wep:GetModel() or "") or ""
 			-- weapon bases (ARC9, TFA, ArcCW…) may leave the entity without a model and draw
@@ -311,7 +312,30 @@ end, "record")
 -- scrape played whole after the body had stopped was heard at the end of a take).
 local PCF_RUN = 3               -- a particle system of a take plays this long, seconds
 local LOOP_IDLE = 0.6          -- seconds without a change: the loop is over
-local function isLoop(path) return string.find(path, "loop", 1, true) ~= nil end
+-- a looped sound: a WAV with loop points (a "cue " chunk). By name before b0.2.6 — the shots
+-- of the EFT weapons for ARC9 are called "…_close_loop1.wav" (fired in a row) and a burst became
+-- one clip of its first shot.
+local loopFiles = {}
+local function isLoop(path)
+	local v = loopFiles[path]
+	if v ~= nil then return v end
+	v = false
+	if string.lower(string.GetExtensionFromFilename(path) or "") == "wav" then
+		local data = file.Read(path, "GAME")
+		if data and string.sub(data, 1, 4) == "RIFF" then
+			local at = 13
+			while at + 8 <= #data do
+				local id = string.sub(data, at, at + 3)
+				local a, b, c, d = string.byte(data, at + 4, at + 7)
+				if id == "cue " then v = true break end
+				local size = a + b * 256 + c * 65536 + d * 16777216
+				at = at + 8 + size + size % 2
+			end
+		end
+	end
+	loopFiles[path] = v
+	return v
+end
 
 COMP:Hook("EntityEmitSound", function(t)
 	for _, rec in pairs(R) do
@@ -627,6 +651,19 @@ local function addView(rec, list)
 	for _, v in ipairs(list) do
 		if #rec.view >= MAX_VIEW then return end
 		local f = istable(v) and tonumber(v[1])
+		-- the gun in front of the eyes at frame f (b0.2.6, cl_saeditor_record.lua "record_vm")
+		local vm = istable(v) and v[2] == "vm" and istable(v[3]) and v[3]
+		if vm then
+			if f and f >= rec.f0 and f < SA.MAX_FRAMES and isstring(vm.model) and #vm.model < 200
+				and string.find(vm.model, "^models/.+%.mdl$") and istable(vm.root) and istable(vm.bones) then
+				rec.vm = rec.vm or { n = 0 }
+				if rec.vm.n < MAX_VIEW then
+					rec.vm[math.floor(f)] = vm
+					rec.vm.n = rec.vm.n + 1
+				end
+			end
+			f = nil
+		end
 		local fov = f and tonumber(v[8])
 		if fov and f >= rec.f0 and f < SA.MAX_FRAMES and (not last or f > last.f) then
 			local x, y, z = tonumber(v[2]), tonumber(v[3]), tonumber(v[4])
@@ -664,6 +701,28 @@ local function addClientSounds(rec, ply, list)
 	end
 end
 
+-- sounds the game kept playing and changing (Rec action 7, b0.2.6): { { f, path, len, loop,
+-- ofs, owner entity index, env }, … } — the engine of the vehicle the player rode goes on its copy
+local function addClientStreams(rec, ply, list)
+	if not rec.sounds or not istable(list) then return end
+	for _, v in ipairs(list) do
+		if #rec.sound >= SA.MAX_SOUNDS then return end
+		local f, path, len = istable(v) and tonumber(v[1]), istable(v) and v[2], istable(v) and tonumber(v[3])
+		if f and len and isstring(path) and #path < 200 and (string.StartWith(path, "sound/") or string.StartWith(path, "data/"))
+			and not string.find(path, "..", 1, true) and f >= rec.f0 and f < SA.MAX_FRAMES and istable(v[7]) then
+			-- the owner, or what it is parented to (a wheel of Glide -> its vehicle)
+			local owner = Entity(math.floor(tonumber(v[6]) or 0))
+			for _ = 1, 4 do
+				if not IsValid(owner) or rec.subjects[owner] then break end
+				owner = owner:GetParent()
+			end
+			local actor = (IsValid(owner) and rec.subjects[owner]) and owner or ply
+			rec.sound[#rec.sound + 1] = { f = math.floor(f), path = path, actor = actor, vol = 1, pitch = 100,
+				long = { len = math.floor(len), loop = tonumber(v[4]) == 1, ofs = tonumber(v[5]) or 0, env = v[7] } }
+		end
+	end
+end
+
 -- effects only the client made (Rec action 5, a0.9): weapon bases (ARC9, TFA, ArcCW…) make their
 -- muzzle flashes, impacts and smoke on the client, with util.Effect and particle systems, so the
 -- server never sees them. { { f, src, name, x, y, z, p, yaw, r, len, file }, … }; one the server
@@ -695,25 +754,40 @@ end
 
 -- the poses of the killed player's body from its client (Rec action 3): { [frame] = bones }
 local MAX_BODIES = 4000
+local function readBones(list)
+	local bones = {}
+	for _, b in ipairs(list) do
+		local i = istable(b) and tonumber(b[1])
+		local x, y, z = tonumber(b[2]), tonumber(b[3]), tonumber(b[4])
+		local p, yw, r = tonumber(b[5]), tonumber(b[6]), tonumber(b[7])
+		if i and x and y and z and p and yw and r and i >= 0 and i < 256 then
+			bones[math.floor(i)] = { Vector(x, y, z), Angle(p, yw, r) }
+		end
+	end
+	return bones
+end
+
 local function addBodies(rec, list)
-	if not rec.view or not istable(list) then return end
+	if not istable(list) then return end
 	rec.body = rec.body or { n = 0 }
+	rec.ride = rec.ride or { n = 0 }
 	for _, v in ipairs(list) do
-		if rec.body.n >= MAX_BODIES then return end
 		local f = istable(v) and tonumber(v[1])
+		local vi = istable(v) and tonumber(v[3])
 		if f and istable(v[2]) and f >= rec.f0 and f < SA.MAX_FRAMES then
-			local bones = {}
-			for _, b in ipairs(v[2]) do
-				local i = istable(b) and tonumber(b[1])
-				local x, y, z = tonumber(b[2]), tonumber(b[3]), tonumber(b[4])
-				local p, yw, r = tonumber(b[5]), tonumber(b[6]), tonumber(b[7])
-				if i and x and y and z and p and yw and r and i >= 0 and i < 256 then
-					bones[math.floor(i)] = { Vector(x, y, z), Angle(p, yw, r) }
+			if vi then
+				-- the rider's pose (b0.2.6): bones in the space of the vehicle v[3]
+				local veh = Entity(math.floor(vi))
+				if IsValid(veh) and rec.ride.n < MAX_BODIES * 4 then
+					rec.ride[math.floor(f)] = { veh = veh, bones = readBones(v[2]) }
+					rec.ride.n = rec.ride.n + 1
 				end
-			end
-			if next(bones) ~= nil then
-				rec.body[math.floor(f)] = bones
-				rec.body.n = rec.body.n + 1
+			elseif rec.view and rec.body.n < MAX_BODIES then
+				local bones = readBones(v[2])
+				if next(bones) ~= nil then
+					rec.body[math.floor(f)] = bones
+					rec.body.n = rec.body.n + 1
+				end
 			end
 		end
 	end
@@ -735,6 +809,71 @@ local function deadPoses(rec, sub)
 		if smp.dead then
 			while frames[j + 1] and frames[j + 1] <= smp.f do j = j + 1 end
 			if frames[j] <= smp.f + rec.step then smp.bones = body[frames[j]] end
+		end
+	end
+end
+
+-- A sample is taken at the first server tick past its frame — up to a tick (15 ms of the 83 ms
+-- between two keys) late, and late by a different amount every time: at speed the keys stepped
+-- unevenly (a motorbike went 12, 10, 12, 10 units a frame and shook). Each sample is put back
+-- onto its whole frame, between itself and the one before (b0.2.6).
+local function lerpPair(p, s, u)
+	if not p then return s end
+	return { LerpVector(u, p[1], s[1]), SA.SlerpAngle(p[2], s[2], u) }
+end
+local function lerpBones(pb, sb, u)
+	if not pb or not sb then return sb end
+	local out = {}
+	for b, v in pairs(sb) do out[b] = lerpPair(pb[b], v, u) end
+	return out
+end
+local function onFrames(samples)
+	local out = {}
+	for i, s in ipairs(samples) do
+		local p = samples[i - 1]
+		out[i] = s
+		if p and p.ft and s.ft and s.ft - s.f > 0.001 and s.ft > p.ft and not s.dead and not p.dead then
+			local u = math.Clamp((s.f - p.ft) / (s.ft - p.ft), 0, 1)
+			out[i] = { f = s.f, bones = lerpBones(p.bones, s.bones, u), eye = s.eye and lerpPair(p.eye, s.eye, u),
+				loc = s.loc and lerpBones(p.loc, s.loc, u), dead = s.dead }
+		end
+	end
+	for i, s in ipairs(out) do samples[i] = s end
+end
+
+-- the rider's own pose (b0.2.6): the bones drawn on the player's client while it rode, put on
+-- the place the vehicle had at the same frame of the take
+local function ridePoses(rec, sub)
+	local ride = rec.ride
+	if not ride or (ride.n or 0) == 0 or not sub then return end
+	local frames = {}
+	for f in pairs(ride) do
+		if isnumber(f) then frames[#frames + 1] = f end
+	end
+	table.sort(frames)
+	local placeOf = {}
+	local function vehicleAt(veh, f)
+		local vs = rec.subjects[veh]
+		if not vs then return nil end
+		local m = placeOf[veh]
+		if not m then
+			m = {}
+			for _, s in ipairs(vs.samples) do m[s.f] = s.bones[0] end
+			placeOf[veh] = m
+		end
+		return m[f]
+	end
+	local j = 1
+	for _, smp in ipairs(sub.samples) do
+		while frames[j + 1] and frames[j + 1] <= smp.f do j = j + 1 end
+		local rf = frames[j]
+		local r = rf and rf <= smp.f and smp.f - rf <= rec.step and not smp.dead and ride[rf]
+		local place = r and vehicleAt(r.veh, smp.f)
+		if place then
+			local bones = {}
+			for b, v in pairs(smp.bones) do bones[b] = v end
+			for b, v in pairs(r.bones) do bones[b] = { LocalToWorld(v[1], v[2], place[1], place[2]) } end
+			smp.bones = bones
 		end
 	end
 end
@@ -797,6 +936,149 @@ local function vehicleBones(ent, rest, loc)
 	end
 end
 
+-- The gun in front of the eyes of a first-person take (b0.2.6): one model a gun held, hanging on the
+-- view camera, keyed where it was in the view (camPlace: the camera's place at its keys) with every
+-- bone as an offset from the model's rest pose; its hands are worn on it. Not held — not shown.
+local function vmBones(e, s)
+	local loc = {}
+	for _, b in ipairs(istable(s.bones) and s.bones or {}) do
+		local i = istable(b) and tonumber(b[1])
+		local x, y, z, p, yw, r = tonumber(b[2]), tonumber(b[3]), tonumber(b[4]), tonumber(b[5]), tonumber(b[6]), tonumber(b[7])
+		if i and x and y and z and p and yw and r and i >= 0 and i < e:GetBoneCount() then
+			loc[math.floor(i)] = { Vector(x, y, z), Angle(p, yw, r), tonumber(b[8]) or 1 }
+		end
+	end
+	return loc
+end
+
+-- one view object (the gun, or the hands): a model hanging on the camera, keyed at the frames
+-- where get(sample) gives its part of the sample ({ root, bones }); hidden where it gives none
+local function keyViewObject(ply, rec, cam, made, frames, placeAt, model, name, get, k)
+	local first
+	for _, f in ipairs(frames) do
+		first = get(rec.vm[f])
+		if first then break end
+	end
+	if not first then return nil end
+	local p0 = placeAt(frames[1])
+	local ent = S.SpawnModel(ply, model, p0[1], p0[2])
+	if not IsValid(ent) then return nil end
+	made.actors = made.actors + 1
+	name = freeName(ply, name, ent)
+	ent.SPeditor_Name = name
+	ent:SetNW2String("SPeditor_Name", name)
+	S.ApplyLook(ent, { vmfov = k, noshadow = true })
+	if tonumber(first.skin) then ent:SetSkin(math.floor(first.skin)) end
+	if isvector(first.col) then ent:SetNW2Vector("SPeditor_PlayerColor", first.col) end
+	-- the rest pose the bone offsets are taken from: the client's, drawn in the model's first
+	-- animation (the server's own is the bind pose); any sample of this model may carry it
+	local restC
+	for _, f in ipairs(frames) do
+		local part = get(rec.vm[f])
+		if part and istable(part.rest) then restC = part.rest break end
+	end
+	if not restC then
+		for _, f in ipairs(frames) do
+			local smp = rec.vm[f]
+			for _, part in ipairs({ smp, smp.hands }) do
+				if istable(part) and part.model == model and istable(part.rest) then restC = part.rest break end
+			end
+			if restC then break end
+		end
+	end
+	local rest = restC and vmBones(ent, { bones = restC }) or {}
+	S.Attach(ent, cam, -1)
+	local was
+	for _, f in ipairs(frames) do
+		local part = get(rec.vm[f])
+		local held = part ~= nil
+		local place = placeAt(f)
+		local r = part and part.root
+		if held and place and istable(r) and tonumber(r[1]) then
+			cam:SetPos(place[1])
+			cam:SetAngles(place[2])
+			local pos, ang = LocalToWorld(Vector(tonumber(r[1]) or 0, tonumber(r[2]) or 0, tonumber(r[3]) or 0),
+				Angle(tonumber(r[4]) or 0, tonumber(r[5]) or 0, tonumber(r[6]) or 0), place[1], place[2])
+			ent:SetPos(pos)
+			ent:SetAngles(ang)
+			S.RefreshAttach(ent)
+			local loc = vmBones(ent, part)
+			vehicleBones(ent, rest, loc)
+			-- the parts the weapon base showed and hid (bodygroups) as they were at this frame
+			for i = 0, ent:GetNumBodyGroups() - 1 do
+				local bg = istable(part.bg) and tonumber(part.bg[tostring(i)] or part.bg[i]) or 0
+				if ent:GetBodygroup(i) ~= bg then ent:SetBodygroup(i, bg) end
+			end
+			-- parts hidden by the weapon base (bones scaled to nothing) stay hidden
+			for b, v in pairs(loc) do
+				local sc = v[3] or 1
+				if ent:GetManipulateBoneScale(b).x ~= sc then ent:ManipulateBoneScale(b, Vector(sc, sc, sc)) end
+			end
+		end
+		-- a key at every frame it is shown and where it is taken out or put away
+		if held ~= was or held then
+			if held ~= was then
+				ent:SetColor(Color(255, 255, 255, held and 255 or 0))
+				ent:SetRenderMode(held and RENDERMODE_NORMAL or RENDERMODE_TRANSCOLOR)
+				was = held
+			end
+			SA.SetKey(ply, ent, f, held and "spline" or "hold")
+			made.keys = made.keys + 1
+		end
+	end
+	ent:SetColor(color_white)
+	ent:SetRenderMode(RENDERMODE_NORMAL)
+	return ent
+end
+
+local function makeViewModels(ply, rec, cam, camPlace, made)
+	local frames = {}
+	for f in pairs(rec.vm) do
+		if isnumber(f) then frames[#frames + 1] = f end
+	end
+	table.sort(frames)
+	-- the camera's place at a frame: its key there, or the nearest one before
+	local camFrames = {}
+	for f in pairs(camPlace) do camFrames[#camFrames + 1] = f end
+	table.sort(camFrames)
+	if #camFrames == 0 or #frames == 0 then return end
+	local function placeAt(f)
+		local best
+		for _, cf in ipairs(camFrames) do
+			if cf > f then break end
+			best = cf
+		end
+		return camPlace[best or camFrames[1]]
+	end
+	local cp0, ca0 = cam:GetPos(), cam:GetAngles()
+	-- the guns: one model a gun held; the hands: one model for all of them, keyed by their own bones
+	local guns, order, handModels, handOrder = {}, {}, {}, {}
+	for _, f in ipairs(frames) do
+		local smp = rec.vm[f]
+		if not guns[smp.model] and util.IsValidModel(smp.model) then
+			guns[smp.model] = tonumber(smp.k) or 1
+			order[#order + 1] = smp.model
+		end
+		local h = istable(smp.hands) and smp.hands
+		if h and isstring(h.model) and not handModels[h.model] and util.IsValidModel(h.model) then
+			handModels[h.model] = tonumber(smp.k) or 1
+			handOrder[#handOrder + 1] = h.model
+		end
+	end
+	for _, model in ipairs(order) do
+		keyViewObject(ply, rec, cam, made, frames, placeAt, model,
+			string.StripExtension(string.GetFileFromFilename(model)) .. " (view)",
+			function(smp) return smp.model == model and smp or nil end, guns[model])
+	end
+	for _, model in ipairs(handOrder) do
+		keyViewObject(ply, rec, cam, made, frames, placeAt, model,
+			string.StripExtension(string.GetFileFromFilename(model)) .. " (view hands)",
+			function(smp) return istable(smp.hands) and smp.hands.model == model and smp.hands or nil end, handModels[model])
+	end
+	cam:SetPos(cp0)
+	cam:SetAngles(ca0)
+end
+
 -- a model key of an attached object at the frame: visible or not (its colour's alpha)
 local function visKey(ply, ent, f, visible)
 	ent:SetColor(Color(255, 255, 255, visible and 255 or 0))
@@ -809,6 +1091,12 @@ function SA.StopRecord(ply)
 	if not rec or not rec.on then return end
 	rec.on = false
 	hookEffects(false)
+	SA.FinishTake(ply, rec)
+end
+
+-- The scene of a finished take: the actors keyed along it, their weapons, the sounds, the
+-- effects, the view camera. Also for takes that come from a demo (SA.ImportDemoTake below).
+function SA.FinishTake(ply, rec)
 	local a = SA.Anim(ply)
 	a.playing, a.show = false, nil
 	local made = { actors = 0, keys = 0, sounds = 0, effects = 0, phys = 0 }
@@ -816,6 +1104,9 @@ function SA.StopRecord(ply)
 	local uidOf = {}
 	-- the animation grows to hold the take (a key past its end would be put on the last frame)
 	if lastFrame + rec.step > a.frames then a.frames = math.min(lastFrame + rec.step, SA.MAX_FRAMES) end
+
+	for _, sub in pairs(rec.subjects) do onFrames(sub.samples) end
+	ridePoses(rec, rec.subjects[ply])
 
 	-- map movers that moved: their samples become keys (the stretch of the take is replaced);
 	-- a sample is kept where the motion starts, stops or changes, the rest is linear between
@@ -888,7 +1179,8 @@ function SA.StopRecord(ply)
 			uidOf[key] = ent.SPeditor_UID
 			-- a projectile is not there before it was fired: hidden from the start of the take
 			local first = sub.samples[1]
-			if sub.kind == "shot" and first.f > rec.f0 then
+			-- (b0.2.6) so is anything of a demo take that came later (sub.late)
+			if (sub.kind == "shot" or sub.late) and first.f > rec.f0 then
 				pose(ent, first)
 				visKey(ply, ent, rec.f0, false)
 				ent:SetColor(color_white)
@@ -958,8 +1250,13 @@ function SA.StopRecord(ply)
 			if uid and file.Exists(c.path, "GAME") then
 				id = id + 1
 				local clip = { id = id, path = c.path, f = c.f, uid = uid, vol = c.vol, pitch = c.pitch, dist = 600 }
+				if c.long then
+					-- played and changed by the game (an engine): its length and volume / pitch line
+					clip.len, clip.loop, clip.env, clip.dist = c.long.len, c.long.loop, c.long.env, 1200
+					if c.long.loop then clip.ofs = c.long.ofs else clip.cin = c.long.ofs end
+					clip.fin, clip.fout = 0.05, 0.1
 				-- a loop is cut a little after its last change, with a short fade
-				if c.last then
+				elseif c.last then
 					local len = SoundDuration(string.sub(c.path, 7)) or 0
 					local played = ((c.last - c.f) / rec.fps + LOOP_IDLE * 0.5) * c.pitch / 100
 					if len > played then
@@ -1062,25 +1359,30 @@ function SA.StopRecord(ply)
 		local first = view[1]
 		local cam = S.SpawnCamera(ply, { pos = first.pos, ang = first.ang, fov = first.fov, nomodel = true })
 		if IsValid(cam) then
-			local name = freeName(ply, ply:Nick() .. " view (rec)", cam)
+			local name = freeName(ply, rec.viewName or (ply:Nick() .. " view (rec)"), cam)
 			cam.SPeditor_Name = name
 			cam:SetNW2String("SPeditor_Name", name)
 			local inHead = rec.eyes and body and #body.samples >= 2
 			-- the camera of the take is the player's own eyes: its views do not draw the body at
 			-- all, as the game does not (cl_saeditor_record.lua, b0.2.5)
 			cam:SetNW2Bool("SPeditor_RecEyes", true)
+			local camPlace = {}
 			if inHead then
 				for _, smp in ipairs(body.samples) do
 					if smp.f >= view[1].f then
 						local vp, va, fov = viewAt(smp.f)
 						local ep, ea = eyesOf(smp)
-						-- strictly first person: the eyes of the model and where the player aimed,
-						-- not the game's camera (it may have been a third-person one)
+						-- strictly first person: the player's own eyes and where it aimed, not the game's
+						-- camera (it may have been a third-person one). Not the head of the model (b0.2.6):
+						-- it bobs with the walk (2-4 units a step, out of step with the keys) and sits
+						-- lower than the game's eyes — the take's view wobbled. The head is followed only
+						-- after a death, as the body falls.
 						local eye = smp.eye
-						cam:SetPos(ep or (eye and eye[1]) or vp)
+						cam:SetPos((smp.dead and ep) or (eye and eye[1]) or ep or vp)
 						cam:SetAngles(smp.dead and ea or (eye and eye[2]) or va)
 						cam:SetCameraFOV(fov)
 						SA.SetKey(ply, cam, smp.f, "spline")
+						camPlace[smp.f] = { cam:GetPos(), cam:GetAngles() }
 						made.keys = made.keys + 1
 					end
 				end
@@ -1091,9 +1393,11 @@ function SA.StopRecord(ply)
 					cam:SetAngles(v.ang)
 					cam:SetCameraFOV(v.fov)
 					SA.SetKey(ply, cam, v.f, "spline")
+					camPlace[v.f] = { cam:GetPos(), cam:GetAngles() }
 					made.keys = made.keys + 1
 				end
 			end
+			if rec.vm and rec.vm.n > 0 then makeViewModels(ply, rec, cam, camPlace, made) end
 			cam:SetPos(first.pos)
 			cam:SetAngles(first.ang)
 			cam:SetCameraFOV(first.fov)
@@ -1266,6 +1570,9 @@ COMP:NetReceive("Rec", function(ply)
 	elseif action == 5 then
 		local rec = R[ply]
 		if rec and rec.on then addClientEffects(rec, ply, SPeditor.ReadTable()) end
+	elseif action == 7 then
+		local rec = R[ply]
+		if rec and rec.on then addClientStreams(rec, ply, SPeditor.ReadTable()) end
 	elseif action == 2 or action == 3 then
 		local rec = R[ply]
 		if rec and rec.on then (action == 2 and addView or addBodies)(rec, SPeditor.ReadTable()) end
@@ -1289,3 +1596,162 @@ COMP:Hook("PlayerDisconnected", function(ply)
 		hookEffects(false)
 	end
 end, "record")
+
+---------------------------------------------------------------------
+-- Takes from demos (b0.2.6, asked on the Workshop: "an analogue of HLAE — animations from demos
+-- recorded on any server"). While a demo plays, the client records what is in it into a take file
+-- (cl_saeditor_demo.lua); here such a file, sent in pieces, becomes the scene exactly as a take of
+-- the recorder does (SA.FinishTake): players, NPCs and ragdolls as ragdolls keyed along it with
+-- their weapons, props, vehicles and projectiles as keyed models, the demo's view as a camera,
+-- the sounds as clips. It starts at the playhead; the frames are those of the animation.
+---------------------------------------------------------------------
+local DEMO_MAX = 32 * 1024 * 1024      -- the largest take file, compressed
+local DEMO_UNPACKED = 512 * 1024 * 1024
+local demoUp = {}
+
+local function nums(str)
+	local out = {}
+	for v in string.gmatch(str or "", "[^,]+") do out[#out + 1] = tonumber(v) end
+	return out
+end
+local function vecAng(t, i)
+	local x, y, z, p, yw, r = t[i], t[i + 1], t[i + 2], t[i + 3], t[i + 4], t[i + 5]
+	if not (x and y and z and p and yw and r) or math.abs(x) > 65536 or math.abs(y) > 65536 or math.abs(z) > 65536 then return nil end
+	return { Vector(x, y, z), Angle(p, yw, r) }
+end
+
+-- a sample "f|ft|dead|eye x,y,z,p,y,r|b:x,y,z,p,y,r;…|loc b:…;…" of the take's own frames
+local function demoSample(str, k, f0)
+	local parts = string.Explode("|", str)
+	local tf, tft = tonumber(parts[1]), tonumber(parts[2])
+	if not tf then return nil end
+	local smp = { f = f0 + tf * k, ft = f0 + (tft or tf) * k, dead = parts[3] == "1" or nil, bones = {} }
+	if parts[4] and parts[4] ~= "" then smp.eye = vecAng(nums(parts[4]), 1) end
+	for b, v in string.gmatch(parts[5] or "", "(%d+):([^;]+)") do
+		local pa = vecAng(nums(v), 1)
+		if pa and tonumber(b) < 256 then smp.bones[tonumber(b)] = pa end
+	end
+	if parts[6] and parts[6] ~= "" then
+		smp.loc = {}
+		for b, v in string.gmatch(parts[6], "(%d+):([^;]+)") do
+			local pa = vecAng(nums(v), 1)
+			if pa and tonumber(b) < 256 then smp.loc[tonumber(b)] = pa end
+		end
+	end
+	if not smp.bones[0] then return nil end
+	return smp
+end
+
+local KINDS = { player = true, npc = true, shot = true, vehicle = true }
+function SA.ImportDemoTake(ply, take)
+	if R[ply] and R[ply].on then
+		S.Notice(ply, "#sa_dm_busy", 1)
+		return
+	end
+	if not istable(take) or not istable(take.subjects) then
+		S.Notice(ply, "#sa_dm_bad", 1)
+		return
+	end
+	local a = SA.Anim(ply)
+	local f0 = math.Clamp(math.floor(tonumber(take.at) or a.cur or 0), 0, SA.MAX_FRAMES - 1)
+	-- the take's frames (its own rate) on the animation's frames
+	local k = a.fps / math.Clamp(tonumber(take.fps) or a.fps, 1, 240)
+	local rec = {
+		on = true, t0 = CurTime(), fps = a.fps, f0 = f0, step = math.max(math.floor((tonumber(take.step) or 1) * k + 0.5), 1),
+		radius = 1e6, npcs = true, sounds = true, effects = true,
+		subjects = {}, nNpc = 0, nShot = 0, corpse = {}, sound = {}, fx = {}, movers = {}, nMover = 0, ply = ply,
+		view = {}, viewName = isstring(take.viewName) and string.sub(take.viewName, 1, 60) or "demo view",
+	}
+	local last = f0
+	local keyOf = {}
+	for i, t in ipairs(take.subjects) do
+		if istable(t) and KINDS[t.kind] and isstring(t.model) and string.find(t.model, "^models/.+%.mdl$") and #t.model < 200
+			and util.IsValidModel(t.model) and istable(t.s) then
+			local key = { demo = i }
+			local sub = { kind = t.kind, model = string.lower(t.model), samples = {}, weapons = {},
+				skin = math.floor(tonumber(t.skin) or 0), groups = {}, name = isstring(t.name) and string.sub(t.name, 1, 60) or t.kind,
+				late = t.late and true or nil }
+			for gi, gv in pairs(istable(t.groups) and t.groups or {}) do
+				if tonumber(gi) and tonumber(gv) then sub.groups[math.floor(tonumber(gi))] = math.floor(tonumber(gv)) end
+			end
+			if istable(t.col) and #t.col == 4 then sub.col = Color(tonumber(t.col[1]) or 255, tonumber(t.col[2]) or 255, tonumber(t.col[3]) or 255, tonumber(t.col[4]) or 255) end
+			if istable(t.pcol) and #t.pcol == 3 then sub.pcol = Vector(tonumber(t.pcol[1]) or 0, tonumber(t.pcol[2]) or 0, tonumber(t.pcol[3]) or 0) end
+			for _, str in ipairs(t.s) do
+				local smp = isstring(str) and demoSample(str, k, f0)
+				if smp and smp.f < SA.MAX_FRAMES then
+					smp.f = math.floor(smp.f + 0.5)
+					local prev = sub.samples[#sub.samples]
+					if not prev or smp.f > prev.f then sub.samples[#sub.samples + 1] = smp end
+				end
+			end
+			for _, str in ipairs(istable(t.w) and t.w or {}) do
+				local wf, wm = string.match(isstring(str) and str or "", "^([%d%.]+)|(.*)$")
+				if wf and #wm < 200 then sub.weapons[#sub.weapons + 1] = { f = math.floor(f0 + tonumber(wf) * k + 0.5), model = string.lower(wm) } end
+			end
+			if tonumber(t.gone) then sub.gone = math.floor(f0 + tonumber(t.gone) * k + 0.5) end
+			if #sub.samples > 0 then
+				rec.subjects[key] = sub
+				keyOf[tonumber(t.id) or -i] = key
+				last = math.max(last, sub.samples[#sub.samples].f)
+			end
+		end
+	end
+	for _, str in ipairs(istable(take.view) and take.view or {}) do
+		local v = nums(isstring(str) and string.gsub(str, "|", ",") or "")
+		local f, pa = tonumber(v[1]), vecAng(v, 2)
+		if f and pa and v[8] then
+			f = math.floor(f0 + f * k + 0.5)
+			local prev = rec.view[#rec.view]
+			if f < SA.MAX_FRAMES and (not prev or f > prev.f) then
+				rec.view[#rec.view + 1] = { f = f, pos = pa[1], ang = pa[2], fov = math.Clamp(v[8], 5, 170) }
+			end
+		end
+	end
+	for _, c in ipairs(istable(take.sounds) and take.sounds or {}) do
+		local f, path = istable(c) and tonumber(c[1]), istable(c) and c[2]
+		if f and isstring(path) and #path < 200 and string.StartWith(path, "sound/") and not string.find(path, "..", 1, true)
+			and #rec.sound < SA.MAX_SOUNDS then
+			local actor = keyOf[tonumber(c[5]) or -1]
+			rec.sound[#rec.sound + 1] = { f = math.floor(f0 + f * k + 0.5), path = path, actor = actor, ui = not actor or nil,
+				vol = math.Clamp(tonumber(c[3]) or 1, 0, 2), pitch = math.Clamp(tonumber(c[4]) or 100, 25, 400) }
+		end
+	end
+	if next(rec.subjects) == nil and #rec.view < 2 then
+		S.Notice(ply, "#sa_dm_empty", 1)
+		return
+	end
+	rec.lastF = last
+	rec.on = false
+	R[ply] = rec
+	SA.FinishTake(ply, rec)
+end
+
+COMP:NetReceive("Demo", function(ply)
+	local serial, part, parts = net.ReadUInt(16), net.ReadUInt(16), net.ReadUInt(16)
+	local len = net.ReadUInt(32)
+	if parts == 0 or part == 0 or part > parts or len > 65000 or parts * 64000 > DEMO_MAX then return end
+	local up = demoUp[ply]
+	if not up or up.serial ~= serial then
+		up = { serial = serial, parts = parts, got = 0, data = {} }
+		demoUp[ply] = up
+	end
+	if up.data[part] then return end
+	up.data[part] = net.ReadData(len)
+	up.got = up.got + 1
+	if up.got < up.parts then return end
+	demoUp[ply] = nil
+	local raw = util.Decompress(table.concat(up.data), DEMO_UNPACKED)
+	local take = raw and util.JSONToTable(raw)
+	if not take then
+		S.Notice(ply, "#sa_dm_bad", 1)
+		return
+	end
+	local ok, err = pcall(SA.ImportDemoTake, ply, take)
+	if not ok then
+		R[ply] = nil
+		ErrorNoHalt("[GM:FM] demo take: " .. tostring(err) .. "\n")
+		S.Notice(ply, "#sa_dm_bad", 1)
+	end
+end)
+
+COMP:Hook("PlayerDisconnected", function(ply) demoUp[ply] = nil end, "demo")

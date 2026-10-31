@@ -52,6 +52,39 @@ end
 SA.SelectedKeys = selList
 
 ---------------------------------------------------------------------
+-- (b0.2.6, as SFM) The three editors of the timeline, switched by the buttons at its left end
+-- and F2 / F3 / F4: Clip — the film: the shots on a film strip, the FX clips and the sounds;
+-- Motion — the keys of the objects under the time selection (the timeline as it always was);
+-- Graph — the curves of the channels of the selected object or bone (cl_saeditor_curves.lua).
+---------------------------------------------------------------------
+local cvTlMode = CreateClientConVar("gmfm_tl_mode", "motion", true, false, "GM:FM: the timeline's editor: clip, motion or graph")
+function SA.TimelineMode()
+	local m = cvTlMode:GetString()
+	return (m == "clip" or m == "graph") and m or "motion"
+end
+function SA.SetTimelineMode(m)
+	if m ~= "clip" and m ~= "graph" then m = "motion" end
+	cvTlMode:SetString(m)
+	hook.Run("SAeditor_TimelineMode", m)
+	-- the timeline is shown when an editor is picked from the keyboard
+	if Dock.ShowPage then Dock.ShowPage("sa_timeline") end
+end
+-- (b0.2.6 round 7, as SFM) The Clip Editor only shows: no gizmo in the viewport (cl_gizmo.lua), and
+-- the Primary Viewport is the render's picture, refined while nothing moves (cl_render.lua) —
+-- the Motion and Graph editors show the quick one. Only while the timeline is shown.
+SPeditor.Client.ClipEditor = function()
+	return SA.TimelineMode() == "clip" and UI.PageShown ~= nil and UI.PageShown("sa_timeline")
+end
+SPeditor.Hook("GMFM_ViewportOverlay", "GMFM.ClipEditor", function(_, ix, iy, iw, ih)
+	if not SPeditor.Client.ClipEditor() then return end
+	draw.SimpleTextOutlined(L("sa_clip_viewonly"), "SPeditor.Small", ix + 8, iy + ih - 6, Color(230, 190, 90),
+		TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM, 1, color_black)
+end)
+COMP:AddHotkey({ key = KEY_F2, fn = function() SA.SetTimelineMode("clip") end, label = "F2", desc = "sa_hk_clip" })
+COMP:AddHotkey({ key = KEY_F3, fn = function() SA.SetTimelineMode("motion") end, label = "F3", desc = "sa_hk_motion" })
+COMP:AddHotkey({ key = KEY_F4, fn = function() SA.SetTimelineMode("graph") end, label = "F4", desc = "sa_hk_graph" })
+
+---------------------------------------------------------------------
 -- The Motion Editor's time selection (a0.7, SA.timeSel / SA.TimeSelWeight): made with
 -- Shift + drag on the frame numbers, its four edges dragged there; this menu (the clock
 -- button, a right click on the frame numbers) makes it from the keys or the animation and
@@ -228,6 +261,12 @@ local function buildTimeline(page)
 		return n > 0 and set or nil
 	end
 
+	for _, m in ipairs({ { "clip", "icon16/film.png", "sa_tl_clip" }, { "motion", "icon16/time_go.png", "sa_tl_motion" },
+			{ "graph", "icon16/chart_curve.png", "sa_tl_graph" } }) do
+		local b = UI.IconButton(bar, m[2], L(m[3]), function() SA.SetTimelineMode(m[1]) end, function() return SA.TimelineMode() == m[1] end)
+		b.SPThemeKey = "mode_" .. m[1]
+	end
+	sep()
 	UI.GuideButton(bar, "sa_keys")
 	UI.IconButton(bar, "icon16/control_start_blue.png", L("sa_first"), function() SA.Seek(0) end)
 	UI.IconButton(bar, "icon16/control_rewind_blue.png", L("sa_prev_key"), function()
@@ -332,7 +371,6 @@ local function buildTimeline(page)
 	UI.IconButton(bar, "icon16/television.png", L("sa_show_player_tip"), function() SA.StartShow() end)
 	UI.IconButton(bar, "icon16/eye.png", L("sa_show_eyes_tip"), function() SA.StartShow("eyes") end)
 	UI.IconButton(bar, "icon16/webcam.png", L("sa_rec_title"), function() SA.OpenRecord() end)
-	UI.IconButton(bar, "icon16/chart_curve.png", L("sa_crv_title"), function() SA.OpenCurves() end)
 	UI.IconButton(bar, "icon16/heart.png", L("sa_proc_title"), function() SA.OpenProc(C.selected) end)
 	UI.IconButton(bar, "icon16/arrow_switch.png", L("sa_smh_title"), function() SA.OpenSMH() end)
 	-- "0": back to frame 0 with the whole animation in view (the timeline is endless, a0.9)
@@ -351,6 +389,28 @@ local function buildTimeline(page)
 	local tl = vgui.Create("DPanel", page)
 	tl:Dock(FILL)
 	tl:SetMouseInputEnabled(true)
+	-- the Graph Editor takes the place of the rows (made the first time it is asked for)
+	local graphHost = vgui.Create("DPanel", page)
+	graphHost:Dock(FILL)
+	graphHost.Paint = function(_, w, h) surface.SetDrawColor(COL.LIST_BG or COL.BG) surface.DrawRect(0, 0, w, h) end
+	local function applyMode()
+		local m = SA.TimelineMode()
+		tl:SetVisible(m ~= "graph")
+		graphHost:SetVisible(m == "graph")
+		if m == "graph" and SA.BuildCurves then
+			if not graphHost.SPBuilt then
+				graphHost.SPBuilt = true
+				SA.BuildCurves(graphHost)
+			elseif graphHost.SPClaim then
+				graphHost.SPClaim()
+			end
+		end
+		page:InvalidateLayout()
+	end
+	COMP:Hook("SAeditor_TimelineMode", function()
+		if IsValid(tl) then applyMode() end
+	end, "timeline_mode")
+	timer.Simple(0, function() if IsValid(tl) then applyMode() end end)
 	local rows, rowsAt = {}, 0
 	local scroll = 0
 	local drag            -- { kind = "scrub" } | { kind = "keys", from, to, lo, hi, … } | { kind = "box", x0, y0, x1, y1 } | sound
@@ -417,7 +477,14 @@ local function buildTimeline(page)
 		local seen = {}
 		-- the film strip on top (a0.9, was "Cameras"): the shots of the camera cuts, or the
 		-- whole animation as one shot; its menu cuts, trims and speeds up the time of the film
-		rows[1] = { cutsRow = true, uid = -1e9, name = L("sa_cuts_row"), keys = {} }
+		local clipMode = SA.TimelineMode() == "clip"
+		if clipMode then
+			-- the Clip Editor (b0.2.6, SFM): Picture — the film strip of the shots, tall
+			rows[1] = { header = true, uid = -3e9, name = L("sa_tl_picture"), keys = {} }
+			rows[2] = { cutsRow = true, film = true, uid = -1e9, name = L("sa_cuts_row"), keys = {}, h = ROW_H * 3 }
+		else
+			rows[1] = { cutsRow = true, uid = -1e9, name = L("sa_cuts_row"), keys = {} }
+		end
 		-- the FX clips under it (b0.2 round 6, cl_saeditor_fxclips.lua): titles, grain, colour
 		-- clips that overlap in time go into lanes, one row each
 		local _, nl = SA.ClipLanes()
@@ -460,16 +527,25 @@ local function buildTimeline(page)
 			for f in pairs(frames) do head.gkeys[#head.gkeys + 1] = f end
 			table.sort(head.gkeys)
 		end
-		for _, obj in ipairs(objs) do objectRows(obj.ent, obj.name, false) end
-		-- selected objects without keys get a row too: a key can be set here
-		for _, e in ipairs(C.SelectionList()) do objectRows(e, C.DisplayName(e), true) end
+		if not clipMode then
+			for _, obj in ipairs(objs) do objectRows(obj.ent, obj.name, false) end
+			-- selected objects without keys get a row too: a key can be set here
+			for _, e in ipairs(C.SelectionList()) do objectRows(e, C.DisplayName(e), true) end
+		else
+			-- the objects are not the film's: only the sounds follow, under their heading
+			for i = #rows, 1, -1 do
+				if rows[i].groupRow or rows[i].ent then table.remove(rows, i) end
+			end
+			rows[#rows + 1] = { header = true, uid = -3e9 - 1, name = L("sa_tl_sound"), keys = {} }
+		end
 		-- sounds: the same file from the same source shares a row (a burst of shots is one row)
 		local lanes = {}
 		for _, c in ipairs(SA.sounds or {}) do
 			local key = c.path .. "|" .. c.uid .. "|" .. tostring(c.voice)
 			local row = lanes[key]
 			if not row then
-				row = { sounds = {}, uid = -c.id, name = string.StripExtension(string.GetFileFromFilename(c.path) or c.path), keys = {} }
+				row = { sounds = {}, uid = -c.id, name = string.StripExtension(string.GetFileFromFilename(c.path) or c.path), keys = {},
+					h = clipMode and math.floor(ROW_H * 1.5) or nil }
 				lanes[key] = row
 				rows[#rows + 1] = row
 			end
@@ -530,9 +606,24 @@ local function buildTimeline(page)
 		v0, vlen = 0, nil
 		SA.Seek(0)
 	end
+	-- (b0.2.6) rows have heights of their own (the film strip of the Clip Editor is taller)
 	local function rowAt(my)
 		if my < RULER_H then return nil end
-		return rows[math.floor((my - RULER_H) / ROW_H) + 1 + scroll]
+		local y = RULER_H
+		for i = scroll + 1, #rows do
+			local rh = rows[i].h or ROW_H
+			if my < y + rh then return rows[i], y, rh end
+			y = y + rh
+		end
+	end
+	-- the furthest the rows scroll: the last ones fill the view
+	local function maxScroll(h)
+		local avail, sum = h - RULER_H, 0
+		for i = #rows, 1, -1 do
+			sum = sum + (rows[i].h or ROW_H)
+			if sum > avail then return i end
+		end
+		return 0
 	end
 	local function keyAt(row, mx, w)
 		local best, bestD
@@ -649,39 +740,103 @@ local function buildTimeline(page)
 			"SPeditor.Small", 8, RULER_H / 2, COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 
 		-- rows
-		local visible = math.max(math.floor((h - RULER_H) / ROW_H), 1)
-		scroll = math.Clamp(scroll, 0, math.max(#rows - visible, 0))
+		scroll = math.Clamp(scroll, 0, maxScroll(h))
 		local selUID = SA.UID(C.selected)
-		for i = 1, visible do
+		local nextY = RULER_H
+		for i = 1, #rows - scroll do
 			local row = rows[i + scroll]
-			if not row then break end
-			local y = RULER_H + (i - 1) * ROW_H
+			if not row or nextY >= h then break end
+			local y = nextY
+			local RH = row.h or ROW_H
+			nextY = nextY + RH
 			surface.SetDrawColor(((i + scroll) % 2 == 0) and COL.ROW_A or COL.ROW_B)
-			surface.DrawRect(0, y, w, ROW_H)
+			surface.DrawRect(0, y, w, RH)
 			if row.uid == selUID or (row.face and row.owner == selUID) then
 				surface.SetDrawColor(COL.SEL)
-				surface.DrawRect(0, y, NAME_W, ROW_H)
+				surface.DrawRect(0, y, NAME_W, RH)
 			end
 			if row.face then
 				surface.SetDrawColor(255, 255, 255, 255)
 				surface.SetMaterial(matFace)
-				local is = UI.IconSize(ROW_H + 2)
-				surface.DrawTexturedRect(8, y + math.floor((ROW_H - is) / 2), is, is)
+				local is = UI.IconSize(RH + 2)
+				surface.DrawTexturedRect(8, y + math.floor((RH - is) / 2), is, is)
 			end
-			if row.cutsRow then
+			if row.header then
+				-- a heading of the Clip Editor: Picture, Sound
+				surface.SetDrawColor(COL.HEADER)
+				surface.DrawRect(0, y, w, RH)
+				surface.SetDrawColor(COL.BORDER)
+				surface.DrawRect(0, y + RH - 1, w, 1)
+				local is = UI.IconSize(ROW_H + 2)
+				surface.SetDrawColor(255, 255, 255, 255)
+				surface.SetMaterial(matOpen)
+				surface.DrawTexturedRect(4, y + math.floor((RH - is) / 2), is, is)
+				draw.SimpleText(row.name, "SPeditor.Bold", 8 + is, y + RH / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+			elseif row.film then
+				-- the shots on a film strip, as SFM's Clip Editor: a band of film with its sprocket
+				-- holes, the shot's name on a bar (the shot the playhead is in is lit) and its time
+				local is = UI.IconSize(ROW_H + 2)
 				surface.SetDrawColor(255, 255, 255, 255)
 				surface.SetMaterial(matCam)
-				local is = UI.IconSize(ROW_H + 2)
-				surface.DrawTexturedRect(6, y + math.floor((ROW_H - is) / 2), is, is)
-				draw.SimpleText(row.name, "SPeditor.Small", 10 + is, y + ROW_H / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				surface.DrawTexturedRect(6, y + math.floor((ROW_H - is) / 2) + 2, is, is)
+				draw.SimpleText(row.name, "SPeditor.Small", 10 + is, y + ROW_H / 2 + 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				clip(true)
+				local list = {}
+				for _, c in ipairs(SA.cuts) do
+					local f = (drag and drag.kind == "cut" and drag.from == c.f) and drag.to or c.f
+					list[#list + 1] = { f = f, uid = c.uid }
+				end
+				table.sort(list, function(a, b) return a.f < b.f end)
+				if #list == 0 then list[1] = { f = 0, uid = 0, whole = true } end
+				local fy, fh = y + 3, RH - 6
+				local hole = math.max(math.floor(fh * 0.09), 2)
+				for si, c in ipairs(list) do
+					local fromF = si == 1 and 0 or c.f
+					local toF = list[si + 1] and list[si + 1].f or SA.frames
+					local x0, x1 = frameX(fromF, w), frameX(toF, w)
+					if x1 > NAME_W and x0 < w then
+						local cur = SA.frame >= fromF and (SA.frame < toF or (si == #list and SA.frame <= toF))
+						surface.SetDrawColor(64, 60, 128)
+						surface.DrawRect(x0, fy, x1 - x0, fh)
+						surface.SetDrawColor(32, 30, 66)
+						for hx = x0 + 4, x1 - hole * 2, hole * 3 do
+							surface.DrawRect(hx, fy + 2, hole * 1.5, hole)
+							surface.DrawRect(hx, fy + fh - 2 - hole, hole * 1.5, hole)
+						end
+						local ty, th = fy + hole + 5, math.max(math.floor(fh * 0.26), ROW_H - 4)
+						surface.SetDrawColor(cur and Color(240, 200, 80) or Color(170, 150, 95))
+						surface.DrawRect(x0 + 2, ty, math.max(x1 - x0 - 4, 1), th)
+						local cam = not c.whole and SA.EntByUID(c.uid) or nil
+						local name = c.whole and L("sa_cuts_empty") or (IsValid(cam) and C.DisplayName(cam) or "?")
+						local tx = math.max(x0, NAME_W) + 6
+						draw.SimpleText(string.format(L("sa_tl_shot"), si) .. "  ·  " .. name, "SPeditor.Small", tx, ty + th / 2, color_black,
+							TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+						draw.SimpleText(string.format(L("sa_tl_shot_info"), UI.Timecode(fromF / SA.fps), UI.Timecode((toF - fromF) / SA.fps)),
+							"SPeditor.Small", tx, ty + th + (fy + fh - hole - 4 - ty - th) / 2, Color(205, 205, 230), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+						surface.SetDrawColor(0, 0, 0, 200)
+						surface.DrawOutlinedRect(x0, fy, x1 - x0, fh)
+						-- the cut itself, dragged as on the Motion Editor's row
+						if not c.whole and si > 1 then
+							surface.SetDrawColor(COL.TEXT)
+							surface.DrawRect(x0, y, 2, RH)
+						end
+					end
+				end
+				clip(false)
+			elseif row.cutsRow then
+				surface.SetDrawColor(255, 255, 255, 255)
+				surface.SetMaterial(matCam)
+				local is = UI.IconSize(RH + 2)
+				surface.DrawTexturedRect(6, y + math.floor((RH - is) / 2), is, is)
+				draw.SimpleText(row.name, "SPeditor.Small", 10 + is, y + RH / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 				clip(true)
 				if #SA.cuts == 0 then
 					-- one shot: the whole animation
 					local x0, x1 = frameX(0, w), frameX(SA.frames, w)
 					surface.SetDrawColor(110, 110, 110, 110)
-					surface.DrawRect(x0, y + 2, x1 - x0, ROW_H - 4)
+					surface.DrawRect(x0, y + 2, x1 - x0, RH - 4)
 					draw.SimpleText(L("sa_cuts_empty") .. "  ·  " .. string.format("%.1f %s", SA.frames / SA.fps, L("sa_snd_sec")),
-						"SPeditor.Small", math.max(x0, NAME_W) + PAD, y + ROW_H / 2, COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+						"SPeditor.Small", math.max(x0, NAME_W) + PAD, y + RH / 2, COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 				end
 				-- a band for every shot: from its cut to the next one, named after its camera
 				local list = {}
@@ -699,31 +854,31 @@ local function buildTimeline(page)
 					for j, e in ipairs(cams) do if e == cam then ci = j end end
 					local col = CUT_COLORS[(ci - 1) % #CUT_COLORS + 1]
 					surface.SetDrawColor(col.r, col.g, col.b, i == 1 and c.f > 0 and 90 or 170)
-					surface.DrawRect(x0, y + 2, x1 - x0, ROW_H - 4)
+					surface.DrawRect(x0, y + 2, x1 - x0, RH - 4)
 					local mx = frameX(c.f, w)
 					surface.SetDrawColor(COL.TEXT)
-					surface.DrawRect(mx, y, 2, ROW_H)
+					surface.DrawRect(mx, y, 2, RH)
 					local nextF = list[i + 1] and list[i + 1].f or SA.frames
 					local dur = string.format("  %.1f %s", (nextF - (i == 1 and 0 or c.f)) / SA.fps, L("sa_snd_sec"))
-					draw.SimpleText((IsValid(cam) and C.DisplayName(cam) or "?") .. dur, "SPeditor.Small", mx + 5, y + ROW_H / 2, color_white,
+					draw.SimpleText((IsValid(cam) and C.DisplayName(cam) or "?") .. dur, "SPeditor.Small", mx + 5, y + RH / 2, color_white,
 						TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 				end
 				clip(false)
 			elseif row.fxRow then
-				local is = UI.IconSize(ROW_H + 2)
+				local is = UI.IconSize(RH + 2)
 				if row.lane == 1 then
 					surface.SetDrawColor(255, 255, 255, 255)
 					surface.SetMaterial(matFx)
-					surface.DrawTexturedRect(6, y + math.floor((ROW_H - is) / 2), is, is)
+					surface.DrawTexturedRect(6, y + math.floor((RH - is) / 2), is, is)
 				end
-				draw.SimpleText(row.name, "SPeditor.Small", 10 + is, y + ROW_H / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				draw.SimpleText(row.name, "SPeditor.Small", 10 + is, y + RH / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 				clip(true)
 				if #SA.fxClips == 0 and row.lane == 1 then
-					draw.SimpleText(L("sa_fx_empty"), "SPeditor.Small", math.max(frameX(0, w), NAME_W) + PAD, y + ROW_H / 2, COL.DIM,
+					draw.SimpleText(L("sa_fx_empty"), "SPeditor.Small", math.max(frameX(0, w), NAME_W) + PAD, y + RH / 2, COL.DIM,
 						TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 				end
 				local lanes = SA.ClipLanes()
-				local lh = ROW_H - 4
+				local lh = RH - 4
 				for ci, c in ipairs(SA.fxClips) do
 				if lanes[ci] == row.lane then
 					local a, b = c.a, c.b
@@ -749,48 +904,49 @@ local function buildTimeline(page)
 			elseif row.sounds then
 				surface.SetDrawColor(255, 255, 255, 255)
 				surface.SetMaterial(matSound)
-				local is = UI.IconSize(ROW_H + 2)
-				surface.DrawTexturedRect(6, y + math.floor((ROW_H - is) / 2), is, is)
-				draw.SimpleText(row.name, "SPeditor.Small", 10 + is, y + ROW_H / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				local is = UI.IconSize(RH + 2)
+				surface.DrawTexturedRect(6, y + math.floor((RH - is) / 2), is, is)
+				draw.SimpleText(row.name, "SPeditor.Small", 10 + is, y + RH / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 				clip(true)
 				local right = 0
 				for _, c in ipairs(row.sounds) do
 					local x0, x1 = soundSpan(c, w)
 					local held = drag and (drag.kind == "sound" or drag.kind == "trim") and drag.id == c.id
 					surface.SetDrawColor(held and COL.ORANGE or COL.BLUE)
-					surface.DrawRect(x0, y + 3, x1 - x0, ROW_H - 6)
+					surface.DrawRect(x0, y + 3, x1 - x0, RH - 6)
 					surface.SetDrawColor(color_black)
-					surface.DrawOutlinedRect(x0, y + 3, x1 - x0, ROW_H - 6)
+					surface.DrawOutlinedRect(x0, y + 3, x1 - x0, RH - 6)
 					-- a trimmed side is marked with a light edge
 					surface.SetDrawColor(COL.TEXT)
-					if (c.cin or 0) > 0 then surface.DrawRect(x0 + 1, y + 4, 2, ROW_H - 8) end
-					if (c.cout or 0) > 0 then surface.DrawRect(x1 - 3, y + 4, 2, ROW_H - 8) end
+					if (c.cin or 0) > 0 then surface.DrawRect(x0 + 1, y + 4, 2, RH - 8) end
+					if (c.cout or 0) > 0 then surface.DrawRect(x1 - 3, y + 4, 2, RH - 8) end
 					-- fades: a slope from the bottom corner up to the full height
 					local len = SA.SoundLength(c)
 					if len and len > 0 and ((c.fin or 0) > 0 or (c.fout or 0) > 0) then
-						local px = (x1 - x0) / len * SA.fps / (c.pitch / 100)    -- pixels per second of the file at its speed
-						local top, bot = y + 4, y + ROW_H - 4
+						local pk = c.len and 1 or c.pitch / 100                  -- a recorded engine: fades in timeline seconds
+						local px = (x1 - x0) / len * SA.fps / pk    -- pixels per second of the file at its speed
+						local top, bot = y + 4, y + RH - 4
 						surface.SetDrawColor(COL.TEXT)
-						if c.fin > 0 then surface.DrawLine(x0, bot, x0 + math.min(c.fin * px * (c.pitch / 100), x1 - x0), top) end
-						if c.fout > 0 then surface.DrawLine(x1, bot, x1 - math.min(c.fout * px * (c.pitch / 100), x1 - x0), top) end
+						if c.fin > 0 then surface.DrawLine(x0, bot, x0 + math.min(c.fin * px * pk, x1 - x0), top) end
+						if c.fout > 0 then surface.DrawLine(x1, bot, x1 - math.min(c.fout * px * pk, x1 - x0), top) end
 					end
 					right = math.max(right, x1)
 				end
-				draw.SimpleText(soundLabel(row.sounds[1]), "SPeditor.Small", right + 6, y + ROW_H / 2, COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				draw.SimpleText(soundLabel(row.sounds[1]), "SPeditor.Small", right + 6, y + RH / 2, COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 				clip(false)
 			elseif row.groupRow then
 				-- a track: the fold arrow, its name and the keys of all its objects
 				surface.SetDrawColor(COL.HEADER or COL.ROW_A)
-				surface.DrawRect(0, y, w, ROW_H)
+				surface.DrawRect(0, y, w, RH)
 				surface.SetDrawColor(255, 255, 255, 255)
-				local is = UI.IconSize(ROW_H + 2)
+				local is = UI.IconSize(RH + 2)
 				surface.SetMaterial(row.open and matOpen or matShut)
-				surface.DrawTexturedRect(2, y + math.floor((ROW_H - is) / 2), is, is)
+				surface.DrawTexturedRect(2, y + math.floor((RH - is) / 2), is, is)
 				surface.SetMaterial(matGroup)
-				surface.DrawTexturedRect(2 + is, y + math.floor((ROW_H - is) / 2), is, is)
-				draw.SimpleText(row.name .. "  (" .. row.n .. ")", "SPeditor.Bold", 6 + is * 2, y + ROW_H / 2, COL.ORANGE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				surface.DrawTexturedRect(2 + is, y + math.floor((RH - is) / 2), is, is)
+				draw.SimpleText(row.name .. "  (" .. row.n .. ")", "SPeditor.Bold", 6 + is * 2, y + RH / 2, COL.ORANGE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 				clip(true)
-				local cy = y + ROW_H / 2
+				local cy = y + RH / 2
 				if #row.gkeys > 1 then
 					surface.SetDrawColor(COL.BORDER)
 					surface.DrawRect(frameX(row.gkeys[1], w), cy - 1, frameX(row.gkeys[#row.gkeys], w) - frameX(row.gkeys[1], w), 2)
@@ -808,24 +964,24 @@ local function buildTimeline(page)
 			elseif row.bone then
 				-- a bone of the object above
 				surface.SetDrawColor(COL.DIM)
-				surface.DrawRect(12, y + 2, 1, ROW_H / 2 - 2)
-				surface.DrawRect(12, y + ROW_H / 2, 8, 1)
-				draw.SimpleText(row.name, "SPeditor.Small", 24, y + ROW_H / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				surface.DrawRect(12, y + 2, 1, RH / 2 - 2)
+				surface.DrawRect(12, y + RH / 2, 8, 1)
+				draw.SimpleText(row.name, "SPeditor.Small", 24, y + RH / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 			else
 				local ind = row.indent and UI.S(14) or 0
 				if ind > 0 then
 					-- an object of the track above
 					surface.SetDrawColor(COL.BORDER)
-					surface.DrawRect(8, y, 1, ROW_H)
+					surface.DrawRect(8, y, 1, RH)
 				end
-				draw.SimpleText(row.name, "SPeditor.Small", (row.face and 28 or 8) + ind, y + ROW_H / 2, #row.keys > 0 and COL.TEXT or COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				draw.SimpleText(row.name, "SPeditor.Small", (row.face and 28 or 8) + ind, y + RH / 2, #row.keys > 0 and COL.TEXT or COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 			end
 			-- segments between keys and the keys themselves. A baked animation has a key
 			-- every frame or two — hundreds per row: neighbouring segments of one kind are
 			-- drawn as one strip, and keys that stand closer than a diamond is wide are
 			-- drawn as thin marks (a diamond costs two polygons; measured in game: 9 ms a
 			-- frame for a scene with six baked characters before this).
-			local cy = y + ROW_H / 2
+			local cy = y + RH / 2
 			local keys = row.keys
 			clip(true)
 			local runFrom, runHold
@@ -876,9 +1032,11 @@ local function buildTimeline(page)
 		if ts then
 			if ts[4] > SA.frames then SA.SetTimeSel({ ts[1], ts[2], ts[3], ts[4], shape = ts.shape, noMarks = true }) ts = SA.timeSel end
 		end
+		if ts and SA.TimelineMode() == "clip" then ts = nil end
 		if ts then
 			clip(true)
-			local c = COL.BLUE
+			-- the Motion Editor's green of SFM
+			local c = Color(110, 190, 100)
 			local xa, xb = math.max(frameX(ts[1], w), NAME_W), math.min(frameX(ts[4], w), w)
 			local step = 2
 			local poly = { { x = xa, y = RULER_H } }
@@ -1154,7 +1312,7 @@ local function buildTimeline(page)
 		m:AddOption(L("sa_snd_m_here") .. "  (" .. round(SA.frame) .. ")", function() SA.ChangeSound(c.id, { f = round(SA.frame) }) end)
 		m:AddOption(L("sa_snd_m_dup"), function()
 			SA.AddSound(c.path, { f = round(SA.frame), uid = c.uid, voice = c.voice, vol = c.vol, pitch = c.pitch, dist = c.dist,
-				cin = c.cin, cout = c.cout, fin = c.fin, fout = c.fout })
+				cin = c.cin, cout = c.cout, fin = c.fin, fout = c.fout, loop = c.loop, len = c.len, env = c.env, ofs = c.ofs })
 		end):SetIcon("icon16/page_copy.png")
 		-- trimming at the playhead (the edges of a bar can also be dragged)
 		if SA.SoundLength(c) then
@@ -1322,6 +1480,15 @@ local function buildTimeline(page)
 			end
 		end
 		local row = rowAt(my)
+		-- a heading of the Clip Editor: only the playhead moves under it
+		if row and row.header then
+			if code == MOUSE_LEFT and mx >= NAME_W and not SA.rendering then
+				drag = { kind = "scrub" }
+				SA.Seek(round(frameAt(mx, w)))
+				s:MouseCapture(true)
+			end
+			return
+		end
 		if row and row.cutsRow and mx >= NAME_W then
 			local c = cutAt(mx, w)
 			if code == MOUSE_RIGHT then
@@ -1577,9 +1744,12 @@ local function buildTimeline(page)
 			local w = s:GetWide()
 			local xa, xb = math.min(d.x0, d.x1), math.max(d.x0, d.x1)
 			local ya, yb = math.min(d.y0, d.y1), math.max(d.y0, d.y1)
-			for i, row in ipairs(rows) do
-				local y = RULER_H + (i - 1 - scroll) * ROW_H
-				if not row.sounds and y + ROW_H > ya and y < yb then
+			local yy = RULER_H
+			for i = 1, scroll do yy = yy - (rows[i].h or ROW_H) end
+			for _, row in ipairs(rows) do
+				local y, rh = yy, row.h or ROW_H
+				yy = yy + rh
+				if not row.sounds and y + rh > ya and y < yb then
 					for _, k in ipairs(row.keys) do
 						local x = frameX(k.f, w)
 						if x >= xa - 4 and x <= xb + 4 then setSel(row.uid, k.f, true, row.parts) end
@@ -1776,7 +1946,53 @@ end
 -- Speed settings of the animation render, the same in both render windows: JPEG quality
 -- of the video and the part of soft shadow / depth of field passes. row(text) -> a row panel.
 ---------------------------------------------------------------------
+-- (b0.2.6) Quality presets, as SFM's render settings: one choice sets the passes of a frame
+-- (shadows / depth of field / smoothing), the smoothing's own passes, the occlusion's and the
+-- JPEG level of the video. Motion blur and the frame rate are left as they are (they are the look).
+SA.RENDER_PRESETS = {
+	{ id = "draft",  samples = 25,  aa = 2,  ao = 4,  q = 70 },
+	{ id = "normal", samples = 50,  aa = 8,  ao = 16, q = 90 },
+	{ id = "high",   samples = 100, aa = 16, ao = 32, q = 90 },
+	{ id = "final",  samples = 100, aa = 32, ao = 64, q = 100 },
+}
+local function currentPreset()
+	local aa, ao = SPeditor.Render.AASamples(), GetConVar("gmfm_ssao_passes"):GetInt()
+	for _, p in ipairs(SA.RENDER_PRESETS) do
+		if p.samples == SA.RenderSamples() and p.aa == aa and p.ao == ao and p.q == SA.RenderQuality() then return p.id end
+	end
+end
+-- show `value` in a combo box of choices without asking again
+local function showChoice(combo, value)
+	for i, d in ipairs(combo.Data or {}) do
+		if d == value then
+			combo:SetText(combo:GetOptionText(i))
+			combo.selected = i
+			return
+		end
+	end
+end
+
 local function renderSpeedRows(row)
+	local pRow = row(L("sa_rd_preset"))
+	local pc = UI.StyleCombo(vgui.Create("DComboBox", pRow))
+	pc:Dock(FILL)
+	pc:SetTooltip(L("sa_rd_preset_tip"))
+	local curP = currentPreset()
+	for _, p in ipairs(SA.RENDER_PRESETS) do pc:AddChoice(L("sa_rd_preset_" .. p.id), p.id, p.id == curP) end
+	if not curP then pc:SetText(L("sa_rd_preset_custom")) end
+	local q, sm
+	pc.OnSelect = function(_, _, _, id)
+		for _, p in ipairs(SA.RENDER_PRESETS) do
+			if p.id == id then
+				RunConsoleCommand("gmfm_render_samples", tostring(p.samples))
+				RunConsoleCommand("gmfm_render_aa_samples", tostring(p.aa))
+				RunConsoleCommand("gmfm_ssao_passes", tostring(p.ao))
+				RunConsoleCommand("gmfm_video_quality", tostring(p.q))
+				if IsValid(q) then showChoice(q, p.q) end
+				if IsValid(sm) then showChoice(sm, p.samples) end
+			end
+		end
+	end
 	-- the video file: AVI written by the editor, or WebM by the engine's writer (Windows)
 	local vRow = row(L("sa_rd_video"))
 	local vc = UI.StyleCombo(vgui.Create("DComboBox", vRow))
@@ -1789,17 +2005,23 @@ local function renderSpeedRows(row)
 	vc:AddChoice(L("sa_rd_video_jpeg"), "jpeg", curFmt == "jpeg")
 	vc.OnSelect = function(_, _, _, data) RunConsoleCommand("gmfm_render_video", tostring(data)) end
 	local qRow = row(L("sa_rd_quality"))
-	local q = UI.StyleCombo(vgui.Create("DComboBox", qRow))
+	q = UI.StyleCombo(vgui.Create("DComboBox", qRow))
 	q:Dock(FILL)
 	for _, v in ipairs(SA.RENDER_QUALITIES) do q:AddChoice(L("sa_rd_q_" .. v), v, v == SA.RenderQuality()) end
 	if not q:GetSelected() then q:SetText("JPEG " .. SA.RenderQuality()) end
-	q.OnSelect = function(_, _, _, data) RunConsoleCommand("gmfm_video_quality", tostring(data)) end
+	q.OnSelect = function(_, _, _, data)
+		RunConsoleCommand("gmfm_video_quality", tostring(data))
+		pc:SetText(L("sa_rd_preset_custom"))
+	end
 	local sRow = row(L("sa_rd_samples"))
-	local sm = UI.StyleCombo(vgui.Create("DComboBox", sRow))
+	sm = UI.StyleCombo(vgui.Create("DComboBox", sRow))
 	sm:Dock(FILL)
 	for _, v in ipairs(SA.RENDER_SAMPLES) do sm:AddChoice(L("sa_rd_samples_" .. v), v, v == SA.RenderSamples()) end
 	if not sm:GetSelected() then sm:SetText(SA.RenderSamples() .. "%") end
-	sm.OnSelect = function(_, _, _, data) RunConsoleCommand("gmfm_render_samples", tostring(data)) end
+	sm.OnSelect = function(_, _, _, data)
+		RunConsoleCommand("gmfm_render_samples", tostring(data))
+		pc:SetText(L("sa_rd_preset_custom"))
+	end
 	local fRow = row(L("sa_rd_fps"))
 	local fc = UI.StyleCombo(vgui.Create("DComboBox", fRow))
 	fc:Dock(FILL)
@@ -1847,7 +2069,7 @@ local function renderSpeedRows(row)
 	df:SetTextColor(UI.PAL.TEXT)
 	df:SetConVar("gmfm_render_dof")
 	df:SetTooltip(L("sa_rd_dof_tip"))
-	return qRow, sRow, fRow, bRow, shRow, slRow, dfRow
+	return qRow, sRow, fRow, bRow, shRow, slRow, dfRow, pRow
 end
 
 ---------------------------------------------------------------------

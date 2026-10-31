@@ -110,6 +110,20 @@ function SA.OpenProc(ent)
 		cur.spinax = v
 		send()
 	end
+	-- the rotator turns the selected bone only (b0.2.6): a wheel, a screw, a track link
+	if not C.IsAux(ent) then
+		local bname = cur.spinbone or (C.selected == ent and C.selBone and C.selBone >= 0 and ent:GetBoneName(C.selBone)) or nil
+		if bname and bname ~= "__INVALIDBONE__" then
+			local short = string.gsub(bname, "^ValveBiped%.Bip01_", "")
+			local onBone = UI.Check(body, string.format(L("sa_spin_bone"), short), cur.spinbone == bname, function(on)
+				cur.spinbone = on and bname or nil
+				send()
+			end)
+			onBone:DockMargin(8, 2, 8, 2)
+		else
+			hint(body, L("sa_spin_bone_hint"))
+		end
+	end
 	if not C.IsAux(ent) then
 		cur.nbones = istable(cur.nbones) and cur.nbones or {}
 		local names = {}

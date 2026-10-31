@@ -21,13 +21,16 @@ SA.ANIM_MODELS = {
 	{ "sa_imp_src_zombie", "models/player/zombie_classic.mdl" },
 }
 
-SA.MAX_SOUNDS = 384             -- sound clips in one animation
+SA.MAX_SOUNDS = 1500            -- sound clips in one animation (384 before b0.2.6: a minute of
+                                -- automatic fire with three layers a shot ran out of them)
+SA.MAX_ENV    = 3000            -- points of a clip's volume / pitch line
 SA.SOUND_EXT  = { wav = true, mp3 = true, ogg = true }
 SA.SOUND_DIR  = "data/speditor/sounds"      -- the user's own sound files
 
 -- A sound clip: { id, path, f = start frame, uid = the object it comes from (0 — heard
 -- everywhere), voice = from the character's head, vol = 0..2, pitch = speed in percent,
 -- dist = distance of full volume }. Returns a checked copy, or nil for a broken clip.
+local cleanEnv
 function SA.CleanSound(c)
 	if not istable(c) or not isstring(c.path) then return nil end
 	local path = string.gsub(c.path, "\\", "/")
@@ -44,7 +47,96 @@ function SA.CleanSound(c)
 		cin = math.Round(num(c.cin, 0, 0, 3600), 3), cout = math.Round(num(c.cout, 0, 0, 3600), 3),
 		-- fades: seconds over which the clip rises from silence and sinks back into it
 		fin = math.Round(num(c.fin, 0, 0, 60), 3), fout = math.Round(num(c.fout, 0, 0, 60), 3),
+		-- (b0.2.6) a sound the game kept playing and changing — an engine of Glide, a stream of an
+		-- addon: loop = the file plays round and round for len frames; env = its volume and
+		-- pitch along the clip, { frame from the start, volume 0..2, pitch in percent, … }
+		loop = c.loop and true or nil, len = c.len and math.floor(num(c.len, 1, 1, SA.MAX_FRAMES)) or nil,
+		env = cleanEnv(c.env), ofs = (c.ofs and tonumber(c.ofs) and c.ofs > 0) and math.Round(num(c.ofs, 0, 0, 1e6), 3) or nil,
 	}
+end
+
+-- a flat list of (frame, volume, pitch) with frames going up, or nil
+cleanEnv = function(env)
+	if not istable(env) or #env < 3 then return nil end
+	local out, last = {}, -1
+	for i = 1, math.min(#env - #env % 3, SA.MAX_ENV * 3), 3 do
+		local f, v, p = tonumber(env[i]), tonumber(env[i + 1]), tonumber(env[i + 2])
+		if f and v and p and f > last then
+			last = f
+			out[#out + 1] = math.floor(math.Clamp(f, 0, SA.MAX_FRAMES))
+			out[#out + 1] = math.Round(math.Clamp(v, 0, 2), 3)
+			out[#out + 1] = math.Round(math.Clamp(p, 5, 800), 1)
+		end
+	end
+	return #out >= 3 and out or nil
+end
+
+-- the line of a clip at `df` frames from its start: volume, pitch in percent (between its points
+-- in a straight line, held before the first and after the last)
+function SA.SoundEnvAt(c, df)
+	local env = c.env
+	if not env then return 1, 100 end
+	local n = #env / 3
+	if df <= env[1] then return env[2], env[3] end
+	if df >= env[(n - 1) * 3 + 1] then return env[(n - 1) * 3 + 2], env[(n - 1) * 3 + 3] end
+	-- halving search: a long engine take has thousands of points
+	local lo, hi = 1, n
+	while hi - lo > 1 do
+		local mid = math.floor((lo + hi) / 2)
+		if env[(mid - 1) * 3 + 1] <= df then lo = mid else hi = mid end
+	end
+	local i, j = (lo - 1) * 3, (hi - 1) * 3
+	local u = (df - env[i + 1]) / math.max(env[j + 1] - env[i + 1], 1e-6)
+	return env[i + 2] + (env[j + 2] - env[i + 2]) * u, env[i + 3] + (env[j + 3] - env[i + 3]) * u
+end
+
+-- the line of a clip between frames a and b from its start, counted from a (a split, a trim)
+function SA.SoundEnvSlice(c, a, b)
+	local env = c.env
+	if not env then return nil end
+	local v, p = SA.SoundEnvAt(c, a)
+	local out = { 0, v, p }
+	for i = 1, #env, 3 do
+		if env[i] > a and env[i] < b then
+			out[#out + 1], out[#out + 2], out[#out + 3] = env[i] - a, env[i + 1], env[i + 2]
+		end
+	end
+	if b > a then
+		v, p = SA.SoundEnvAt(c, b)
+		out[#out + 1], out[#out + 2], out[#out + 3] = b - a, v, p
+	end
+	return out
+end
+
+-- seconds of the file played `df` frames after the start of a clip with a pitch line (the pitch
+-- of every stretch counted in; the loop is not wrapped here). Sums are kept per clip table.
+local cumOf = setmetatable({}, { __mode = "k" })
+function SA.SoundEnvTime(c, df, fps)
+	local env, base = c.env, (c.pitch or 100) / 100
+	if not env then return df / fps * base end
+	local cum = cumOf[c]
+	if not cum or cum.fps ~= fps then
+		cum = { fps = fps, [1] = 0 }
+		for k = 2, #env / 3 do
+			local i, j = (k - 2) * 3, (k - 1) * 3
+			cum[k] = cum[k - 1] + (env[j + 1] - env[i + 1]) * (env[i + 3] + env[j + 3]) * 0.5 / 100 / fps * base
+		end
+		cumOf[c] = cum
+	end
+	if df <= env[1] then return df * env[3] / 100 / fps * base end
+	local n = #env / 3
+	local lead = env[1] * env[3] / 100 / fps * base
+	if df >= env[(n - 1) * 3 + 1] then
+		return lead + cum[n] + (df - env[(n - 1) * 3 + 1]) * env[(n - 1) * 3 + 3] / 100 / fps * base
+	end
+	local lo, hi = 1, n
+	while hi - lo > 1 do
+		local mid = math.floor((lo + hi) / 2)
+		if env[(mid - 1) * 3 + 1] <= df then lo = mid else hi = mid end
+	end
+	local i = (lo - 1) * 3
+	local _, p = SA.SoundEnvAt(c, df)
+	return lead + cum[lo] + (df - env[i + 1]) * (env[i + 3] + p) * 0.5 / 100 / fps * base
 end
 
 -- 0..1: the fade of a clip at the moment `played` seconds after its start, `left` seconds
@@ -688,7 +780,8 @@ COMP:Lang("en", {
 	sa_clip_p_saturation = "Saturation", sa_clip_p_tint = "Tint colour", sa_clip_p_tintAmount = "Tint", sa_clip_p_material = "Material (path)",
 	sa_clip_p_alpha = "Opacity", sa_clip_p_additive = "Added (glows)", sa_clip_align_0 = "Left", sa_clip_align_1 = "Centre", sa_clip_align_2 = "Right",
 	sa_presets = "Procedural presets (SFM)", sa_presets_all = "Procedural presets on the whole animation", sa_preset_smooth = "Smooth — remove bumps", sa_preset_sharp = "Sharp — stronger moves", sa_preset_jitter = "Jitter — a random shake", sa_preset_hold = "Hold — keep the first pose", sa_preset_default = "Default — bones and face to the model's pose", sa_preset_zero = "Zero — face sliders to 0", sa_preset_half = "Half — face sliders to 0.5", sa_preset_one = "One — face sliders to 1", sa_preset_in = "In — to the value entering the selection", sa_preset_out = "Out — to the value leaving the selection", sa_preset_ramp = "In/Out Ramp — straight from entering to leaving", sa_preset_spline = "Spline — smooth from entering to leaving", sa_preset_drop = "Drop — speeding up from entering to leaving", sa_preset_release = "Release — slowing down from entering to leaving", sa_preset_round = "Round — whole values, face on / off", sa_preset_steady = "Steady — remove a shake", sa_preset_stagger = "Stagger — each next object 2 frames later", sa_preset_paste = "Paste — to the copied frame", sa_preset_playhead = "Playhead — to the frame under the playhead", sa_preset_copy = "Copy the frame under the playhead (for Paste)", sa_preset_nocopy = "Copy a frame first (the time selection menu → Copy the frame…)", sa_presets_face = "Face", sa_presets_motion = "Motion", sa_presets_shape = "From edge to edge", sa_preset_none = "Select the objects whose keys the preset changes", sa_preset_nokeys = "The selected objects have no keys",
-	sa_spin_head = "Rotator (as in SFM): the object keeps turning round its own axis — a wheel, a fan, a propeller, a turntable (minus — the other way). Seen while playing and in the render.", sa_proc_spin = "Spin, °/s", sa_spin_x = "Axis: across (pitch)", sa_spin_y = "Axis: up (yaw)", sa_spin_z = "Axis: forward (roll)",
+	sa_spin_head = "Rotator (as in SFM): the object keeps turning round its own axis — a wheel, a fan, a propeller, a turntable (minus — the other way). Seen while playing and in the render.", sa_proc_spin = "Spin, °/s", sa_spin_x = "Axis: across (pitch)", sa_spin_y = "Axis: up (yaw)", sa_spin_z = "Axis: forward (roll)", sa_spin_bone = "Turn only this bone: %s", sa_spin_bone_hint = "Select a bone to turn only it: a wheel, a screw, a track link. Without one the whole object turns.",
+		sa_rec_phys_skipped = "%d selected object(s) have no physics to fall with (models without physics, attached objects) and are left out.",
 	sa_shots_export = "Export the shot list (text file + clipboard)", sa_shots_untitled = "untitled", sa_shots_title = "Shot list: %s (map %s, %s)", sa_shots_total = "%d shots, %d frames, %.2f s at %d fps", sa_shots_cam = "Camera", sa_shots_in = "In", sa_shots_out = "Out", sa_shots_frames = "Frames", sa_shots_sec = "Seconds", sa_shots_tcin = "TC in", sa_shots_tcout = "TC out", sa_shots_done = "Shot list (%d shots) copied and saved: %s",
 	sa_mark_tip = "Bookmark: mark the playhead's frame (again: remove). Right click — the list of bookmarks", sa_mark_title = "Bookmark %s", sa_mark_go = "Go to it", sa_mark_rename = "Rename the bookmark", sa_mark_delete = "Remove the bookmark", sa_mark_add = "Bookmark this frame", sa_mark_list = "Bookmarks", sa_mark_clear = "Remove all bookmarks",
 	sa_mode_once = "Play once (click: loop)", sa_mode_loop = "Play in a loop (click: to the end and back)", sa_mode_bounce = "Play to the end and back, as SFM's bounce (click: once)",
@@ -766,6 +859,7 @@ COMP:Lang("en", {
 	hist_sa_clear = "Remove animation", hist_sa_import = "Import animation", hist_sa_paste = "Paste key",
 	hist_sa_sound = "Sound", hist_sa_effect = "Effect playback",
 	sa_fx_play = "Play the effect from this frame", sa_fx_to_end = "Until the end of the animation",
+	sa_fx_autoplayed = "The effect plays in the animation from frame %s to the end (Effects window: Play in the animation)",
 	sa_fx_for = "For %.2f s, then off",
 	sa_rnd_fx_live = "Effects that play by themselves (%d) cannot be rendered frame by frame: in the video they run at their own speed. Use particle effects for exact frames.",
 	-- a0.3: sounds and voices, faster animation render
@@ -787,7 +881,9 @@ COMP:Lang("en", {
 	sa_snd_m_split = "Cut in two at the playhead", sa_snd_m_trim_in = "Trim the start to the playhead",
 	sa_snd_m_trim_out = "Trim the end to the playhead", sa_snd_m_untrim = "Restore the whole sound",
 	sa_snd_trim_bad = "The playhead is not inside this sound",
-	sa_snd_skipped = "Sounds left out of the video (only uncompressed WAV can be mixed in): %s",
+	sa_snd_skipped = "Sounds left out of the video (they could not be read or decoded): %s",
+	sa_snd_preparing = "Decoding the sounds for the video…",
+	sa_rnd_workcam = "The scene has no camera: the video is shot through the work camera of the Primary Viewport",
 	sa_rd_quality = "Video size", sa_rd_video = "Video file",
 	sa_rd_video_avi = "AVI (MJPEG with sound): data/speditor/renders, .avi.dat",
 	sa_rd_video_webm = "WebM (VP8): garrysmod/videos, sound as .wav",
@@ -798,7 +894,7 @@ COMP:Lang("en", {
 	sa_rd_video_tip = "WebM is made by the game's own video writer: a ready .webm in garrysmod/videos, smaller than AVI, at most the size of your screen. The editor's sound cannot go inside it, so it is saved next to it as a .wav in data/speditor/renders.",
 	sa_rd_webm_no = "WebM is available on Windows only: on Linux and macOS the game's video writer makes no files.",
 	sa_rnd_done_webm = "Animation rendered: %s frames, video %s (%s x %s)",
-	sa_rnd_webm_wav = "The sound track is next to it: %s — put it under the video in any video editor", sa_rd_samples = "Shadow / DoF passes",
+	sa_rnd_webm_wav = "The sound track is next to it: %s — put it under the video in any video editor", sa_rd_samples = "Shadow / DoF / smoothing passes",
 	sa_rd_fps = "Video frame rate", sa_rd_fps_anim = "As the animation (%d)",
 	sa_rd_fps_tip = "Frames a second of the rendered video. Above the animation's rate the frames in between are posed between the keys (smooth 60 fps from a 24 fps animation).",
 	sa_tl_home = "0 — to frame 0, the whole animation in view",
@@ -835,6 +931,38 @@ COMP:Lang("en", {
 	sa_proc_npos = "Noise: move, units", sa_proc_nrot = "Noise: turn, degrees", sa_proc_nfreq = "Noise: speed, Hz", sa_proc_nseed = "Noise: pattern (seed)",
 	sa_proc_nbone = "Bone %s noise, °",
 	sa_proc_nbone_hint = "To shake a single bone (a trembling hand, a head that is never still) select that bone and open this window again.",
+	sa_rp_stop = "Stop", sa_rp_hideui = "Hide the editor while rendering (faster)",
+	sa_rp_title = "Rendering the video: %s", sa_rp_first = "The first frame is being prepared…",
+	sa_rp_line = "Frame %d of %d · %s frames a second · %s gone · %s left", sa_rp_blur = "motion blur %d",
+	sa_tl_clip = "Clip Editor (F2): the film - shots, FX clips, sounds", sa_tl_motion = "Motion Editor (F3): the keys of the objects and the time selection",
+	sa_tl_graph = "Graph Editor (F4): the curves of the selected object or bone",
+	sa_hk_clip = "Timeline: Clip Editor", sa_hk_motion = "Timeline: Motion Editor", sa_hk_graph = "Timeline: Graph Editor",
+	sa_clip_viewonly = "Clip Editor: view only, the picture refines at rest. F3 (Motion Editor) to move things",
+	sa_tl_picture = "Picture", sa_tl_sound = "Sound", sa_tl_shot = "shot %d", sa_tl_shot_info = "start %s   duration %s",
+	sa_dm_title = "Import demo take", sa_dm_record = "● Record take", sa_dm_stop = "■ Stop and save", sa_dm_pause = "Pause",
+	sa_dm_record_tip = "Records what the demo shows from now on into a take file: players, NPCs, ragdolls, moving props, the view and sounds. Import it in a game on the same map: File - Import demo take.",
+	sa_dm_speed_tip = "Speed of the demo (slower for a heavy scene: the take keeps the demo's own time)", sa_dm_folder = "Files",
+	sa_dm_where = "Demo takes are in %s", sa_dm_hide = "Hide", sa_dm_hide_tip = "gmfm_demo in the console shows the bar again",
+	sa_dm_rec_line = "Recording: %.1f s, %d objects", sa_dm_tick = "tick %d / %d  ·  %.1f s  ·  %.2gx",
+	sa_dm_live = "Live game: Record takes what this client sees", sa_dm_started = "The demo take is being recorded",
+	sa_dm_nothing = "Nothing was recorded: no players, NPCs or moving objects near the view",
+	sa_dm_saved = "Demo take saved: %s (%s objects, %s s). Import it in GM:FM: File - Import demo take",
+	sa_dm_importing = "Importing the demo take: %s objects…", sa_dm_busy = "A take is being recorded: stop it first",
+	sa_dm_bad = "This demo take file could not be read", sa_dm_empty = "The demo take has nothing this game can show (are its models installed?)",
+	sa_dm_menu = "Demos (as HLAE)", sa_dm_demo_start = "● Record a demo", sa_dm_demo_stop = "■ Stop the demo",
+	sa_dm_demo_tip = "The game's own demo of what happens now (gm_demo): it goes into garrysmod/demos and is played from Esc - Demos - Play; while it plays, the GM:FM bar records a take from it",
+	sa_dm_open_demos = "Play a demo (Esc - Demos)", sa_dm_bar = "The demo take bar",
+	sa_dm_menu_hint = "Demos is in the list on the left of the main menu: pick a demo and press Play. The GM:FM bar appears at the top while it plays.",
+	sa_dm_demo_on = "A demo is being recorded (Stop: the same button or File - Demos)",
+	sa_dm_demo_saved = "Demo saved: %s. Play it from Esc - Demos - Play, then press Record take on the GM:FM bar",
+	sa_dm_no_gmdemo = "This game has no gm_demo command (the server does not send the game's own scripts)",
+	sa_dm_hint = "A take recorded from a demo (Esc - Demos - Play, then the GM:FM bar at the top: Record take). Load the map the demo was recorded on, put the playhead where the take should start and import: players, NPCs and ragdolls become ragdolls keyed along it, with their weapons; moving props become keyed models; the demo's view becomes a camera. Models of the server must be installed here.",
+	sa_dm_col_name = "Take", sa_dm_col_map = "Map", sa_dm_col_len = "Length", sa_dm_col_n = "Objects",
+	sa_dm_other_map = "The take was recorded on %s, this map is %s: the objects will stand where they were there. Import anyway?",
+	sa_dm_import = "Import at the playhead", sa_dm_delete = "Delete", sa_dm_delete_q = "Delete this demo take file?", sa_dm_refresh = "Refresh",
+	sa_rd_preset = "Quality", sa_rd_preset_custom = "Custom",
+	sa_rd_preset_draft = "Draft (fastest)", sa_rd_preset_normal = "Normal", sa_rd_preset_high = "High", sa_rd_preset_final = "Final (slowest)",
+	sa_rd_preset_tip = "As the render settings of SFM: one choice sets the passes of every frame (soft shadows, depth of field, smoothing, ambient occlusion) and the JPEG level of the video. Draft - to check the timing quickly; Final - many passes, the smoothest picture, the longest render. Motion blur and the frame rate stay as you set them.",
 })
 
 COMP:Lang("ru", {
@@ -1005,7 +1133,8 @@ COMP:Lang("ru", {
 	sa_clip_p_saturation = "Насыщенность", sa_clip_p_tint = "Цвет тонирования", sa_clip_p_tintAmount = "Тонирование", sa_clip_p_material = "Материал (путь)",
 	sa_clip_p_alpha = "Непрозрачность", sa_clip_p_additive = "Сложением (светится)", sa_clip_align_0 = "Слева", sa_clip_align_1 = "По центру", sa_clip_align_2 = "Справа",
 	sa_presets = "Процедурные пресеты (SFM)", sa_presets_all = "Процедурные пресеты на всю анимацию", sa_preset_smooth = "Smooth — убрать рывки", sa_preset_sharp = "Sharp — движения сильнее", sa_preset_jitter = "Jitter — случайная дрожь", sa_preset_hold = "Hold — держать первую позу", sa_preset_default = "Default — кости и лицо к позе модели", sa_preset_zero = "Zero — слайдеры лица в 0", sa_preset_half = "Half — слайдеры лица в 0.5", sa_preset_one = "One — слайдеры лица в 1", sa_preset_in = "In — к значению на входе в выделение", sa_preset_out = "Out — к значению на выходе из выделения", sa_preset_ramp = "In/Out Ramp — прямо от входа к выходу", sa_preset_spline = "Spline — плавно от входа к выходу", sa_preset_drop = "Drop — с разгоном от входа к выходу", sa_preset_release = "Release — с торможением от входа к выходу", sa_preset_round = "Round — целые значения, лицо вкл / выкл", sa_preset_steady = "Steady — убрать дрожь", sa_preset_stagger = "Stagger — каждый следующий объект на 2 кадра позже", sa_preset_paste = "Paste — к скопированному кадру", sa_preset_playhead = "Playhead — к кадру под курсором", sa_preset_copy = "Скопировать кадр под курсором (для Paste)", sa_preset_nocopy = "Сначала скопируйте кадр (меню выделения времени → Скопировать кадр…)", sa_presets_face = "Лицо", sa_presets_motion = "Движение", sa_presets_shape = "От края до края", sa_preset_none = "Выделите объекты, ключи которых меняет пресет", sa_preset_nokeys = "У выделенных объектов нет ключей",
-	sa_spin_head = "Ротатор (как в SFM): объект всё время вращается вокруг своей оси — колесо, вентилятор, пропеллер, поворотный стол (минус — в другую сторону). Видно при проигрывании и в рендере.", sa_proc_spin = "Вращение, °/с", sa_spin_x = "Ось: поперёк (наклон)", sa_spin_y = "Ось: вверх (рыскание)", sa_spin_z = "Ось: вперёд (крен)",
+	sa_spin_head = "Ротатор (как в SFM): объект всё время вращается вокруг своей оси — колесо, вентилятор, пропеллер, поворотный стол (минус — в другую сторону). Видно при проигрывании и в рендере.", sa_proc_spin = "Вращение, °/с", sa_spin_x = "Ось: поперёк (наклон)", sa_spin_y = "Ось: вверх (рыскание)", sa_spin_z = "Ось: вперёд (крен)", sa_spin_bone = "Крутить только эту кость: %s", sa_spin_bone_hint = "Выберите кость — тогда крутится только она: колесо, винт, гусеница. Без кости крутится весь объект.",
+		sa_rec_phys_skipped = "Пропущено выбранных объектов без физики (модели без физики, привязанные объекты): %d.",
 	sa_shots_export = "Экспорт списка планов (текстовый файл + буфер обмена)", sa_shots_untitled = "без названия", sa_shots_title = "Список планов: %s (карта %s, %s)", sa_shots_total = "Планов: %d, кадров: %d, %.2f с при %d к/с", sa_shots_cam = "Камера", sa_shots_in = "Начало", sa_shots_out = "Конец", sa_shots_frames = "Кадров", sa_shots_sec = "Секунд", sa_shots_tcin = "TC начала", sa_shots_tcout = "TC конца", sa_shots_done = "Список планов (%d) скопирован и сохранён: %s",
 	sa_mark_tip = "Закладка: отметить кадр плейхеда (ещё раз — убрать). Правый клик — список закладок", sa_mark_title = "Закладка %s", sa_mark_go = "Перейти к ней", sa_mark_rename = "Переименовать закладку", sa_mark_delete = "Убрать закладку", sa_mark_add = "Закладка на этом кадре", sa_mark_list = "Закладки", sa_mark_clear = "Убрать все закладки",
 	sa_mode_once = "Играть один раз (щелчок: по кругу)", sa_mode_loop = "Играть по кругу (щелчок: туда и обратно)", sa_mode_bounce = "Играть до конца и обратно, как bounce в SFM (щелчок: один раз)",
@@ -1083,6 +1212,7 @@ COMP:Lang("ru", {
 	hist_sa_clear = "Удаление анимации", hist_sa_import = "Импорт анимации", hist_sa_paste = "Вставка ключа",
 	hist_sa_sound = "Звук", hist_sa_effect = "Проигрывание эффекта",
 	sa_fx_play = "Проиграть эффект с этого кадра", sa_fx_to_end = "До конца анимации",
+	sa_fx_autoplayed = "Эффект проигрывается в анимации с кадра %s до конца (окно Эффекты: Проигрывать в анимации)",
 	sa_fx_for = "В течение %.2f с, затем выключить",
 	sa_rnd_fx_live = "Эффекты, которые проигрываются сами (%d), нельзя снять покадрово: в видео они идут со своей скоростью. Для точных кадров берите эффекты из частиц.",
 	-- a0.3: sounds and voices, faster animation render
@@ -1104,7 +1234,9 @@ COMP:Lang("ru", {
 	sa_snd_m_split = "Разрезать по курсору", sa_snd_m_trim_in = "Обрезать начало до курсора",
 	sa_snd_m_trim_out = "Обрезать конец от курсора", sa_snd_m_untrim = "Вернуть звук целиком",
 	sa_snd_trim_bad = "Курсор не внутри этого звука",
-	sa_snd_skipped = "Звуки, не попавшие в видео (подмешать можно только несжатый WAV): %s",
+	sa_snd_skipped = "Звуки, не попавшие в видео (их не удалось прочитать или раскодировать): %s",
+	sa_snd_preparing = "Раскодирую звуки для видео…",
+	sa_rnd_workcam = "В сцене нет камеры: видео снимается через рабочую камеру основного вьюпорта",
 	sa_rd_quality = "Размер видео", sa_rd_video = "Видеофайл",
 	sa_rd_video_avi = "AVI (MJPEG со звуком): data/speditor/renders, .avi.dat",
 	sa_rd_video_webm = "WebM (VP8): garrysmod/videos, звук отдельным .wav",
@@ -1115,7 +1247,7 @@ COMP:Lang("ru", {
 	sa_rd_video_tip = "WebM делает встроенная запись видео игры: готовый .webm в garrysmod/videos, меньше AVI, не больше размера вашего экрана. Звук редактора внутрь не попадает, поэтому он сохраняется рядом как .wav в data/speditor/renders.",
 	sa_rd_webm_no = "WebM доступен только на Windows: на Linux и macOS встроенная запись видео игры не создаёт файлов.",
 	sa_rnd_done_webm = "Анимация снята: кадров — %s, видео %s (%s x %s)",
-	sa_rnd_webm_wav = "Звуковая дорожка лежит рядом: %s — подложите её под видео в любом видеоредакторе", sa_rd_samples = "Проходы теней и ГРИП",
+	sa_rnd_webm_wav = "Звуковая дорожка лежит рядом: %s — подложите её под видео в любом видеоредакторе", sa_rd_samples = "Проходы теней, ГРИП и сглаживания",
 	sa_rd_fps = "Частота кадров видео", sa_rd_fps_anim = "Как у анимации (%d)",
 	sa_rd_fps_tip = "Кадров в секунду в готовом видео. Если больше, чем у анимации, промежуточные кадры берутся между ключами (плавные 60 к/с из анимации на 24).",
 	sa_tl_home = "0 — к кадру 0, вся анимация на виду",
@@ -1152,4 +1284,36 @@ COMP:Lang("ru", {
 	sa_proc_npos = "Шум: сдвиг, юниты", sa_proc_nrot = "Шум: поворот, градусы", sa_proc_nfreq = "Шум: скорость, Гц", sa_proc_nseed = "Шум: рисунок (seed)",
 	sa_proc_nbone = "Шум кости %s, °",
 	sa_proc_nbone_hint = "Чтобы трясти одну кость (дрожащая рука, голова, которая никогда не стоит на месте), выделите эту кость и откройте окно снова.",
+	sa_rp_stop = "Остановить", sa_rp_hideui = "Скрывать редактор во время рендера (быстрее)",
+	sa_rp_title = "Рендер видео: %s", sa_rp_first = "Готовится первый кадр…",
+	sa_rp_line = "Кадр %d из %d · %s кадр/с · прошло %s · осталось %s", sa_rp_blur = "размытие движения %d",
+	sa_tl_clip = "Clip Editor (F2): фильм - шоты, FX-клипы, звуки", sa_tl_motion = "Motion Editor (F3): ключи объектов и выделение времени",
+	sa_tl_graph = "Graph Editor (F4): кривые выделенного объекта или кости",
+	sa_hk_clip = "Таймлайн: Clip Editor", sa_hk_motion = "Таймлайн: Motion Editor", sa_hk_graph = "Таймлайн: Graph Editor",
+	sa_clip_viewonly = "Clip Editor: только просмотр, картинка дорабатывается в покое. F3 (Motion Editor) — двигать объекты",
+	sa_tl_picture = "Картинка", sa_tl_sound = "Звук", sa_tl_shot = "шот %d", sa_tl_shot_info = "начало %s   длина %s",
+	sa_dm_title = "Импорт дубля из демки", sa_dm_record = "● Записать дубль", sa_dm_stop = "■ Стоп и сохранить", sa_dm_pause = "Пауза",
+	sa_dm_record_tip = "Записывает то, что показывает демка, с этого момента в файл дубля: игроков, NPC, рэгдоллы, движущиеся пропы, вид камеры и звуки. Импорт - в игре на той же карте: Файл - Импорт дубля из демки.",
+	sa_dm_speed_tip = "Скорость демки (медленнее для тяжёлой сцены: дубль держит собственное время демки)", sa_dm_folder = "Файлы",
+	sa_dm_where = "Дубли из демок лежат в %s", sa_dm_hide = "Скрыть", sa_dm_hide_tip = "gmfm_demo в консоли снова показывает панель",
+	sa_dm_rec_line = "Запись: %.1f с, объектов: %d", sa_dm_tick = "тик %d / %d  ·  %.1f с  ·  %.2gx",
+	sa_dm_live = "Живая игра: запись берёт то, что видит этот клиент", sa_dm_started = "Дубль из демки записывается",
+	sa_dm_nothing = "Ничего не записано: рядом с видом нет игроков, NPC или движущихся объектов",
+	sa_dm_saved = "Дубль из демки сохранён: %s (объектов: %s, %s с). Импорт в GM:FM: Файл - Импорт дубля из демки",
+	sa_dm_importing = "Импорт дубля из демки: объектов %s…", sa_dm_busy = "Идёт запись дубля: сначала остановите её",
+	sa_dm_bad = "Не удалось прочитать файл дубля из демки", sa_dm_empty = "В дубле нет ничего, что может показать эта игра (установлены ли его модели?)",
+	sa_dm_menu = "Демки (как HLAE)", sa_dm_demo_start = "● Записать демку", sa_dm_demo_stop = "■ Остановить демку",
+	sa_dm_demo_tip = "Собственная демка игры того, что происходит сейчас (gm_demo): она ложится в garrysmod/demos и запускается через Esc - Повторы - Играть; пока она идёт, панель GM:FM записывает из неё дубль",
+	sa_dm_open_demos = "Проиграть демку (Esc - Повторы)", sa_dm_bar = "Панель дублей из демки",
+	sa_dm_menu_hint = "Повторы - в списке слева в главном меню: выберите демку и нажмите Играть. Пока она идёт, сверху появится панель GM:FM.",
+	sa_dm_demo_on = "Идёт запись демки (стоп - та же кнопка или Файл - Демки)",
+	sa_dm_demo_saved = "Демка сохранена: %s. Запустите её через Esc - Повторы - Играть, затем нажмите Записать дубль на панели GM:FM",
+	sa_dm_no_gmdemo = "В этой игре нет команды gm_demo (сервер не отправляет собственные скрипты игры)",
+	sa_dm_hint = "Дубль, записанный из демки (Esc - Повторы - Играть, затем панель GM:FM сверху: Записать дубль). Загрузите карту, на которой записана демка, поставьте плейхед туда, где должен начаться дубль, и импортируйте: игроки, NPC и рэгдоллы станут рэгдоллами с ключами вдоль дубля, с оружием в руках; движущиеся пропы - моделями с ключами; вид демки - камерой. Модели сервера должны быть установлены здесь.",
+	sa_dm_col_name = "Дубль", sa_dm_col_map = "Карта", sa_dm_col_len = "Длина", sa_dm_col_n = "Объектов",
+	sa_dm_other_map = "Дубль записан на %s, а это карта %s: объекты встанут там, где были там. Всё равно импортировать?",
+	sa_dm_import = "Импорт с плейхеда", sa_dm_delete = "Удалить", sa_dm_delete_q = "Удалить этот файл дубля из демки?", sa_dm_refresh = "Обновить",
+	sa_rd_preset = "Качество", sa_rd_preset_custom = "Своё",
+	sa_rd_preset_draft = "Черновик (быстрее всего)", sa_rd_preset_normal = "Обычное", sa_rd_preset_high = "Высокое", sa_rd_preset_final = "Финальное (дольше всего)",
+	sa_rd_preset_tip = "Как настройки рендера SFM: один выбор задаёт проходы каждого кадра (мягкие тени, глубина резкости, сглаживание, затенение) и уровень JPEG видео. Черновик - быстро проверить тайминг; Финальное - много проходов, самая гладкая картинка, самый долгий рендер. Размытие движения и частота кадров остаются как вы их поставили.",
 })

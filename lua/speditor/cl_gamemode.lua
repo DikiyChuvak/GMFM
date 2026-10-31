@@ -37,6 +37,10 @@ SPeditor.Hook("Think", "GMFM.ModeOpen", function()
 	local ply = LocalPlayer()
 	if not IsValid(ply) or not (UI and UI.Open) then return end
 	if joined and away() then return end
+	-- left on purpose with Shift + F4: it waits for gmfm_toggle
+	if C.forcedOut then return end
+	-- a guest of a server without the editor (gmfm_access): it watches and plays, it is not asked again
+	if ply:GetNW2Bool("SPeditor_Denied", false) then return end
 	nextTry = RealTime() + 1.5
 	joined = true
 	C.SendToggle(true)
@@ -47,6 +51,7 @@ concommand.Add("gmfm_toggle", function()
 	if C.active then
 		SPeditor.Notify(L("mode_no_exit"), 0)
 	else
+		C.forcedOut = nil
 		C.SendToggle(true)
 	end
 end)
@@ -190,8 +195,9 @@ function UI.OpenModeStart()
 	head(L("mode_start_begin"))
 	big(L("mode_continue"), "icon16/film_edit.png", function() end)
 	big(L("mode_new"), "icon16/page_white.png", function()
-		if #C.Objects() == 0 then return end
-		Derma_Query(L("clear_confirm"), "GM:FM", L("yes"), function() C.SendCleanup() end, L("cancel"), function() end)
+		local sa = SA()
+		if #C.Objects() == 0 and not (sa.RecNPCList and #sa.RecNPCList() > 0) then return end
+		Derma_Query(L("clear_confirm"), "GM:FM", L("yes"), function() C.ClearScene() end, L("cancel"), function() end)
 	end)
 	big(L("mode_record"), "icon16/webcam.png", function()
 		local sa = SA()

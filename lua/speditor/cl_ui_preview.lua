@@ -81,9 +81,57 @@ end
 ---------------------------------------------------------------------
 local IDLE = { "idle_all_01", "idle_subtle", "idle01", "idle", "ragdoll", "reference" }
 
+-- (b0.2.6) As the preview of SFM's "Select .MDL file": the model stands on a floor grid, and the
+-- tabs under it (UI.ModelPreviewTabs) switch the wireframe, the collision model, the floor, the
+-- turning and the eyes, play any sequence or activity of the model and show its skins. The
+-- skin picked here is the one a click puts into the scene (C.SpawnModel, cl_ui_model_list.lua).
+local matWire = Material("models/wireframe")
+local GRID_COL = Color(150, 150, 155)
+
+-- boxes of the solids of a model's collision model, in the space of their bones: the game gives
+-- no shape of a solid to Lua, so each is measured by tracing at it from 14 directions
+local function collisionBoxes(path, ent)
+	local out = {}
+	local solids = CreatePhysCollidesFromModel(path)
+	if not solids then return out end
+	local info = util.GetModelInfo(path)
+	local names = {}
+	if info and isstring(info.KeyValues) then
+		for block in string.gmatch(info.KeyValues, '"solid"%s*(%b{})') do
+			local idx = tonumber(string.match(block, '"index"%s*"(%-?%d+)"'))
+			local name = string.match(block, '"name"%s*"([^"]+)"')
+			if idx then names[idx] = name end
+		end
+	end
+	local DIRS = { Vector(1, 0, 0), Vector(-1, 0, 0), Vector(0, 1, 0), Vector(0, -1, 0), Vector(0, 0, 1), Vector(0, 0, -1),
+		Vector(1, 1, 1), Vector(-1, 1, 1), Vector(1, -1, 1), Vector(1, 1, -1), Vector(-1, -1, 1), Vector(-1, 1, -1), Vector(1, -1, -1), Vector(-1, -1, -1) }
+	for i, pc in ipairs(solids) do
+		local mn, mx = Vector(1e9, 1e9, 1e9), Vector(-1e9, -1e9, -1e9)
+		local hits = 0
+		for _, d in ipairs(DIRS) do
+			local dir = d:GetNormalized()
+			local hit, _, frac = pc:TraceBox(vector_origin, angle_zero, dir * 512, vector_origin, Vector(0, 0, 0), Vector(0, 0, 0))
+			-- a trace that "hits" where it starts has missed
+			if hit and (frac or 0) > 0.001 and hit:Length() < 500 then
+				hits = hits + 1
+				mn.x, mn.y, mn.z = math.min(mn.x, hit.x), math.min(mn.y, hit.y), math.min(mn.z, hit.z)
+				mx.x, mx.y, mx.z = math.max(mx.x, hit.x), math.max(mx.y, hit.y), math.max(mx.z, hit.z)
+			end
+		end
+		if hits >= 2 then
+			local bone = names[i - 1] and ent:LookupBone(names[i - 1]) or nil
+			out[#out + 1] = { bone = bone, mn = mn, mx = mx }
+		end
+		pc:Destroy()
+	end
+	return out
+end
+
 function UI.ModelPreview(parent)
 	local mp = newPreview(parent)
 	mp.SPYaw, mp.SPZoom = 30, 1
+	-- the Render tab of SFM's preview
+	mp.SPOpt = { wire = false, collision = false, noground = false, lock = false, lookcam = true }
 
 	local function drop(s)
 		if IsValid(s.SPEnt) then s.SPEnt:Remove() end
@@ -94,6 +142,7 @@ function UI.ModelPreview(parent)
 		if not isstring(path) or path == self.SPPath then return end
 		self.SPPath = path
 		drop(self)
+		self.SPSeq, self.SPSkin, self.SPBoxes = nil, 0, nil
 		local ent = ClientsideModel(path, RENDERGROUP_OPAQUE)
 		if not IsValid(ent) then return end
 		ent:SetNoDraw(true)
@@ -102,41 +151,91 @@ function UI.ModelPreview(parent)
 			local seq = ent:LookupSequence(name)
 			if seq and seq > 0 then
 				ent:ResetSequence(seq)
+				self.SPSeq = seq
 				break
 			end
 		end
 		self.SPEnt = ent
 		self.SPInfo = string.format("%s  ·  %d %s", string.GetFileFromFilename(path), ent:GetBoneCount(), L("pv_bones"))
+		if self.OnModelChanged then self:OnModelChanged(ent) end
+	end
+
+	function mp:PlaySequence(seq)
+		local ent = self.SPEnt
+		if not IsValid(ent) or not seq or seq < 0 then return end
+		ent:ResetSequence(seq)
+		ent:SetCycle(0)
+		self.SPSeq = seq
+	end
+
+	function mp:SetPreviewSkin(skin)
+		local ent = self.SPEnt
+		if not IsValid(ent) then return end
+		self.SPSkin = math.Clamp(math.floor(skin or 0), 0, math.max(ent:SkinCount() - 1, 0))
+		ent:SetSkin(self.SPSkin)
 	end
 
 	mp.SPDraw = function(s, w, h)
 		local ent = s.SPEnt
 		if not IsValid(ent) then return end
-		if s.SPDrag then
+		local opt = s.SPOpt
+		if s.SPDrag and not opt.lock then
 			local x = gui.MouseX()
 			s.SPYaw = s.SPYaw + (x - s.SPDrag) * 0.6
 			s.SPDrag = x
-		elseif not s:IsHovered() then
+		elseif not s:IsHovered() and not opt.lock then
 			s.SPYaw = s.SPYaw + FrameTime() * 25
 		end
 		ent:SetAngles(Angle(0, s.SPYaw, 0))
 		ent:FrameAdvance(FrameTime())
+		-- a sequence that does not loop starts over when it has played (as SFM's preview)
+		if ent:GetCycle() >= 0.999 then ent:SetCycle(0) end
 		ent:SetupBones()
 		-- the camera looks at the middle of the model from as far as its size asks
 		local mn, mx = ent:GetRenderBounds()
 		local size = math.max((mx - mn):Length(), 8)
 		local mid = ent:GetPos() + (mn + mx) * 0.5
-		local dist = size * 1.5 * s.SPZoom
+		-- far enough for the model to fit both ways, whatever the panel's proportions
+		local tx = math.tan(math.rad(32) / 2)
+		local dist = size * 0.6 / math.min(tx, tx * h / math.max(w, 1)) * s.SPZoom
 		local pos = mid + Vector(dist, 0, size * 0.2 * s.SPZoom)
+		-- the eyes: at the camera, or straight ahead
+		ent:SetEyeTarget(opt.lookcam and pos or (mid + ent:GetForward() * size * 4))
 		cam.Start3D(pos, (mid - pos):Angle(), 32, 0, 0, w, h, 1, dist * 4)
+		-- the floor: a grid under the feet, as in SFM
+		if not opt.noground then
+			local z = ent:GetPos().z + mn.z
+			local half = math.max(size * 0.9, 24)
+			local step = half / 6
+			render.SetColorMaterial()
+			for i = -6, 6 do
+				local o = i * step
+				render.DrawLine(Vector(o, -half, z), Vector(o, half, z), GRID_COL, true)
+				render.DrawLine(Vector(-half, o, z), Vector(half, o, z), GRID_COL, true)
+			end
+		end
 		render.SuppressEngineLighting(true)
 		render.SetLightingOrigin(mid)
 		render.ResetModelLighting(0.35, 0.35, 0.38)
 		render.SetModelLighting(BOX_TOP, 1, 1, 1)
 		render.SetModelLighting(BOX_FRONT, 0.9, 0.9, 0.9)
 		render.SetModelLighting(BOX_RIGHT, 0.6, 0.6, 0.65)
+		if opt.wire then render.MaterialOverride(matWire) end
 		ent:DrawModel()
+		if opt.wire then render.MaterialOverride() end
 		render.SuppressEngineLighting(false)
+		-- the collision model: the box of every solid on its bone
+		if opt.collision then
+			s.SPBoxes = s.SPBoxes or collisionBoxes(s.SPPath, ent)
+			for _, b in ipairs(s.SPBoxes) do
+				local bp, ba = ent:GetPos(), ent:GetAngles()
+				if b.bone then
+					local m = ent:GetBoneMatrix(b.bone)
+					if m then bp, ba = m:GetTranslation(), m:GetAngles() end
+				end
+				render.DrawWireframeBox(bp, ba, b.mn, b.mx, Color(255, 170, 60), false)
+			end
+		end
 		cam.End3D()
 	end
 
@@ -168,6 +267,122 @@ function UI.ModelPreview(parent)
 	end
 	mp.OnRemove = drop
 	return mp
+end
+
+-- The tabs under a model preview, as in SFM: Render, Sequences, Activities, Skins
+function UI.ModelPreviewTabs(parent, mp)
+	-- a strip of tabs in the editor's colours and the page of the active one
+	local sheet = vgui.Create("DPanel", parent)
+	sheet.Paint = function(_, w, h) surface.SetDrawColor(COL.BG) surface.DrawRect(0, 0, w, h) end
+	local strip = vgui.Create("DPanel", sheet)
+	strip:Dock(TOP)
+	strip:SetTall(UI.S(22))
+	strip.Paint = function(_, w, h) surface.SetDrawColor(COL.HEADER) surface.DrawRect(0, 0, w, h) end
+	local pages, active = {}, nil
+	local function show(pg)
+		active = pg
+		for _, p in ipairs(pages) do p:SetVisible(p == pg) end
+		sheet:InvalidateLayout()
+	end
+	function sheet:AddSheet(title, page)
+		page:SetParent(sheet)
+		page:Dock(FILL)
+		pages[#pages + 1] = page
+		local b = vgui.Create("DButton", strip)
+		b:Dock(LEFT)
+		b:SetText("")
+		surface.SetFont("SPeditor.Small")
+		b:SetWide(select(1, surface.GetTextSize(title)) + UI.S(16))
+		b.Paint = function(s2, w, h)
+			surface.SetDrawColor(active == page and COL.TAB_ON or (s2:IsHovered() and COL.HOVER or COL.TAB_OFF))
+			surface.DrawRect(0, 0, w - 1, h)
+			draw.SimpleText(title, "SPeditor.Small", w / 2, h / 2, COL.TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+		end
+		b.DoClick = function() show(page) end
+		if #pages == 1 then show(page) else page:SetVisible(false) end
+	end
+
+	-- Render
+	local rp = vgui.Create("DPanel", sheet)
+	rp.Paint = function(_, w, h) surface.SetDrawColor(COL.BG) surface.DrawRect(0, 0, w, h) end
+	for _, o in ipairs({ { "wire", "pv_wire" }, { "collision", "pv_collision" }, { "noground", "pv_noground" },
+			{ "lock", "pv_lock" }, { "lookcam", "pv_lookcam" } }) do
+		local cb = vgui.Create("DCheckBoxLabel", rp)
+		cb:Dock(TOP)
+		cb:DockMargin(8, 6, 4, 0)
+		cb:SetText(L(o[2]))
+		cb:SetFont("SPeditor.Small")
+		cb:SetTextColor(COL.TEXT)
+		cb:SetChecked(mp.SPOpt[o[1]])
+		cb.OnChange = function(_, v) mp.SPOpt[o[1]] = v end
+	end
+	sheet:AddSheet(L("pv_tab_render"), rp)
+
+	-- a list with a filter line on top: rows = { { text, data } }, pick(data) on a click
+	local function filtered(onPick)
+		local host = vgui.Create("DPanel", sheet)
+		host.Paint = function(_, w, h) surface.SetDrawColor(COL.BG) surface.DrawRect(0, 0, w, h) end
+		local filter = vgui.Create("DTextEntry", host)
+		filter:Dock(TOP)
+		filter:DockMargin(2, 2, 2, 2)
+		filter:SetTall(UI.S(20))
+		local list = vgui.Create("DListView", host)
+		list:Dock(FILL)
+		list:SetHeaderHeight(0)
+		list:SetMultiSelect(false)
+		list:AddColumn("")
+		if UI.StyleListView then UI.StyleListView(list) end
+		host.rows = {}
+		function host:Fill(rows, current)
+			self.rows = rows
+			local q = string.lower(filter:GetValue() or "")
+			list:Clear()
+			for _, r in ipairs(rows) do
+				if q == "" or string.find(string.lower(r[1]), q, 1, true) then
+					local line = list:AddLine(r[1])
+					line.SPData = r[2]
+					if r[2] == current then line:SetSelected(true) end
+				end
+			end
+		end
+		filter.OnChange = function() host:Fill(host.rows, nil) end
+		list.OnRowSelected = function(_, _, line) onPick(line.SPData) end
+		host.filter = filter
+		return host
+	end
+
+	local seqs = filtered(function(seq) mp:PlaySequence(seq) end)
+	seqs.filter:SetPlaceholderText(L("pv_seq_filter"))
+	sheet:AddSheet(L("pv_tab_seq"), seqs)
+	local acts = filtered(function(seq) mp:PlaySequence(seq) end)
+	acts.filter:SetPlaceholderText(L("pv_act_filter"))
+	sheet:AddSheet(L("pv_tab_act"), acts)
+	local skins = filtered(function(skin) mp:SetPreviewSkin(skin) end)
+	skins.filter:SetPlaceholderText(L("pv_skin_filter"))
+	sheet:AddSheet(L("pv_tab_skin"), skins)
+
+	mp.OnModelChanged = function(_, ent)
+		local srows, arows, seen = {}, {}, {}
+		for i = 0, ent:GetSequenceCount() - 1 do
+			local name = ent:GetSequenceName(i)
+			srows[#srows + 1] = { name, i }
+			local act = ent:GetSequenceActivityName(i)
+			if act and act ~= "" and not seen[act] then
+				seen[act] = true
+				-- an activity plays the sequence the game would pick for it
+				local id = ent:GetSequenceActivity(i)
+				local pick = (id and id >= 0) and ent:SelectWeightedSequence(id) or i
+				arows[#arows + 1] = { act, (pick and pick >= 0) and pick or i }
+			end
+		end
+		local krows = {}
+		for i = 0, math.max(ent:SkinCount() - 1, 0) do krows[#krows + 1] = { "skin" .. i, i } end
+		seqs:Fill(srows, mp.SPSeq)
+		acts:Fill(arows, nil)
+		skins:Fill(krows, 0)
+	end
+	if IsValid(mp.SPEnt) then mp:OnModelChanged(mp.SPEnt) end
+	return sheet
 end
 
 ---------------------------------------------------------------------

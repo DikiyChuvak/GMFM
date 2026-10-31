@@ -551,10 +551,45 @@ end
 function C.Select(ent, bone, keepMulti)
 	if ent ~= nil and not C.IsMine(ent) then ent = nil end
 	if not keepMulti then C.ClearMulti() end
+	-- the only bone of a prop ("static_prop"): the game does not move a static prop by its bone,
+	-- the gizmo on it did next to nothing (b0.2.6) — it is the whole object
+	if bone and bone >= 0 and IsValid(ent) and ent:GetBoneCount() <= 1 then bone = -1 end
 	C.selected = ent
 	C.selBone  = bone or -1
+	C.boneSet  = nil
 	C.gizmo.drag = nil
 	hook.Run("SPeditor_Selected", C.selected, C.selBone)
+end
+
+-- (b0.2.7) Several bones of one object, moved together by the gizmo (Shift / Ctrl + click on the
+-- skeleton or in the bone tree; a key of the bone keys holds them all). C.boneSet = { [bone] = true };
+-- nil — only C.selBone.
+function C.ToggleBone(ent, bone)
+	if C.selected ~= ent or C.selBone < 0 or not bone or bone < 0 then
+		C.Select(ent, bone)
+		return
+	end
+	local set = C.boneSet or { [C.selBone] = true }
+	if set[bone] then
+		-- the last bone stays selected
+		if table.Count(set) > 1 then set[bone] = nil end
+	else
+		set[bone] = true
+	end
+	if not set[C.selBone] then
+		for b in pairs(set) do C.selBone = b break end
+	end
+	C.boneSet = table.Count(set) > 1 and set or nil
+	hook.Run("SPeditor_Selected", C.selected, C.selBone)
+end
+
+-- the bones the gizmo and the keys act on: the selection, sorted (only C.selBone without a set)
+function C.SelectedBones()
+	if not C.boneSet then return { C.selBone } end
+	local out = {}
+	for b in pairs(C.boneSet) do out[#out + 1] = b end
+	table.sort(out)
+	return out
 end
 
 -- the click binds that add to the selection (cl_keys.lua)
@@ -696,7 +731,7 @@ function C.SelectOutsideCameras()
 	local views = {}
 	for i, cam in ipairs(cams) do
 		local pos, ang = C.CameraPose(cam)
-		local tx = math.tan(math.rad(math.Clamp(cam:GetCameraFOV(), 1, 175)) / 2)
+		local tx = math.tan(math.rad(math.Clamp(C.FrameFOV(cam:GetCameraFOV(), aspect), 1, 175)) / 2)
 		views[i] = { pos = pos, f = ang:Forward(), r = ang:Right(), u = ang:Up(), tx = tx, ty = tx / aspect }
 	end
 	local function seen(e)
@@ -852,6 +887,8 @@ function C.GetEntityTransform(ent)
 		local p, a = C.GetBoneWorld(ent, ent:TranslatePhysBoneToBone(0))
 		if p then return p, a end
 	end
+	-- an object held at a hand: where it is drawn (the gizmo starts there, b0.2.6)
+	if IsValid(ent:GetNW2Entity("SPeditor_Parent")) then return SPeditor.LivePos(ent) end
 	return ent:GetPos(), ent:GetAngles()
 end
 
@@ -904,6 +941,30 @@ end
 
 function C.SetAspect(id)
 	RunConsoleCommand("gmfm_aspect", id)
+end
+
+-- (b0.2.6, Hor+) A free frame has the shape of the Primary Viewport, and that is often a wide
+-- strip (the timeline takes the height under it): the camera's field of view being the horizontal
+-- one, such a strip showed less of the scene up and down than a 16:9 frame ("Free does not look
+-- free, even 16:9 looks freer"). A free frame wider than 16:9 now keeps the height a 16:9 frame
+-- has at that field of view and shows more at the sides, as games do on wide screens. 16:9 and
+-- narrower free frames, and every fixed aspect, are as before. pass "secondary" — the Secondary
+-- Viewport (it may have an aspect of its own).
+local HOR_REF = 16 / 9
+function C.FrameFOV(fov, aspect, pass)
+	if not fov or not aspect or aspect <= HOR_REF or C.GetAspect(pass) ~= nil then return fov end
+	local t = math.tan(math.rad(math.Clamp(fov, 1, 170)) / 2) * aspect / HOR_REF
+	return math.Clamp(math.deg(2 * math.atan(t)), 1, 175)
+end
+
+-- a frame source (origin, angles, fov, …) with the field of view of a frame of that shape
+function C.FrameSource(src, aspect, pass)
+	local fov = src and C.FrameFOV(src.fov, aspect, pass)
+	if not src or fov == src.fov then return src end
+	local out = {}
+	for k, v in pairs(src) do out[k] = v end
+	out.fov = fov
+	return out
 end
 
 function C.GetRenderSide()
@@ -1009,6 +1070,7 @@ end
 function C.MouseRay()
 	local pos, ang, fov = C.GetView()
 	local vx, vy, vw, vh = C.ViewportRect()
+	fov = C.FrameFOV(fov, vw / math.max(vh, 1))
 	local mx, my = gui.MousePos()
 	local tx, ty = halfTangents(ang, fov, math.max(vw, 1), math.max(vh, 1))
 	local fx = ((mx - vx) / math.max(vw, 1)) * 2 - 1
@@ -1021,6 +1083,7 @@ end
 function C.ProjectToViewport(p)
 	local pos, ang, fov = C.GetView()
 	local vx, vy, vw, vh = C.ViewportRect()
+	fov = C.FrameFOV(fov, vw / math.max(vh, 1))
 	local d = p - pos
 	local depth = d:Dot(ang:Forward())
 	if depth <= 0 then return 0, 0, false end

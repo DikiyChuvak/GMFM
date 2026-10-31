@@ -57,23 +57,42 @@ end
 -- scene, while a new target of the same size worked). Before a render the target of the frame is
 -- checked — a clear to a test colour read back — at most every VERIFY_EVERY seconds per target;
 -- a dead one is replaced by a new one under another name.
+--
+-- (b0.2.6, Workshop: "65 GB of RAM, a crash") A target is never freed by the game, and where the
+-- check itself fails — the read back does not see the clear on some machines or under a render
+-- state another addon left behind — every target of every render was "dead" every two seconds,
+-- and a new one of the full size was made each time, without end. A name is replaced at most
+-- MAX_RENAMES times, and a new target that fails the check at once means the check cannot be
+-- trusted here: it is switched off for good (R.rtCheckOff).
 local VERIFY_EVERY = 2
-local verified, renamed = {}, {}
-local function liveRT(name, w, h)
-	local key = renamed[name] or name
-	local rt = getRT(key, w, h)
-	local now = RealTime()
-	if now - (verified[key] or -1e9) < VERIFY_EVERY then return rt end
-	verified[key] = now
+local MAX_RENAMES = 2
+local verified, renamed, renames = {}, {}, {}
+local function rtTakesClear(rt)
 	render.PushRenderTarget(rt)
 	render.Clear(3, 250, 7, 255, true, true)
 	render.CapturePixels()
 	local r, g, b = render.ReadPixel(0, 0)
 	render.PopRenderTarget()
-	if r == 3 and g == 250 and b == 7 then return rt end
+	return r == 3 and g == 250 and b == 7
+end
+local function liveRT(name, w, h)
+	local key = renamed[name] or name
+	local rt = getRT(key, w, h)
+	if R.rtCheckOff or (renames[name] or 0) >= MAX_RENAMES then return rt end
+	local now = RealTime()
+	if now - (verified[key] or -1e9) < VERIFY_EVERY then return rt end
+	verified[key] = now
+	if rtTakesClear(rt) then return rt end
 	local n = 2
 	while targets[name .. "_r" .. n] do n = n + 1 end
 	key = name .. "_r" .. n
+	local fresh = getRT(key, w, h)
+	if not rtTakesClear(fresh) then
+		R.rtCheckOff = true
+		MsgC(Color(255, 190, 90), "[GM:FM] the render target check fails on this computer: it is switched off\n")
+		return rt
+	end
+	renames[name] = (renames[name] or 0) + 1
 	renamed[name] = key
 	-- a warning, not an error: the render goes on in the new target
 	MsgC(Color(255, 190, 90), string.format("[GM:FM] render target %s stopped taking drawing; using %s\n", name, key))
@@ -238,6 +257,8 @@ local function renderScene(rt, src, rw, rh, pass, wrap2D, fullbright, aspect)
 			origin = src.origin, angles = src.angles, fov = src.fov,
 			x = 0, y = 0, w = rw, h = rh, aspect = aspect or (rw / rh),
 			drawviewer = true, znear = R.ZNear(src),
+			-- the lens of a depth of field pass and the smoothing's sub-pixel shift (R.OffCenter)
+			offcenter = R.OffCenter(src, rw, rh, aspect or (rw / rh)),
 	})
 	R.ownView = false
 	R.fullbrightView = false
@@ -246,6 +267,27 @@ local function renderScene(rt, src, rw, rh, pass, wrap2D, fullbright, aspect)
 		R.Fullbright(false)
 	end
 	if not ok then ErrorNoHalt("[GM:FM] RenderView: " .. tostring(err) .. "\n") end
+	-- ambient occlusion over the viewport's picture (b0.2.6), worked out at a size rounded to 64
+	-- pixels (a texture is made for every size and the game never frees one) and stretched over it.
+	-- Only in the viewports: a render's passes ("export") take theirs in R.RenderBase at the
+	-- frame's own size — laid on them here as well, the stretched mask drew dark copies of the
+	-- objects beside them (round 7: a car and a soldier "drawn" on a wall in the preview)
+	if ok and pass ~= "export" and R.ViewportAO and R.ViewportAO(src, fullbright) then
+		local aw, ah = math.max(math.floor(rw / 64) * 64, 64), math.max(math.floor(rh / 64) * 64, 64)
+		local okAO, mask = pcall(R.SSAOMask, src, aw, ah, aspect or (rw / rh), 1)
+		if okAO and mask then R.MultiplyAORect(mask, rw, rh) end
+	end
+	-- the camera's bloom (SFM's bloomScale, round 8): a viewport through a scene camera shows it as
+	-- SFM's does — it was only in the preview and the render, and changing it "did nothing"
+	local FX = SPeditor.FX
+	if ok and pass ~= "export" and not fullbright and FX and FX.ViewBloom and IsValid(src.ent) and src.ent:GetClass() == "speditor_camera" then
+		local fx = C.GetCameraFX(src.ent)
+		if FX.IsOn(fx, "sfmbloom") then
+			local tw, th = rt:Width(), rt:Height()
+			local out = FX.ViewBloom(rt, getRT("vpbloom_" .. tw .. "x" .. th, tw, th), tw, th, fx, rh)
+			if out ~= rt then R.Copy(out, rt) end
+		end
+	end
 	if pass == "primary" then R.DrawHelpers(src, rw, rh) end
 	if wrap2D then cam.End2D() end
 	render.PopRenderTarget()
@@ -297,6 +339,11 @@ local LOOK_REST = 0.3            -- s without changes before the full frame
 local look = { }
 
 function R.LookOn() return cvLook:GetBool() end
+-- (b0.2.6 round 7, as SFM) the Clip Editor of the timeline shows the Primary Viewport as the render
+-- makes it and refines it at rest (C.ClipEditor, cl_saeditor_ui.lua: nothing is moved there); the
+-- Motion and Graph editors show the quick picture (one pass of the occlusion: grainy)
+local function lookOn() return cvLook:GetBool() or (C.ClipEditor ~= nil and C.ClipEditor()) end
+R.LookActive = lookOn
 function R.SetLook(on)
 	RunConsoleCommand("gmfm_vp_look", on and "1" or "0")
 	look.rt, look.full = nil, nil
@@ -311,14 +358,16 @@ SPeditor.Hook("SAeditor_Changed", "SPeditor.ViewportLook", lookDirty)
 local function shootLook()
 	local req = look.req
 	look.req = nil
-	if not req or not cvLook:GetBool() or not C.active or C.hideUI or C.exporting or R.busy then return end
+	if not req or not lookOn() or not C.active or C.hideUI or C.exporting or R.busy then return end
 	if SPeditor.Export and SPeditor.Export.pending then return end
 	local FX = SPeditor.FX
 	local src = req.src
 	local W, H = C.GetRenderSize()
 	local aspect = W / H
 	local VP_W, VP_H = vpSize()
-	local pw = math.Clamp(math.floor(math.min(req.iw, W)), 16, VP_W)
+	-- (b0.2.6) in steps of 64 pixels: the game never frees a render target, and every width the
+	-- viewport passed through while a splitter was dragged made a set of them for itself
+	local pw = math.Clamp(math.max(math.floor(math.min(req.iw, W) / 64) * 64, 64), 16, VP_W)
 	local ph = math.Clamp(math.floor(pw / aspect), 16, VP_H)
 	local fx = FX and FX.For(src.ent) or nil
 	local now = RealTime()
@@ -338,7 +387,38 @@ local function shootLook()
 	if R.EngineFor(fullbright) then
 		R.FinishEngineFrame()
 		local E = R.Engine
-		if E.info and E.info.owner == look and E.serial ~= look.engSerial then
+		-- (round 10) at rest, with depth of field: one engine frame a pass of the lens, cut out shifted
+		-- and averaged as the render does (R.EngineLens) — the engine frame had no depth of field
+		local dof
+		if resting then
+			if GetConVar("gmfm_dof"):GetBool() then
+				dof = { aperture = math.Clamp(GetConVar("gmfm_dof_aperture"):GetFloat(), 0.05, 20),
+					samples = math.Clamp(GetConVar("gmfm_dof_samples"):GetInt(), 2, 128), focus = SPeditor.Export.FocusDistance(src) }
+			end
+			local own = FX and SPeditor.Export.TrackFocus(src, FX.DOF(fx))
+			if own then dof = own end
+		end
+		local lkey = dof and string.format("%s|%d|%.2f|%.1f", tostring(look.changed), pw, dof.aperture, dof.focus) or nil
+		local lens = E.info and E.info.owner == look and E.serial ~= look.engSerial and E.info.lens
+		if lens then
+			look.engSerial = E.serial
+			if look.lens and lens.key == look.lens.key and lens.pass == look.lens.done + 1 then
+				local ok, rt = pcall(function()
+					local cut = R.EngineLensToRT(pw, ph, aspect)
+					if not cut then return nil end
+					R.LensAccumulate(cut, lens.pass, pw, ph)
+					return R.ApplyFX(R.LensAccumulated(pw, ph), fx, pw, ph, aspect)
+				end)
+				if ok and rt then
+					look.lens.done = lens.pass
+					local own_rt = getRT("vplook_" .. pw .. "x" .. ph, pw, ph)
+					R.Copy(rt, own_rt)
+					look.rt, look.w, look.h = own_rt, pw, ph
+					look.full = look.lens.done >= look.lens.n
+					if look.full then look.fullAt = now end
+				end
+			end
+		elseif E.info and E.info.owner == look and E.serial ~= look.engSerial then
 			look.engSerial = E.serial
 			local ok, rt = pcall(function()
 				local base = R.EngineToRT(pw, ph, aspect)
@@ -354,6 +434,20 @@ local function shootLook()
 				if look.full then look.fullAt = now end
 			end
 		end
+		if dof then
+			if not look.lens or look.lens.key ~= lkey then
+				look.lens = { key = lkey, done = 0, n = math.min(math.floor(dof.samples or 32), 64), dof = dof }
+			end
+			if look.lens.done < look.lens.n and not E.want and not E.cur then
+				local base = R.FXSource(src, fx)
+				local l = R.EngineLens(look.lens.dof, look.lens.done + 1, look.lens.n, pw, ph, base.fov)
+				l.pass, l.key = look.lens.done + 1, lkey
+				R.RequestEngineFrame(R.EngineLensSource(base, l), { fullbright = C.fullbright or GetConVar("gmfm_render_fullbright"):GetBool(),
+					aspect = aspect, owner = look, lens = l })
+			end
+			return
+		end
+		look.lens = nil
 		if not E.want and not E.cur then
 			R.RequestEngineFrame(R.FXSource(src, fx), { fullbright = C.fullbright or GetConVar("gmfm_render_fullbright"):GetBool(),
 				aspect = aspect, owner = look })
@@ -367,10 +461,16 @@ local function shootLook()
 		opts.dof = { aperture = math.Clamp(GetConVar("gmfm_dof_aperture"):GetFloat(), 0.05, 20),
 			samples = math.Clamp(GetConVar("gmfm_dof_samples"):GetInt(), 2, 128), focus = SPeditor.Export.FocusDistance(src) }
 	end
-	local own = FX and FX.DOF(fx)
+	local own = FX and SPeditor.Export.TrackFocus(src, FX.DOF(fx))
 	if own then opts.dof = table.Copy(own) end
 	if resting then
 		if GetConVar("gmfm_render_ss"):GetBool() and pw <= 960 then opts.ss = 2 end
+		-- refined pass by pass while it rests, as SFM's viewport (b0.2.6): before, the whole
+		-- frame was shot in one game frame and the editor stood still for it
+		if not look.prog or look.prog.at ~= look.changed or look.prog.w ~= pw then
+			look.prog = { key = "look", step = 4, at = look.changed, w = pw }
+		end
+		opts.progress = look.prog
 	else
 		-- a few depth of field passes are a few sharp copies of the frame side by side (ghosts),
 		-- not a blur: the light version is sharp, the full frame at rest has the depth of field
@@ -393,8 +493,10 @@ local function shootLook()
 	local own_rt = getRT("vplook_" .. pw .. "x" .. ph, pw, ph)
 	R.Copy(rt, own_rt)
 	look.rt, look.w, look.h = own_rt, pw, ph
-	look.full = resting
-	if resting then look.fullAt = now end
+	-- full once every pass is in (a frame without passes is full at once)
+	local pr = opts.progress
+	look.full = resting and (not pr or not pr.i or pr.done) or false
+	if look.full then look.fullAt = now end
 	return true
 end
 
@@ -412,8 +514,10 @@ function R.Viewport(src, w, h, pass, frozen)
 	if iw < 4 or ih < 4 then return end
 
 	pass = pass or "primary"
+	-- a free frame wider than 16:9 widens the view (Hor+, C.FrameFOV)
+	src = C.FrameSource(src, iw / ih, pass)
 	if pass == "primary" then primaryAt = RealTime() end
-	if pass == "primary" and cvLook:GetBool() and not R.busy then
+	if pass == "primary" and lookOn() and not R.busy then
 		look.req = { src = src, iw = iw }
 		if look.rt then
 			-- the finished frame has no helpers: they are drawn over a copy of it
@@ -476,7 +580,7 @@ function R.EarlyPrimary()
 	if not IsValid(vp) or not vp.GetSource then return false end
 	local src = vp.GetSource()
 	if not src then return false end
-	if cvLook:GetBool() then
+	if lookOn() then
 		-- the render look shoots its frames itself; the engine frame mode takes the main frame
 		local fullbright = C.fullbright or GetConVar("gmfm_render_fullbright"):GetBool()
 		if R.EngineFor(fullbright) or not look.req then return false end
@@ -489,6 +593,7 @@ function R.EarlyPrimary()
 	if not st or not st.w then return false end
 	local _, _, iw, ih = C.FitRect(st.w, st.h, C.GetAspect())
 	if iw < 4 or ih < 4 then return false end
+	src = C.FrameSource(src, iw / ih, "primary")
 	local VP_W, VP_H = vpSize()
 	local rt = getRT("vp_primary_" .. VP_W .. "x" .. VP_H, VP_W, VP_H)
 	local s = math.min(1, VP_W / iw, VP_H / ih)
@@ -528,7 +633,8 @@ end
 -- The final frame with quality improvements.
 -- ss  — smoothing: the frame is drawn 2 times larger and scaled down;
 -- dof — depth of field: the scene is drawn many times with the camera moved around
--- the "aperture" circle and aimed at the focus point; the frames are averaged.
+-- the "aperture" circle, its window shifted so that the plane at the focus distance stays in
+-- place (round 7, a real lens as SFM's: R.OffCenter); the frames are averaged.
 -- Everything at the focus distance stays sharp, the rest blurs.
 -- The averaging is a running mean: the i-th frame is laid on with opacity 1/i.
 -- It accumulates in a floating-point RT: a regular 8-bit one would show banding after
@@ -579,6 +685,64 @@ local function diskPoint(i, n)
 	local a = i * 2.39996323
 	return r * math.cos(a), r * math.sin(a)
 end
+R.DiskPoint = diskPoint
+
+-- (b0.2.6, after SFM) Smoothing by samples: every pass of the accumulator shifts the view by a
+-- part of a pixel (a Halton pattern), so that the passes that blur the depth of field and soften
+-- the shadows smooth the edges as well — SFM's anti-aliasing. Before, smoothing shot the frame at
+-- twice the size (four times the pixels, and no frame past half of the largest texture).
+-- gmfm_render_aa: "sfm" (samples) or "ss" (the old doubled frame); gmfm_render_aa_samples — the
+-- passes a frame takes at least for smoothing alone.
+local cvAA = CreateClientConVar("gmfm_render_aa", "sfm", true, false, "Render smoothing: sfm (jittered samples, as SFM) or ss (a doubled frame)")
+local cvAASamples = CreateClientConVar("gmfm_render_aa_samples", "8", true, false, "Render smoothing (sfm): passes a frame takes at least", 1, 64)
+function R.AAMode() return cvAA:GetString() == "ss" and "ss" or "sfm" end
+function R.AASamples() return math.Clamp(cvAASamples:GetInt(), 1, 64) end
+
+local function halton(i, b)
+	local f, r = 1, 0
+	while i > 0 do
+		f = f / b
+		r = r + f * (i % b)
+		i = math.floor(i / b)
+	end
+	return r
+end
+
+-- the view of pass i turned by a part of a pixel (W x H frame, horizontal fov)
+-- (round 7) the shift is a part of a pixel of the window (R.OffCenter), not a turn of the camera:
+-- the same for every pixel of the frame, and it keeps the lens of a depth of field pass
+local function jittered(s, i)
+	local out = {}
+	for k, v in pairs(s) do out[k] = v end
+	out.shift = { halton(i, 2) - 0.5, halton(i, 3) - 0.5 }
+	return out
+end
+
+-- (b0.2.6 round 7) The off-centre window of a pass: render.RenderView's offcenter, in pixels of the
+-- view (measured in game: a larger left / right moves the window right, a larger top / bottom up).
+--   src.shift = { x, y } — a shift in pixels (the smoothing's sub-pixel jitter);
+--   src.lens = { x, y, focus } — the camera moved x right and y up (units) over the lens, with the
+--   picture at the focus distance kept in place: SFM's depth of field, a real lens. Before, the
+--   moved camera was turned to look at the focus point, and only the middle of the focal plane
+--   stayed sharp — its edges blurred more the wider the frame and the aperture.
+-- nil — a plain view.
+function R.OffCenter(src, w, h, aspect)
+	if not src or not (src.shift or src.lens) then return nil end
+	local sx, sy = 0, 0
+	if src.shift then sx, sy = src.shift[1], src.shift[2] end
+	local lens = src.lens
+	if lens then
+		local tx = math.tan(math.rad(math.Clamp(src.fov, 1, 170)) / 2)
+		-- pixels per unit across at the distance of one unit; down the same, for a frame that
+		-- may be stretched over the texture (aspect differs from w / h)
+		local px = (w / 2) / tx
+		local py = (h / 2) * (aspect or (w / h)) / tx
+		local f = math.max(lens[3], 1)
+		sx = sx - lens[1] * px / f
+		sy = sy - lens[2] * py / f
+	end
+	return { left = sx, right = w + sx, top = sy, bottom = h + sy }
+end
 
 -- Frame source for a camera with effects: fisheye shoots the scene wider
 function R.FXSource(src, fx)
@@ -601,6 +765,26 @@ function R.Accumulate(rt, i, W, H)
 	if i <= 1 then render.Clear(0, 0, 0, 255) end
 	drawFull(matBlend, rt, 1 / math.max(i, 1))
 	render.PopRenderTarget()
+end
+
+-- (round 10) the passes of the lens of an engine frame are averaged the same way, in a target of
+-- their own (the moments of motion blur average the finished frames above)
+function R.LensAccumulate(rt, i, W, H)
+	opaqueAlpha(rt)
+	local acc = getFloatRT("lens_" .. W .. "x" .. H, W, H)
+	render.PushRenderTarget(acc)
+	if i <= 1 then render.Clear(0, 0, 0, 255) end
+	drawFull(matBlend, rt, 1 / math.max(i, 1))
+	render.PopRenderTarget()
+end
+function R.LensAccumulated(W, H)
+	local acc = getFloatRT("lens_" .. W .. "x" .. H, W, H)
+	local out = getRT("lens_out_" .. W .. "x" .. H, W, H)
+	render.PushRenderTarget(out)
+	render.Clear(0, 0, 0, 255, true, true)
+	drawFull(matShow, acc)
+	render.PopRenderTarget()
+	return out
 end
 
 function R.AccumulatedRT(W, H)
@@ -631,9 +815,11 @@ function R.EngineMode() return cvEngine:GetBool() end
 function R.EngineFor(fullbright) return cvEngine:GetBool() and not fullbright end
 function R.SetEngineMode(on) RunConsoleCommand("gmfm_render_engine", on and "1" or "0") end
 
--- opts = { fullbright, aspect, owner }; owner — who ordered it (so as not to take someone else's frame)
+-- opts = { fullbright, aspect, owner, lens }; owner — who ordered it (so as not to take someone else's
+-- frame); lens — a pass of the depth of field (R.EngineLens below), kept with the shot frame
 function R.RequestEngineFrame(src, opts)
-	E.want = { src = src, fullbright = opts.fullbright and true or false, aspect = opts.aspect or (ScrW() / ScrH()), owner = opts.owner }
+	E.want = { src = src, fullbright = opts.fullbright and true or false, aspect = opts.aspect or (ScrW() / ScrH()), owner = opts.owner,
+		lens = opts.lens }
 end
 
 -- The main camera view for the engine frame (for CalcView). In RenderView the field of
@@ -737,9 +923,66 @@ function R.EngineToRT(W, H, aspect)
 	return rt
 end
 
+---------------------------------------------------------------------
+-- (b0.2.6 round 10) Depth of field in the engine frame. The engine draws its frame once a game frame,
+-- with one camera, so the frame is shot once for every point of the lens: the camera moved over the
+-- aperture and looking the same way, its view a little wider — and every shot is cut out shifted, so
+-- that the focal plane stays where it is (the window shift of SFM's lens, R.OffCenter, done on the
+-- picture: a shifted window is the same picture moved), then they are averaged (R.LensAccumulate).
+-- Before, the engine frame had no depth of field at all.
+--   R.EngineLens(dof, i, n, W, H)  -> the pass i of n: { ox, oy, k (how much wider), rx, ry }
+--   R.EngineLensSource(src, lens)  -> the view to shoot (moved, wider)
+--   R.EngineLensToRT(W, H, aspect) -> the shot frame cut out for its pass, with its own occlusion
+---------------------------------------------------------------------
+function R.EngineLens(dof, i, n, W, H, fov)
+	local aspect = W / H
+	local tx = math.tan(math.rad(math.Clamp(fov, 1, 170)) / 2)
+	local focus = math.max(dof.focus or 200, 4)
+	local a = math.max(dof.aperture or 0, 0)
+	-- the widest shift of the window, a part of half the frame (down it is the aspect times more)
+	local k = 1 + math.min(a * math.max(aspect, 1) / (focus * tx) + 0.01, 1)
+	local dx, dy = diskPoint(i, n)
+	local ox, oy = dx * a, dy * a
+	return { ox = ox, oy = oy, k = k, rx = ox / (focus * tx), ry = oy * aspect / (focus * tx), focus = focus, i = i, n = n }
+end
+
+function R.EngineLensSource(src, lens)
+	local right, up = src.angles:Right(), src.angles:Up()
+	local tx = math.tan(math.rad(math.Clamp(src.fov, 1, 170)) / 2)
+	return { origin = src.origin + right * lens.ox + up * lens.oy, angles = src.angles,
+		fov = math.deg(2 * math.atan(tx * lens.k)), ent = src.ent }
+end
+
+function R.EngineLensToRT(W, H, aspect)
+	local c = E.info
+	local lens = c and c.lens
+	if not E.tex or not lens then return nil end
+	aspect = aspect or (W / H)
+	local ix, iy, iw, ih = C.FitRect(E.w, E.h, aspect)
+	local cw, ch = iw / lens.k, ih / lens.k
+	-- the window of a lens moved right by ox shifts left on the picture (R.OffCenter: sx = -rx)
+	local cx = ix + iw / 2 - lens.rx * cw / 2
+	local cy = iy + ih / 2 + lens.ry * ch / 2
+	local rt = R.CropRectToRT(E.tex, E.w, E.h, W, H, cx - cw / 2, cy - ch / 2, cw, ch, "englens_")
+	-- the occlusion of this pass's own view: the same window shift for its depth pass
+	if R.ApplySSAO and c.src and not c.fullbright then
+		local fov = math.deg(2 * math.atan(math.tan(math.rad(math.Clamp(c.src.fov, 1, 170)) / 2) / lens.k))
+		local s = { origin = c.src.origin, angles = c.src.angles, fov = fov, ent = c.src.ent, lens = { lens.ox, lens.oy, lens.focus } }
+		-- one pass of it, with the noise of this lens pass: the passes average it out
+		local mask = R.SSAOMask and R.SSAOMask(s, W, H, aspect, 1, lens.i)
+		if mask then R.MultiplyAO(rt, mask) end
+	end
+	return rt
+end
+
 -- The same for any texture tex of tw x th pixels (SAeditor's player takes the screen this way)
 function R.CropToRT(tex, tw, th, W, H, aspect, prefix)
 	local ix, iy, iw, ih = C.FitRect(tw, th, aspect or (W / H))
+	return R.CropRectToRT(tex, tw, th, W, H, ix, iy, iw, ih, prefix)
+end
+
+-- the rectangle x, y, w, h (pixels of tex) stretched over a W x H texture
+function R.CropRectToRT(tex, tw, th, W, H, ix, iy, iw, ih, prefix)
 	local u0, v0, u1, v1 = ix / tw, iy / th, (ix + iw) / tw, (iy + ih) / th
 	local out = getRT((prefix or "crop_") .. W .. "x" .. H, W, H)
 	render.PushRenderTarget(out)
@@ -806,6 +1049,14 @@ end
 function R.RenderBase(src, W, H, opts)
 	opts = opts or {}
 	local ss = (opts.ss == 2) and 2 or 1
+	-- smoothing as SFM does it: by the passes, at the frame's own size
+	local aaN = 0
+	if ss == 2 and R.AAMode() == "sfm" then
+		ss = 1
+		aaN = opts.aaSamples or R.AASamples()
+	elseif opts.aaSamples then
+		aaN = opts.aaSamples
+	end
 	local sw, sh = W * ss, H * ss
 	local dof = opts.dof
 	local Lt = SPeditor.Lights
@@ -818,10 +1069,13 @@ function R.RenderBase(src, W, H, opts)
 		return math.max(math.floor(n * scale + 0.5), math.min(n, 12))
 	end
 	soft = scaled(soft)
+	-- (b0.2.6) the smoothing passes take the same part (a video at "half" smoothed every frame with
+	-- all 8 passes — 8 renders of the scene a frame at the default settings); 2 at least
+	if aaN > 1 and scale < 1 then aaN = math.max(math.floor(aaN * scale + 0.5), 2) end
 	-- the occlusion's passes (cl_ssao.lua): fewer in the live views (preview, render look)
 	local aoPasses = R.SSAOPasses and R.SSAOPasses(opts.softMax ~= nil) or 1
 
-	if ss == 1 and not dof and soft == 0 then
+	if ss == 1 and not dof and soft == 0 and aaN <= 1 then
 		local rt = liveRT("exp_" .. W .. "x" .. H, W, H)
 		renderScene(rt, src, W, H, "export", true, opts.fullbright, opts.aspect)
 		-- ambient occlusion (cl_ssao.lua) from the centre of the view
@@ -832,19 +1086,31 @@ function R.RenderBase(src, W, H, opts)
 	local frame = liveRT("exp_" .. sw .. "x" .. sh, sw, sh)
 	local result = frame
 
-	if dof or soft > 0 then
-		local dn = dof and math.Clamp(math.floor(dof.samples or 32), 2, 128) or 0
-		local n = math.max(opts.dofFull and dn or scaled(dn), soft)
+	if dof or soft > 0 or aaN > 1 then
+		local dn = dof and math.Clamp(math.floor(dof.samples or 32), 2, 256) or 0
+		local n = math.max(opts.dofFull and dn or scaled(dn), soft, aaN > 1 and aaN or 0)
+		-- motion blur (opts.slice = { moment, moments }, b0.2.6 after SFM): the passes of a frame
+		-- are shared out among its moments — each takes every m-th point of the lens, of the lights
+		-- and of the smoothing, and together they make the whole set once (each moment shot all of
+		-- them before: the cost was moments x passes)
+		local slice = istable(opts.slice) and opts.slice[2] > 1 and opts.slice or nil
+		local sStart, sStep = 1, 1
+		if slice then
+			sStep = math.floor(slice[2])
+			sStart = math.Clamp(math.floor(slice[1]), 1, sStep)
+			n = math.max(n, sStep)
+		end
+		local count = math.max(math.ceil((n - sStart + 1) / sStep), 1)      -- passes of this call's set
 		-- opts.progress = { key, step } (a0.9): the passes are spread over calls — each call adds
 		-- step more to an accumulator of its own and returns the frame so far; progress.done when
 		-- all n are in. The player's pause shot all 96 depth of field passes in one game frame and
 		-- froze the game for seconds.
 		local pr = opts.progress
 		local acc = getFloatRT((pr and ("accp_" .. tostring(pr.key or "p") .. "_") or "acc_") .. sw .. "x" .. sh, sw, sh)
-		local from, to = 1, n
+		local from, to = 1, count
 		if pr then
-			if not pr.i or pr.n ~= n then pr.i, pr.n = 0, n end
-			from, to = pr.i + 1, math.min(n, pr.i + math.max(pr.step or 4, 1))
+			if not pr.i or pr.n ~= count then pr.i, pr.n = 0, count end
+			from, to = pr.i + 1, math.min(count, pr.i + math.max(pr.step or 4, 1))
 		end
 		if from == 1 then
 			render.PushRenderTarget(acc)
@@ -852,35 +1118,45 @@ function R.RenderBase(src, W, H, opts)
 			render.PopRenderTarget()
 		end
 
-		local fwd, right, up = src.angles:Forward(), src.angles:Right(), src.angles:Up()
-		local focus = dof and (src.origin + fwd * math.max(dof.focus or 200, 4))
-		-- with depth of field the occlusion goes into every pass, so that it is blurred with the
-		-- picture: laid over the finished blur it drew sharp dark outlines (the player's pause)
-		local aoMask = dof and not opts.fullbright and R.SSAOMask and R.SSAOMask(src, W, H, opts.aspect, aoPasses)
+		local right, up = src.angles:Right(), src.angles:Up()
+		local focus = dof and math.max(dof.focus or 200, 4)
+		-- (round 7) with depth of field every pass takes the occlusion of its own view, one pass of
+		-- it with the noise of this pass (SFM's progressive render): one mask of the middle view
+		-- laid on every pass is the same as one laid on the finished blur — sharp dark outlines
+		-- of things that are out of focus
+		local passAO = dof and not opts.fullbright and R.SSAOMask and R.SSAOParams and (R.SSAOParams(src))
 		local ok, err = pcall(function()
-			for i = from, to do
+			for k = from, to do
+				local i = sStart + (k - 1) * sStep        -- the point of the whole set this pass takes
 				local s = src
 				if dof then
+					-- the camera moves over the lens and keeps looking the same way; the window
+					-- shifts so that the focal plane stays where it is (R.OffCenter)
 					local dx, dy = diskPoint(i, n)
-					local origin = src.origin + right * (dx * dof.aperture) + up * (dy * dof.aperture)
-					s = { origin = origin, angles = (focus - origin):AngleEx(up), fov = src.fov, ent = src.ent }
+					local ox, oy = dx * dof.aperture, dy * dof.aperture
+					s = { origin = src.origin + right * ox + up * oy, angles = src.angles, fov = src.fov, ent = src.ent,
+						lens = { ox, oy, focus } }
 				end
+				if aaN > 1 then s = jittered(s, i) end
 				if soft > 0 then Lt.Jitter(i, n) end
 				renderScene(frame, s, sw, sh, "export", true, opts.fullbright, opts.aspect)
-				if aoMask then R.MultiplyAO(frame, aoMask) end
+				if passAO then
+					local mask = R.SSAOMask(s, sw, sh, opts.aspect, 1, i)
+					if mask then R.MultiplyAO(frame, mask) end
+				end
 				opaqueAlpha(frame)
 
 				render.PushRenderTarget(acc)
-				drawFull(matBlend, frame, 1 / i)
+				drawFull(matBlend, frame, 1 / k)
 				render.PopRenderTarget()
 			end
 		end)
 		-- the lights are always put back, even if the pass was cut short by an error
 		if soft > 0 then Lt.Restore() end
 		if not ok then error(err, 0) end
-		if pr then pr.i, pr.done = to, to >= n end
+		if pr then pr.i, pr.done = to, to >= count end
 		result = acc
-		if aoMask then opts.aoDone = true end
+		if passAO then opts.aoDone = true end
 	else
 		renderScene(frame, src, sw, sh, "export", true, opts.fullbright, opts.aspect)
 	end

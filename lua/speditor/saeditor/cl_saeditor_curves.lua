@@ -213,13 +213,29 @@ end
 ---------------------------------------------------------------------
 -- The window
 ---------------------------------------------------------------------
+-- (b0.2.6, as SFM) The Graph Editor is one of the timeline's editors (F4, cl_saeditor_ui.lua):
+-- opening it shows the timeline on it. The separate window is left for when there is no timeline.
 function SA.OpenCurves()
+	if SA.SetTimelineMode and Dock.pages and Dock.pages.sa_timeline then
+		SA.SetTimelineMode("graph")
+		return
+	end
+	SA.OpenCurvesWindow()
+end
+
+function SA.OpenCurvesWindow()
 	if Dock.ShowPage("sa_curves") then return end
 	local W, H = math.min(900, ScrW() - 80), 430
 	local win, body = Dock.Create({ key = "sa_curves", id = "sa_curves", title = L("sa_crv_title"), w = W, h = H,
 			x = math.floor(ScrW() / 2 - W / 2), y = ScrH() - H - 260, dockable = true, floating = true, icon = "icon16/chart_curve.png" })
 	win.minW, win.minH = UI.S(480), UI.S(260)
+	SA.BuildCurves(body)
+	return win
+end
 
+-- The editor itself in any panel (the timeline's Graph Editor, the window above). Only one of
+-- them is live at a time: body.SPClaim() makes this one the live one again.
+function SA.BuildCurves(body)
 	local top = vgui.Create("DPanel", body)
 	top:Dock(TOP)
 	top:SetTall(UI.S(28))
@@ -244,11 +260,17 @@ function SA.OpenCurves()
 		surface.SetDrawColor(COL.BORDER)
 		surface.DrawRect(0, h - 1, w, 1)
 	end
-	local chanBar = vgui.Create("DPanel", row2)
+	-- (b0.2.6, as SFM's Graph Editor) the channels in a list on the left: a click shows or hides a
+	-- channel's curve, a double click shows that one alone
+	local chanBar = vgui.Create("DScrollPanel", body)
 	chanBar:Dock(LEFT)
-	chanBar:DockMargin(6, 0, 0, 0)
-	chanBar:SetWide(UI.S(10))
-	chanBar.Paint = function() end
+	chanBar:SetWide(UI.S(150))
+	chanBar.Paint = function(_, w, h)
+		surface.SetDrawColor(COL.TREE_BG or COL.LIST_BG)
+		surface.DrawRect(0, 0, w, h)
+		surface.SetDrawColor(COL.BORDER)
+		surface.DrawRect(w - 1, 0, 1, h)
+	end
 
 	local function btn(text, tip, fn, parent)
 		local b = vgui.Create("DButton", parent or top)
@@ -364,22 +386,25 @@ function SA.OpenCurves()
 
 	local function rebuildChannels()
 		chanBar:Clear()
-		local x = 0
-		for _, name in ipairs(chans()) do
+		for i, name in ipairs(chans()) do
 			local b = vgui.Create("DButton", chanBar)
-			b:SetPos(x, 4)
-			b:SetSize(UI.S(46), UI.S(20))
+			b:Dock(TOP)
+			b:SetTall(UI.S(18))
 			b:SetText("")
 			b:SetTooltip(L("sa_crv_ch_" .. name))
 			b.Paint = function(s, w, h)
 				local col = CH_COLORS[name] or COL.TEXT
-				draw.RoundedBox(3, 0, 0, w, h, shown(name) and Color(col.r, col.g, col.b, 70) or COL.CTRL)
-				draw.SimpleText(L("sa_crv_s_" .. name), "SPeditor.Small", w / 2, h / 2, shown(name) and color_white or COL.DIM, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+				surface.SetDrawColor(s:IsHovered() and COL.HOVER or (i % 2 == 0 and COL.ROW_A or COL.ROW_B))
+				surface.DrawRect(0, 0, w, h)
+				surface.SetDrawColor(col.r, col.g, col.b, shown(name) and 255 or 60)
+				surface.DrawRect(6, math.floor(h / 2) - 3, 6, 6)
+				draw.SimpleText(L("sa_crv_ch_" .. name), "SPeditor.Small", 18, h / 2, shown(name) and col or COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 			end
 			b.DoClick = function() CV.visible[name] = not shown(name) end
-			x = x + 48
+			b.DoDoubleClick = function()
+				for _, n in ipairs(chans()) do CV.visible[n] = (n == name) end
+			end
 		end
-		chanBar:SetWide(x + 4)
 	end
 
 	local lastSig
@@ -414,7 +439,7 @@ function SA.OpenCurves()
 		CV.slerp = part < 0 or (IsValid(ent) and C.PhysIndexOfBone(ent, part) ~= nil)
 	end
 	graph.Think = function()
-		if not C.active then return end
+		if not C.active or CV.panel ~= graph then return end
 		retarget()
 	end
 
@@ -784,5 +809,10 @@ function SA.OpenCurves()
 
 	CV.uid, CV.part, CV.data = nil, nil, nil
 	retarget()
-	return win
+	body.SPClaim = function()
+		CV.panel = graph
+		CV.uid, CV.part, CV.data = nil, nil, nil
+		retarget()
+	end
+	return graph
 end

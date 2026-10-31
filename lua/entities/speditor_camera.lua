@@ -20,6 +20,9 @@ function ENT:SetupDataTables()
 	self:NetworkVar("Float", 3, "ShakeFreq")     -- shakes per second
 	self:NetworkVar("Float", 4, "CamSmooth")     -- smoothing of the animated path, seconds
 	self:NetworkVar("Float", 5, "ZNear")         -- the near clipping plane, units (0: the editor's own)
+	self:NetworkVar("Float", 6, "CamAO")         -- ambient occlusion: 0 as the scene, 1 on, 2 off (b0.2.6)
+	self:NetworkVar("Float", 7, "AORadius")      -- its radius, units (0: the scene's)
+	self:NetworkVar("Float", 8, "AOStrength")    -- its strength (0: the scene's)
 	self:NetworkVar("Bool", 0, "Enabled")
 	self:NetworkVar("Entity", 0, "ViewOwner")
 end
@@ -80,9 +83,15 @@ if CLIENT then
 		end
 	end
 
+	-- the half width and height of the frame `dist` in front: the field of view is the horizontal
+	-- one of the render's frame (b0.2.6: the 4:3 rule of the game's own view and a fixed 16:9
+	-- drew a frustum of other proportions than the render; a wide free frame is Hor+)
 	local function planeHalfSize(fov, dist)
-		local vh = dist * math.tan(math.rad(fov) / 2) * 0.75
-		return vh * (16 / 9), vh
+		local C = SPeditor.Client
+		local W, H = C.GetRenderSize()
+		local aspect = W / math.max(H, 1)
+		local hw = dist * math.tan(math.rad(math.Clamp(C.FrameFOV and C.FrameFOV(fov, aspect) or fov, 1, 170)) / 2)
+		return hw, hw / aspect
 	end
 
 	function ENT:DrawTranslucent()

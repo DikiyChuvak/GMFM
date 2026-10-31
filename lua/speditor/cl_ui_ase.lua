@@ -462,6 +462,8 @@ function UI.BuildASE(body)
 				if which == "default" then v = math.Clamp(0, f.min, f.max)
 				elseif which == "zero" then v = f.min
 				elseif which == "half" then v = (f.min + f.max) / 2
+				-- random (b0.2.6, Workshop request): every slider somewhere in its own range
+				elseif which == "random" then v = f.min + math.random() * (f.max - f.min)
 				else v = f.max end
 				C.SendFlex(ent, f.id, v, true)
 			end
@@ -535,6 +537,7 @@ function UI.BuildASE(body)
 			presetRow(L("face_preset_zero"), function() applyFlexPreset(ent, "zero") end)
 			presetRow(L("face_preset_half"), function() applyFlexPreset(ent, "half") end)
 			presetRow(L("face_preset_one"), function() applyFlexPreset(ent, "one") end)
+			presetRow(L("face_preset_random"), function() applyFlexPreset(ent, "random") end)
 		end
 		presetHeader(L("sec_appearance"))
 		presetRow(L("props_open"), function() UI.OpenObjectProps(ent) end)
@@ -728,17 +731,28 @@ function UI.BuildASE(body)
 			m:Open()
 		end):SetTooltip(L("light_kelvin_tip"))
 
-		bri = ctrl({ label = L("ctl_intensity"), min = 0, max = 8, value = ent:GetLightBrightness(), default = 2,
+		-- (b0.2.6) any temperature, not only the presets: the slider sets the colour
+		local kGet = function() return IsValid(ent) and (ent.SPeditor_Kelvin or 6500) or 6500 end
+		ctrl({ label = L("light_kelvin_k"), min = 1000, max = 12000, value = kGet(), default = 6500, decimals = 0,
+				onChange = function(v, final)
+					if not IsValid(ent) then return end
+					ent.SPeditor_Kelvin = v
+					color = UI.KelvinColor(v)
+					send(final)
+				end, getter = kGet }):SetTooltip(L("light_kelvin_tip"))
+
+		bri = ctrl({ label = L("ctl_intensity"), min = 0, max = 20, value = ent:GetLightBrightness(), default = 2,
 				onChange = function(_, final) send(final) end,
 		getter = function() return IsValid(ent) and ent:GetLightBrightness() end })
-		rng = ctrl({ label = L(ltype == 1 and "ctl_distance" or "ctl_radius"), min = 32, max = 4000, value = ent:GetLightRadius(),
+		rng = ctrl({ label = L(ltype == 1 and "ctl_distance" or "ctl_radius"), min = 32, max = 8000, value = ent:GetLightRadius(),
 				default = 400, decimals = 0,
 				onChange = function(_, final) send(final) end,
 		getter = function() return IsValid(ent) and ent:GetLightRadius() end })
 		if ltype == 1 then
-			cone = ctrl({ label = L("ctl_fov"), min = 5, max = 120, value = ent:GetLightFOV(), default = 60, decimals = 0,
+			cone = ctrl({ label = L("ctl_fov"), min = 5, max = 170, value = ent:GetLightFOV(), default = 60, decimals = 0,
 					onChange = function(_, final) send(final) end,
 			getter = function() return IsValid(ent) and ent:GetLightFOV() end })
+			extraCtrl("vfov", L("ctl_vfov"), 0, 170, 0)
 
 			-- soft light (a0.2)
 			ctrlHeader(L("light_sec_soft"))
@@ -885,6 +899,75 @@ function UI.BuildASE(body)
 					end)
 				end,
 				getter = function() return IsValid(ent) and ent:GetAngles().r end }):SetTooltip(L("cam_dutch_tip"))
+		-- (b0.2.6, SFM's focalDistance / aperture) the camera's own depth of field right here: a
+		-- change turns it on (Render → Camera effects keeps the rest) and the views show the plane
+		-- in focus while it is changed (cl_camera.lua)
+		local function dofGet(key, def)
+			return function()
+				if not IsValid(ent) then return def end
+				if key == "focus" then
+					local f = C.CameraFocus(ent)
+					if f then return f end
+				end
+				local fx = C.GetCameraFX(ent)
+				local d = fx and fx.dof
+				return istable(d) and tonumber(d[key]) or def
+			end
+		end
+		local function dofSet(key, v, final)
+			if not IsValid(ent) then return end
+			local fx = table.Copy(C.GetCameraFX(ent) or {})
+			fx.dof = istable(fx.dof) and fx.dof or {}
+			fx.dof.on = true
+			fx.dof[key] = v
+			C.SendCameraFX(ent, fx, final)
+			C.ShowFocus(ent)
+		end
+		-- (round 9) the focal distance on a curve — most of the slider for the near distances, where a
+		-- face is focused — and the wheel steps it; the aperture 0..2 in steps of 0.1 (Shift: 0.01)
+		ctrl({ label = L("cam_focus_dist"), min = 8, max = 4000, value = dofGet("focus", 200)(), default = 200, decimals = 1,
+				pow = 3, wheel = true,
+				onChange = function(v, final) dofSet("focus", v, final) end, getter = dofGet("focus", 200) }):SetTooltip(L("cam_focus_dist_tip"))
+		ctrl({ label = L("cam_aperture"), min = 0, max = 2, value = dofGet("aperture", 0.2)(), default = 0.2, decimals = 2,
+				step = 0.1, wheel = true,
+				onChange = function(v, final) dofSet("aperture", v, final) end, getter = dofGet("aperture", 0.2) }):SetTooltip(L("cam_aperture_tip"))
+		-- (round 9, SFM's "Set Camera Focal Distance") a click on a thing in the viewport puts the
+		-- focal plane on it
+		UI.LinkRow(controls, L("cam_focus_pick"), COL.ORANGE, nil, function() C.PickFocus(ent) end):SetTooltip(L("cam_focus_pick_tip"))
+		UI.ToggleRow(controls, L("cam_dof_on"), function()
+			local fx = IsValid(ent) and C.GetCameraFX(ent) or nil
+			return istable(fx) and istable(fx.dof) and fx.dof.on == true
+		end, function(v)
+			if not IsValid(ent) then return end
+			local fx = table.Copy(C.GetCameraFX(ent) or {})
+			fx.dof = istable(fx.dof) and fx.dof or {}
+			fx.dof.on = v and true or nil
+			C.SendCameraFX(ent, fx, true)
+			if v then C.ShowFocus(ent) end
+		end)
+		-- (b0.2.6 round 7) the other properties of an SFM camera: toneMapScale, bloomScale,
+		-- bloomWidth (camera effects "tonemap" and "sfmbloom", cl_postfx.lua); a change turns the
+		-- effect on, as the focal distance does
+		local function fxGet(id, key)
+			return function() return SPeditor.FX.Get(IsValid(ent) and C.GetCameraFX(ent) or nil, id, key) end
+		end
+		local function fxSet(id, key, v, final)
+			if not IsValid(ent) then return end
+			local fx = table.Copy(C.GetCameraFX(ent) or {})
+			fx[id] = istable(fx[id]) and fx[id] or {}
+			fx[id].on = true
+			if key then fx[id][key] = v end
+			C.SendCameraFX(ent, fx, final)
+		end
+		for _, r in ipairs({
+			{ "tonemap", "scale", "cam_tonemap", 0.1, 4, 1, 2 },
+			{ "sfmbloom", "scale", "cam_bloom", 0, 2, 0.28, 2 },
+			{ "sfmbloom", "width", "cam_bloomwidth", 1, 40, 9, 1 },
+		}) do
+			local get = fxGet(r[1], r[2])
+			ctrl({ label = L(r[3]), min = r[4], max = r[5], value = get(), default = r[6], decimals = r[7],
+					onChange = function(v, final) fxSet(r[1], r[2], v, final) end, getter = get }):SetTooltip(L(r[3] .. "_tip"))
+		end
 		-- the near clipping plane (b0.2.2, SFM's znear)
 		local zGet = function() return IsValid(ent) and ent.GetZNear and ent:GetZNear() or 3 end
 		ctrl({ label = L("cam_znear"), min = 0.1, max = 100, value = zGet(), default = 3, decimals = 1,
@@ -897,12 +980,63 @@ function UI.BuildASE(body)
 		local DEC = { shake = 1, shakerot = 2, shakefreq = 1, smooth = 2 }
 		for _, f in ipairs(SPeditor.CameraFields) do
 			local getter = function() return IsValid(ent) and ent["Get" .. f.nw] and ent["Get" .. f.nw](ent) or f.default end
-			-- the near plane has its own row above, beside the lens
-			if f.key ~= "znear" then
+			-- the near plane has its own row above, beside the lens; the occlusion its section below
+			if f.key ~= "znear" and not string.StartWith(f.key, "ao") then
 				ctrl({ label = L("cam_" .. f.key), min = f.min, max = f.max, value = getter(), default = f.default, decimals = DEC[f.key] or 2,
 						onChange = function(v, final) C.SendCameraEdit(ent, f.key, v, final) end, getter = getter })
 					:SetTooltip(L("cam_tip_" .. f.key))
 			end
+		end
+		-- ambient occlusion of this camera (b0.2.6): as the scene / its own / off. Round 7: its own is
+		-- SFM's SSAORadius / SSAOStrength / SSAOBias (the camera effect "ssao", cl_postfx.lua; the
+		-- older radius / strength fields still count for a camera switched on before)
+		ctrlHeader(L("cam_sec_ao"))
+		local MODES = { "cam_ao_scene", "cam_ao_on", "cam_ao_off" }
+		local function aoMode()
+			if not IsValid(ent) then return 0 end
+			local m = ent.GetCamAO and math.floor(ent:GetCamAO() + 0.5) or 0
+			if m == 2 then return 2 end
+			if SPeditor.FX.IsOn(C.GetCameraFX(ent), "ssao") then return 1 end
+			return m
+		end
+		local function setOwn(on, final)
+			local fx = table.Copy(C.GetCameraFX(ent) or {})
+			fx.ssao = istable(fx.ssao) and fx.ssao or {}
+			fx.ssao.on = on or nil
+			C.SendCameraFX(ent, fx, final)
+		end
+		local modeRow = UI.LinkRow(controls, "", COL.TEXT, nil, function()
+			if not IsValid(ent) then return end
+			-- as the scene → its own → off → as the scene
+			local m = aoMode()
+			if m == 0 then
+				setOwn(true, true)
+			elseif m == 1 then
+				setOwn(false, true)
+				C.SendCameraEdit(ent, "ao", 2, true)
+			else
+				C.SendCameraEdit(ent, "ao", 0, true)
+			end
+		end)
+		modeRow.Paint = function(s, w, h)
+			surface.SetDrawColor(s:IsHovered() and COL.ROW_A or COL.ROW_B)
+			surface.DrawRect(0, 0, w, h)
+			draw.SimpleText(L("cam_ao") .. ":  " .. L(MODES[aoMode() + 1] or MODES[1]), "SPeditor.Small", 8, h / 2,
+				aoMode() == 1 and COL.ORANGE or COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		end
+		modeRow:SetTooltip(L("cam_ao_tip"))
+		for _, r in ipairs({
+			{ "radius", "cam_aoradius", 1, 128, 15, 1 },
+			{ "strength", "cam_aostrength", 0.1, 10, 1, 2 },
+			{ "bias", "cam_aobias", 0, 0.01, 0.0005, 4 },
+		}) do
+			local get = fxGet("ssao", r[1])
+			ctrl({ label = L(r[2]), min = r[3], max = r[4], value = get(), default = r[5], decimals = r[6],
+					onChange = function(v, final)
+						-- a change makes the camera's own occlusion, also from "off"
+						if IsValid(ent) and ent.GetCamAO and ent:GetCamAO() > 1.5 then C.SendCameraEdit(ent, "ao", 0, true) end
+						fxSet("ssao", r[1], v, final)
+					end, getter = get }):SetTooltip(L("cam_tip_ao" .. r[1]))
 		end
 	end
 
@@ -1067,10 +1201,9 @@ function UI.BuildASE(body)
 			bm:AddOption(L("attach_orient"), function() C.SendAttach(ent, tgt, -1000) end):SetIcon("icon16/arrow_rotate_clockwise.png")
 			if bones then
 				local pm = bm:AddSubMenu(L("attach_point_bone"))
+				-- (b0.2.6) every bone: a finger, hair, a bone of a model without physics (SFM)
 				for _, b in ipairs(C.GetBoneList(tgt)) do
-					if b.phys then
-						pm:AddOption((string.gsub(b.name, "^ValveBiped%.Bip01_", "")), function() C.SendAttach(ent, tgt, -100 - (b.id + 1)) end)
-					end
+					pm:AddOption((string.gsub(b.name, "^ValveBiped%.Bip01_", "")), function() C.SendAttach(ent, tgt, -100 - (b.id + 1)) end)
 				end
 			end
 		end
@@ -1090,15 +1223,12 @@ function UI.BuildASE(body)
 						w:SetTooltip(L("attach_wear_tip"))
 					end
 					bm:AddOption(L("attach_root"), function() C.SendAttach(ent, tgt, -1) end)
-					constraintItems(bm, tgt, o.kind == "ragdoll")
-					if o.kind == "ragdoll" then
-						bm:AddSpacer()
-						for _, b in ipairs(C.GetBoneList(tgt)) do
-							if b.phys then
-								local short = string.gsub(b.name, "^ValveBiped%.Bip01_", "")
-								bm:AddOption(short, function() C.SendAttach(ent, tgt, b.id) end)
-							end
-						end
+					constraintItems(bm, tgt, true)
+					-- (b0.2.6) every bone of the model, a ragdoll's fingers and hair included
+					bm:AddSpacer()
+					for _, b in ipairs(C.GetBoneList(tgt)) do
+						local short = string.gsub(b.name, "^ValveBiped%.Bip01_", "")
+						bm:AddOption(short, function() C.SendAttach(ent, tgt, b.id) end)
 					end
 				else
 					-- b0.2: a submenu — the whole object, or SFM's point / orient constraints
@@ -1275,6 +1405,11 @@ function UI.BuildASE(body)
 				UI.NodeColor(n, col)
 				n:SetTooltip(b.name .. "\n" .. L("ase_bone_" .. kind))
 				n.DoClick = function()
+					-- (b0.2.7) Shift / Ctrl + click adds the bone to the bones moved together
+					if C.Keys.ClickAny(C.MULTI_CLICK) then
+						C.ToggleBone(ent, b.id)
+						return
+					end
 					setScope(ent, "bone:" .. b.id, shortBone(b.name))
 					C.Select(ent, b.id)
 				end
@@ -1426,32 +1561,47 @@ function UI.BuildASE(body)
 	end)
 
 	-- a selection box in the tree (b0.2): a press with the left button and a drag up or down
-	-- over the object rows selects every object it crosses (with Shift / Ctrl — adds them)
+	-- over the object rows selects every object it crosses (with Shift / Ctrl — adds them).
+	-- Its start is kept in the list's own space (b0.2.6): scrolled with the wheel during the drag,
+	-- the box stretches over the rows that went by, and a drag past the edge scrolls the list.
 	local box
+	local function canvasY()
+		local cv = tree.GetCanvas and tree:GetCanvas()
+		local _, y = (IsValid(cv) and cv or tree):LocalToScreen(0, 0)
+		return y
+	end
 	SPeditor.Hook("VGUIMousePressed", "SPeditor.ASEBox", function(pnl, code)
 		if code ~= MOUSE_LEFT or not IsValid(tree) or not IsValid(pnl) or not tree:IsVisible() then return end
 		if pnl ~= tree and not pnl:HasParent(tree) then return end
 		local bar = tree.GetVBar and tree:GetVBar()
 		if IsValid(bar) and (pnl == bar or pnl:HasParent(bar)) then return end
 		local mx, my = gui.MousePos()
-		box = { x0 = mx, y0 = my, x1 = mx, y1 = my, add = C.Keys.ClickAny(C.MULTI_CLICK) }
+		box = { x0 = mx, c0 = my - canvasY(), x1 = mx, y1 = my, add = C.Keys.ClickAny(C.MULTI_CLICK) }
 	end)
+	-- the box from top to bottom on the screen now (its start moves with the scrolled list)
+	local function boxSpan(b)
+		local y0 = canvasY() + b.c0
+		return math.min(y0, b.y1), math.max(y0, b.y1)
+	end
 	local function boxRows(b)
-		local y0, y1 = math.min(b.y0, b.y1), math.max(b.y0, b.y1)
-		local tx, ty = tree:LocalToScreen(0, 0)
+		local y0, y1 = boxSpan(b)
 		local out = {}
 		for _, obj in ipairs(C.BuildEntityList()) do
 			local node = nodesByEnt[obj.ent]
 			if IsValid(node) and IsValid(node.Label) and node:IsVisible() then
 				local _, ny = node.Label:LocalToScreen(0, 0)
 				local nh = node.Label:GetTall()
-				-- rows scrolled out of the tree do not count
-				if ny + nh > ty and ny < ty + tree:GetTall() and ny + nh > y0 and ny < y1 then out[#out + 1] = obj.ent end
+				-- rows scrolled out of sight count too: the box went over them
+				if ny + nh > y0 and ny < y1 then out[#out + 1] = obj.ent end
 			end
 		end
 		return out
 	end
-	local function boxShown(b) return b and math.abs(b.y1 - b.y0) >= 6 end
+	local function boxShown(b)
+		if not b then return false end
+		local y0, y1 = boxSpan(b)
+		return y1 - y0 >= 6
+	end
 	local function endBox()
 		local b = box
 		box = nil
@@ -1481,7 +1631,8 @@ function UI.BuildASE(body)
 	tree.PaintOver = function(s, w, h)
 		if not boxShown(box) then return end
 		local tx, ty = s:LocalToScreen(0, 0)
-		local y0, y1 = math.min(box.y0, box.y1) - ty, math.max(box.y0, box.y1) - ty
+		local y0, y1 = boxSpan(box)
+		y0, y1 = math.max(y0 - ty, -2), math.min(y1 - ty, h + 2)
 		local x0, x1 = math.min(box.x0, box.x1) - tx, math.max(box.x0, box.x1) - tx
 		x0, x1 = math.max(x0, 0), math.min(math.max(x1, x0 + 4), w)
 		local acc = COL.ORANGE
@@ -1503,6 +1654,13 @@ function UI.BuildASE(body)
 		if box then
 			if input.IsMouseDown(MOUSE_LEFT) then
 				box.x1, box.y1 = gui.MousePos()
+				-- held above or below the list: it scrolls, faster the further away
+				local bar = tree.GetVBar and tree:GetVBar()
+				local _, ty = tree:LocalToScreen(0, 0)
+				local past = box.y1 < ty and box.y1 - ty or (box.y1 > ty + tree:GetTall() and box.y1 - ty - tree:GetTall() or 0)
+				if past ~= 0 and IsValid(bar) and bar.Enabled then
+					bar:SetScroll(bar:GetScroll() + math.Clamp(past, -60, 60) * FrameTime() * 12)
+				end
 			else
 				endBox()
 			end

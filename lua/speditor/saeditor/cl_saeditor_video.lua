@@ -320,6 +320,17 @@ local function openVideo(job)
 	return job.avi ~= nil
 end
 
+local shoot
+
+-- (b0.2.6, speed as in SFM) In single player the frame is shot in the very game frame the
+-- server's answer arrives in: the scene is already in its place on the client then (the answer
+-- leaves the server after the scene has gone out, sv_saeditor.lua), the render job is taken by
+-- this frame's PostRender and an "engine frame" is ordered before this frame's view. Before, the
+-- frame waited for the next game frame's Think, and the export for the PostRender after it — a
+-- video frame cost 5-6 game frames, now 2-3. gmfm_render_safe 1 brings the old wait back.
+local cvSafe = CreateClientConVar("gmfm_render_safe", "0", true, false,
+	"GM:FM: wait one more game frame for the scene before every frame of a video (slower)", 0, 1)
+
 -- Ask the server for the frame job.cur. On the answer the scene is remembered as the
 -- client sees it; the frame is shot once it is the same in the next game frame.
 local function seek(job)
@@ -334,6 +345,8 @@ local function seek(job)
 		if SA.rendering == job and job.state == "wait_ack" then
 			job.state = "settle"
 			job.ackT, job.sig, job.sigFrame = RealTime(), sceneSignature(), FrameNumber()
+			-- particle systems still have to run up to the moment: Think waits for them
+			if job.trustAck and not cvSafe:GetBool() and not (SPeditor.Effects and SPeditor.Effects.Busy()) then shoot(job) end
 		end
 	end)
 end
@@ -364,7 +377,12 @@ end
 local cvSlowFx = CreateClientConVar("gmfm_render_slowfx", "1", true, false, "SAeditor: slow the game down while an animation with effects renders", 0, 1)
 -- b0.1: the depth of field of the camera (its keyed camera effect) in the video
 CreateClientConVar("gmfm_render_dof", "1", true, false, "SAeditor: keep the camera's own depth of field in the video", 0, 1)
-SA.SLOW_STEPS = 8          -- game frames per moment of the video
+-- (b0.2.6) Game frames per moment of the video: 8 before — a video frame with effects cost 8 game
+-- frames for the particles alone. 4 keep a system within an eighth of a video frame of its moment
+-- (the a0.8 complaint was half a frame), and the game time may now also run FASTER than real time
+-- (a quick game frame: 300 fps is 3 ms) so that 4 steps make a moment there too.
+SA.SLOW_STEPS = 4
+SA.SLOW_MAX = 4            -- the fastest game time while an animation with effects renders
 local function sendSlow(ts)
 	COMP:NetStart("Slow")
 	net.WriteFloat(ts)
@@ -387,7 +405,7 @@ local function updateSlow(job)
 	local real = math.Clamp(RealFrameTime(), 0.002, 0.25)
 	job.realFt = job.realFt and (job.realFt * 0.7 + real * 0.3) or real
 	local moment = 1 / job.fps / math.max(job.blur > 1 and job.blur or 1, 1)
-	local want = math.Clamp(moment / (SA.SLOW_STEPS * job.realFt), 0.02, 1)
+	local want = math.Clamp(moment / (SA.SLOW_STEPS * job.realFt), 0.02, SA.SLOW_MAX)
 	want = math.Round(want, 3)
 	if not job.ts or math.abs(want - job.ts) / job.ts > 0.15 or now > (job.slowSent or 0) + 5 then
 		job.ts, job.slowSent = want, now
@@ -404,6 +422,14 @@ function SA.RenderSequence(opts)
 		return false
 	end
 	opts = opts or {}
+	-- MP3 / OGG of the timeline are decoded for the sound track first (b0.2.6, Web Audio)
+	if not opts.soundsReady and #(SA.sounds or {}) > 0 and SA.Audio.PrepareMix(SA.sounds, function()
+		opts.soundsReady = true
+		SA.RenderSequence(opts)
+	end) then
+		SPeditor.Notify("#sa_snd_preparing", 0)
+		return true
+	end
 	local from = math.Clamp(math.floor(opts.from or 0), 0, SA.frames)
 	local to   = math.Clamp(math.floor(opts.to or SA.frames), from, SA.frames)
 	local name = SPeditor.SafeName(opts.name or "")
@@ -445,6 +471,8 @@ function SA.RenderSequence(opts)
 	SA.playing = false
 	SA.Audio.StopAll()
 	SPeditor.Render.busy = true
+	job.t0 = RealTime()
+	SA.ShowRenderProgress(job)
 	return true
 end
 
@@ -453,7 +481,8 @@ function SA.StopRender(ok)
 	if not job then return end
 	SA.rendering = nil
 	SPeditor.Render.busy = false
-	if job.ts then sendSlow(1) end
+	SA.ShowRenderProgress(nil)
+	if job.ts then sendSlow(0) end         -- 0: the game's own time back
 	local path = "garrysmod/data/" .. RENDER_DIR .. "/" .. job.name
 	if job.webm then
 		pcall(job.webm.Finish, job.webm)
@@ -558,6 +587,51 @@ local function frameDone(job, ok)
 	job.seek(job)         -- at once: waiting for the next Think would cost a game frame
 end
 
+-- Hand the frame over to the editor's render (cl_export.lua)
+shoot = function(job)
+	local accepted = SPeditor.Export.Render({
+		single = true, camera = frameCamera(job), dir = job.dir,
+		-- the depth of field: the camera's own (Camera effects) or, for a camera without
+		-- it, the Render window's (b0.2.4: before it was left out of videos — "DoF does
+		-- not work in the animation render", Workshop)
+		nodof = not GetConVar("gmfm_render_dof"):GetBool(),
+		camdof = GetConVar("gmfm_render_dof"):GetBool(),
+		name = string.format("%s_%04d", job.name, job.n + 1),
+		format = job.seq and job.format or "jpeg", quality = job.quality, sampleScale = job.sampleScale, silent = true,
+		-- "engine frame": the effects are settled by the previous frame of the animation
+		warmup = (job.count > 0) and 1 or nil,
+		-- a video frame goes straight into the file
+		capture = job.avi and function(data)
+			if SA.rendering ~= job or #data == 0 then return false end
+			aviFrame(job.avi, data)
+		end or nil,
+		-- WebM: the frame at the video's size in the top left corner of the screen, and
+		-- the engine's writer takes that part of the screen
+		rtCapture = job.webm and function(rt)
+			if SA.rendering ~= job or not job.webm then return false end
+			SPeditor.Render.DrawFull(rt, job.webmW, job.webmH)
+			job.webm:AddFrame(1 / job.fps, false)
+		end or nil,
+		accum = job.blur > 1 and { i = job.sub, n = job.blur } or nil,
+		onDone = function(ok)
+			-- motion blur: the next moment of the same frame, the frame itself after the last
+			if ok and job.blur > 1 and job.sub < job.blur and SA.rendering == job then
+				job.sub = job.sub + 1
+				job.seek(job)
+				return
+			end
+			job.sub = 1
+			frameDone(job, ok)
+		end,
+	})
+	if accepted then
+		job.state, job.renderT = "render", RealTime()
+		-- the "engine frame" is ordered at once: drawn by this very game frame when asked
+		-- before its view (the server's answer, Think), not by the next one
+		SPeditor.Export.Prime()
+	end
+end
+
 COMP:Hook("Think", function()
 	local job = SA.rendering
 	if not job then return end
@@ -596,46 +670,125 @@ COMP:Hook("Think", function()
 		-- frame waits for them, but not forever
 		local Fx = SPeditor.Effects
 		if Fx and waited < FX_WAIT and Fx.Busy() then return end
-		if (stable and waited >= job.minWait) or waited >= job.settle then
-			local accepted = SPeditor.Export.Render({
-				single = true, camera = frameCamera(job), dir = job.dir,
-				-- the depth of field: the camera's own (Camera effects) or, for a camera without
-				-- it, the Render window's (b0.2.4: before it was left out of videos — "DoF does
-				-- not work in the animation render", Workshop)
-				nodof = not GetConVar("gmfm_render_dof"):GetBool(),
-				camdof = GetConVar("gmfm_render_dof"):GetBool(),
-				name = string.format("%s_%04d", job.name, job.n + 1),
-				format = job.seq and job.format or "jpeg", quality = job.quality, sampleScale = job.sampleScale, silent = true,
-				-- "engine frame": the effects are settled by the previous frame of the animation
-				warmup = (job.count > 0) and 1 or nil,
-				-- a video frame goes straight into the file
-				capture = job.avi and function(data)
-					if SA.rendering ~= job or #data == 0 then return false end
-					aviFrame(job.avi, data)
-				end or nil,
-				-- WebM: the frame at the video's size in the top left corner of the screen, and
-				-- the engine's writer takes that part of the screen
-				rtCapture = job.webm and function(rt)
-					if SA.rendering ~= job or not job.webm then return false end
-					SPeditor.Render.DrawFull(rt, job.webmW, job.webmH)
-					job.webm:AddFrame(1 / job.fps, false)
-				end or nil,
-				accum = job.blur > 1 and { i = job.sub, n = job.blur } or nil,
-				onDone = function(ok)
-					-- motion blur: the next moment of the same frame, the frame itself after the last
-					if ok and job.blur > 1 and job.sub < job.blur and SA.rendering == job then
-						job.sub = job.sub + 1
-						job.seek(job)
-						return
-					end
-					job.sub = 1
-					frameDone(job, ok)
-				end,
-			})
-			if accepted then job.state, job.renderT = "render", RealTime() end
-		end
+		if (stable and waited >= job.minWait) or waited >= job.settle then shoot(job) end
 	end
 end, "render")
+
+---------------------------------------------------------------------
+-- (b0.2.6) The progress window of a video, as SFM's "Exporting movie": while a video renders the
+-- editor's windows are not drawn (SPeditor.UI.SetPaintedForRender — each game frame painted all
+-- of them, and a video frame takes several game frames); this one window shows the last frame,
+-- the progress, the speed and the time left, and stops the render.
+-- gmfm_render_hideui 0 leaves the editor on screen as before.
+---------------------------------------------------------------------
+local cvHideUI = CreateClientConVar("gmfm_render_hideui", "1", true, false,
+	"GM:FM: hide the editor's windows while a video renders (faster); a progress window shows the frames", 0, 1)
+local PREVIEW_MAX = 960
+
+local progress
+
+local function clock(sec)
+	sec = math.max(math.floor(sec + 0.5), 0)
+	if sec >= 3600 then return string.format("%d:%02d:%02d", math.floor(sec / 3600), math.floor(sec / 60) % 60, sec % 60) end
+	return string.format("%d:%02d", math.floor(sec / 60), sec % 60)
+end
+
+COMP:Hook("GMFM_RenderedFrame", function(rt, W, H)
+	if not IsValid(progress) or not SA.rendering then return end
+	local k = math.min(1, PREVIEW_MAX / math.max(W, H))
+	local pw, ph = math.max(math.floor(W * k), 16), math.max(math.floor(H * k), 16)
+	local prev = SPeditor.Render.GetRT("rprog_" .. pw .. "x" .. ph, pw, ph)
+	render.PushRenderTarget(prev)
+	SPeditor.Render.DrawFull(rt)
+	render.PopRenderTarget()
+	progress.prev, progress.pw, progress.ph = prev, pw, ph
+end, "progress")
+
+function SA.ShowRenderProgress(job)
+	local UI = SPeditor.UI
+	if not job then
+		if IsValid(progress) then progress:Remove() end
+		progress = nil
+		if UI.SetPaintedForRender then UI.SetPaintedForRender(false) end
+		return
+	end
+	if not cvHideUI:GetBool() or not UI.SetPaintedForRender then return end
+	if IsValid(progress) then progress:Remove() end
+	UI.SetPaintedForRender(true)
+	local COL = UI.PAL
+	local p = vgui.Create("DPanel")
+	progress = p
+	p:SetPos(0, 0)
+	p:SetSize(ScrW(), ScrH())
+	p:MakePopup()
+	p:SetKeyboardInputEnabled(false)
+	local stop = vgui.Create("DButton", p)
+	stop:SetText(COMP:L("sa_rp_stop"))
+	stop:SetFont("SPeditor.Small")
+	stop:SetSize(UI.S(120), UI.S(26))
+	if UI.StyleButton then UI.StyleButton(stop) end
+	stop.DoClick = function() SA.StopRender(false) end
+	local show = vgui.Create("DCheckBoxLabel", p)
+	show:SetText(COMP:L("sa_rp_hideui"))
+	show:SetFont("SPeditor.Small")
+	show:SetTextColor(COL.DIM)
+	show:SetChecked(true)
+	show:SizeToContents()
+	show.OnChange = function(_, v)
+		RunConsoleCommand("gmfm_render_hideui", v and "1" or "0")
+		-- the editor comes back at once; the render goes on under it
+		if not v then
+			p:Remove()
+			UI.SetPaintedForRender(false)
+		end
+	end
+	p.box = { 0, 0, 0, 0 }
+	p.PerformLayout = function(s, w, h)
+		local bw = math.min(math.floor(w * 0.62), UI.S(1100))
+		local bh = math.min(math.floor(h * 0.7), math.floor(bw * 0.62) + UI.S(120))
+		local bx, by = math.floor((w - bw) / 2), math.floor((h - bh) / 2)
+		s.box = { bx, by, bw, bh }
+		stop:SetPos(bx + bw - stop:GetWide() - UI.S(12), by + bh - stop:GetTall() - UI.S(10))
+		show:SetPos(bx + UI.S(12), by + bh - UI.S(10) - math.floor((stop:GetTall() + show:GetTall()) / 2))
+	end
+	p.Paint = function(s, w, h)
+		surface.SetDrawColor(COL.BORDER)
+		surface.DrawRect(0, 0, w, h)
+		local j = SA.rendering
+		if not j then return end
+		local bx, by, bw, bh = unpack(s.box)
+		surface.SetDrawColor(COL.BG)
+		surface.DrawRect(bx, by, bw, bh)
+		surface.SetDrawColor(COL.HEADER)
+		surface.DrawRect(bx, by, bw, UI.S(28))
+		draw.SimpleText(COMP:L("sa_rp_title", j.name), "SPeditor.Bold", bx + UI.S(10), by + UI.S(14), COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		-- the last frame, fitted into the window
+		local ax, ay, aw, ah = bx + UI.S(12), by + UI.S(38), bw - UI.S(24), bh - UI.S(120)
+		surface.SetDrawColor(COL.VIEW_BG)
+		surface.DrawRect(ax, ay, aw, ah)
+		if s.prev then
+			local fx, fy, fw, fh = SPeditor.Client.FitRect(aw, ah, s.pw / s.ph)
+			SPeditor.Render.DrawRT(s.prev, ax + fx, ay + fy, fw, fh)
+		else
+			draw.SimpleText(COMP:L("sa_rp_first"), "SPeditor.Small", ax + aw / 2, ay + ah / 2, COL.DIM, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+		end
+		-- the progress
+		local done, total = j.count, math.max(j.total, 1)
+		local px, py, pw, ph = ax, ay + ah + UI.S(10), aw, UI.S(14)
+		surface.SetDrawColor(COL.LIST_BG)
+		surface.DrawRect(px, py, pw, ph)
+		surface.SetDrawColor(COL.ORANGE)
+		surface.DrawRect(px, py, math.floor(pw * done / total), ph)
+		local el = RealTime() - (j.t0 or RealTime())
+		local fps = done > 0 and done / math.max(el, 0.001) or 0
+		local left = fps > 0 and (total - done) / fps or nil
+		local line = COMP:L("sa_rp_line", math.min(done + 1, total), total, string.format("%.1f", fps), clock(el), left and clock(left) or "…")
+		draw.SimpleText(line, "SPeditor.Small", px, py + ph + UI.S(8), COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+		local W, H = SPeditor.Client.GetRenderSize()
+		draw.SimpleText(string.format("%d x %d · %d fps%s", W, H, j.fps, j.blur > 1 and (" · " .. COMP:L("sa_rp_blur", j.blur)) or ""),
+			"SPeditor.Small", px + pw, py + ph + UI.S(8), COL.DIM, TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP)
+	end
+end
 
 ---------------------------------------------------------------------
 -- The editor's Render button: a scene with animation is rendered as a whole
@@ -648,9 +801,11 @@ COMP:Hook("SPeditor_RenderRequest", function(opts)
 	-- the Primary Viewport of an animation with camera cuts: the video follows the cuts
 	if camera == nil and #SA.cuts > 0 then camera = "cuts" end
 	-- only the cameras of the scene are rendered (cl_export.lua SceneCamera)
+	-- (b0.2.6) a scene without cameras is shot through the work camera of the Primary Viewport
+	-- (before, the Render button only said a camera was needed)
 	if camera ~= "cuts" and not SPeditor.Export.SceneCamera(camera) then
-		SPeditor.Notify("#render_need_camera", 1)
-		return true
+		camera = nil
+		SPeditor.Notify("#sa_rnd_workcam", 0)
 	end
 	-- the frames of the Animation tab of the Render window (cl_saeditor_ui.lua)
 	local from = SA.rdFrom and math.Clamp(SA.rdFrom, 0, SA.frames) or nil

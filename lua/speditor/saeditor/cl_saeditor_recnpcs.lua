@@ -48,6 +48,14 @@ local function save()
 	file.Write(file_(), util.TableToJSON(t))
 end
 
+-- the scene cleared from the menu: the marks go with it
+COMP:Hook("SPeditor_ClearScene", function()
+	if #SA.RecNPCList() == 0 then return end
+	SA.recNPCs = {}
+	save()
+	hook.Run("SAeditor_RecNPCsChanged")
+end, "recnpcs")
+
 function SA.RecNPCList()
 	if not SA.recNPCs then load() end
 	return SA.recNPCs

@@ -750,7 +750,7 @@ local STEPS = {
 				{ "shaders", function() UI.OpenShaders() end },
 				{ "notifications", function() UI.OpenNotifyLog() end },
 				{ "adopt", function() UI.OpenAdopt() end },
-				{ "curves", function() A.OpenCurves() end },
+				{ "curves", function() A.OpenCurvesWindow() end },
 				{ "record", function() A.OpenRecord() end },
 				{ "sounds", function() A.OpenSounds() end },
 				{ "procedural", function() A.OpenProc(ctx.rag) end },

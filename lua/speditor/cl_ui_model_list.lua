@@ -323,11 +323,33 @@ function UI.BuildBrowser()
 		surface.DrawRect(0, 0, w, h)
 	end
 
-	-- the model under the cursor, turning in its idle animation (a0.9, as in SFM; cl_ui_preview.lua)
-	local preview = UI.ModelPreview(body)
-	preview:Dock(RIGHT)
-	preview:SetWide(UI.S(220))
-	preview:DockMargin(0, 4, 4, 4)
+	-- the model under the cursor, turning in its idle animation (a0.9, as in SFM; cl_ui_preview.lua);
+	-- b0.2.6: on a floor grid, with SFM's tabs under it (Render, Sequences, Activities, Skins)
+	local side = vgui.Create("DPanel", body)
+	side:Dock(RIGHT)
+	side:SetWide(UI.S(280))
+	side:DockMargin(0, 4, 4, 4)
+	side.Paint = function() end
+	local preview = UI.ModelPreview(side)
+	preview:Dock(TOP)
+	local tabs = UI.ModelPreviewTabs(side, preview)
+	tabs:Dock(FILL)
+	tabs:DockMargin(0, 4, 0, 0)
+	side.PerformLayout = function(s2, w, h) preview:SetTall(math.Clamp(math.floor(h * 0.55), UI.S(120), w)) end
+	-- the preview changes once the cursor rests on an icon: on the way to the tabs it crosses others
+	preview.Think = function(s2)
+		if s2.SPWant and RealTime() - s2.SPWantT > 0.25 then
+			s2:SetModel(s2.SPWant)
+			s2.SPWant = nil
+		end
+	end
+	-- a click puts the model in with the skin picked in the preview
+	local function spawn(model)
+		if IsValid(preview) and preview.SPPath == model and (preview.SPSkin or 0) > 0 then
+			C.spawnSkin = { model = string.lower(model), skin = preview.SPSkin, untilT = RealTime() + 5 }
+		end
+		C.SpawnModel(model)
+	end
 
 	-- right grid
 	local scroll = vgui.Create("DScrollPanel", body)
@@ -350,15 +372,20 @@ function UI.BuildBrowser()
 		icon:SetSize(UI.S(64), UI.S(64))
 		icon:SetModel(model)
 		icon:SetTooltip(model)
-		icon.DoClick = function() C.SpawnModel(model) end
+		icon.DoClick = function() spawn(model) end
 		local baseEnter = icon.OnCursorEntered
 		icon.OnCursorEntered = function(s2)
 			if baseEnter then baseEnter(s2) end
-			if IsValid(preview) then preview:SetModel(model) end
+			if not IsValid(preview) then return end
+			if not preview.SPPath then
+				preview:SetModel(model)
+			else
+				preview.SPWant, preview.SPWantT = model, RealTime()
+			end
 		end
 		icon.OpenMenu = function()
 			local menu = SPeditor.UI.Menu()
-			menu:AddOption(L("spawn"), function() C.SpawnModel(model) end)
+			menu:AddOption(L("spawn"), function() spawn(model) end)
 			menu:AddOption(L("copy_path"), function()
 				SetClipboardText(model)
 				SPeditor.Notify("#path_copied|" .. model, 0)
@@ -600,3 +627,12 @@ function UI.BuildBrowser()
 
 	win.OnRemove = function() UI.BrowserFrame = nil end
 end
+
+-- the skin picked in the browser's preview goes onto the model a click has just put in (b0.2.6)
+SPeditor.Hook("SPeditor_ObjectSpawned", "SPeditor.SpawnSkin", function(ent)
+	local s = C.spawnSkin
+	if not s or RealTime() > s.untilT or not IsValid(ent) then return end
+	if string.lower(ent:GetModel() or "") ~= s.model then return end
+	C.spawnSkin = nil
+	C.SendSkin(ent, s.skin, true)
+end)

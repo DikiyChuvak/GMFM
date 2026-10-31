@@ -400,7 +400,15 @@ SA.MotionSel = motionSel
 function SA.SetKey(ents, frame, quiet, parts)
 	-- K with the bone keys on and a bone selected: a key of that bone
 	if not ents and not parts and SA.BoneKeysOn() then
-		parts = SA.BoneParts(C.selected, C.selBone)
+		-- (b0.2.7) the bones of the selection, all of them in one key
+		local list, seen = {}, {}
+		for _, b in ipairs(C.SelectedBones()) do
+			local p = SA.BoneParts(C.selected, b)
+			for part in string.gmatch(p or "", "[^,]+") do
+				if not seen[part] then seen[part] = true list[#list + 1] = part end
+			end
+		end
+		parts = #list > 0 and table.concat(list, ",") or nil
 		if parts then ents = { C.selected } end
 	end
 	ents = ents or C.SelectionList()
@@ -499,6 +507,19 @@ function SA.PlayEffect(ent, seconds, frame)
 	pushHistory("sa effect", id)
 	SA.Seek(SA.frame)
 end
+
+-- A new effect from the Effects window plays in a scene with animation (gmfm_fx_autoplay,
+-- cl_ui_effects.lua): keyed so that at the playhead it shows the moment it was made with (an
+-- explosion in bloom, as it looked before it was placed) and runs on to the end of the animation.
+COMP:Hook("SPeditor_ObjectSpawned", function(ent)
+	if not C.fxAutoPlayUntil or RealTime() > C.fxAutoPlayUntil or not C.IsEffect(ent) then return end
+	C.fxAutoPlayUntil = nil
+	if not SA.IsAnimated() or SA.playing or SA.rendering then return end
+	local f0 = math.max(math.floor(SA.frame - ent:GetFxTime() * SA.fps + 0.5), 0)
+	if f0 >= SA.frames then return end
+	SA.PlayEffect(ent, nil, f0)
+	SPeditor.Notify("#sa_fx_autoplayed|" .. f0, 0)
+end, "fx_autoplay")
 
 -- for the other client files of SAeditor (the curve editor): an operation number, its undo
 -- entry and the Key message
@@ -794,8 +815,9 @@ local function step(d) SA.Seek(math.Clamp(math.floor(SA.frame + 0.5) + d, 0, SA.
 COMP:AddHotkey({ key = KEY_SPACE, fn = function() SA.Play() end, label = "Space", desc = "sa_hk_play" })
 COMP:AddHotkey({ key = KEY_K, fn = function() SA.SetKey() end, desc = "sa_hk_key" })
 COMP:AddHotkey({ key = KEY_K, shift = true, fn = function() SA.SetFaceKey() end, desc = "sa_hk_face_key" })
-COMP:AddHotkey({ key = KEY_COMMA, fn = function() step(-1) end, label = ",", desc = "sa_hk_prev" })
-COMP:AddHotkey({ key = KEY_PERIOD, fn = function() step(1) end, label = ".", desc = "sa_hk_next" })
+-- held, the frame keys run on by themselves, faster and faster (rep, sh_component.lua)
+COMP:AddHotkey({ key = KEY_COMMA, fn = function() step(-1) end, rep = function(n) step(-n) end, label = ",", desc = "sa_hk_prev" })
+COMP:AddHotkey({ key = KEY_PERIOD, fn = function() step(1) end, rep = function(n) step(n) end, label = ".", desc = "sa_hk_next" })
 COMP:AddHotkey({ key = KEY_HOME, fn = function() SA.Seek(0) end, label = "Home", desc = "sa_hk_first" })
 COMP:AddHotkey({ key = KEY_END, fn = function() SA.Seek(SA.frames) end, label = "End", desc = "sa_hk_last" })
 
@@ -829,8 +851,8 @@ COMP:AddHotkey({ key = KEY_PERIOD, shift = true, fn = function() step(math.max(m
 COMP:AddHotkey({ key = KEY_COMMA, ctrl = true, fn = function() toMark(-1) end, label = "Ctrl + ,", desc = "sa_hk_prev_mark" })
 COMP:AddHotkey({ key = KEY_PERIOD, ctrl = true, fn = function() toMark(1) end, label = "Ctrl + .", desc = "sa_hk_next_mark" })
 -- the arrows step through the frames too (b0.2.5), as in other editors; Shift — half a second
-COMP:AddHotkey({ key = KEY_LEFT, fn = function() step(-1) end, label = "Left", desc = "sa_hk_prev" })
-COMP:AddHotkey({ key = KEY_RIGHT, fn = function() step(1) end, label = "Right", desc = "sa_hk_next" })
+COMP:AddHotkey({ key = KEY_LEFT, fn = function() step(-1) end, rep = function(n) step(-n) end, label = "Left", desc = "sa_hk_prev" })
+COMP:AddHotkey({ key = KEY_RIGHT, fn = function() step(1) end, rep = function(n) step(n) end, label = "Right", desc = "sa_hk_next" })
 COMP:AddHotkey({ key = KEY_LEFT, shift = true, fn = function() step(-math.max(math.floor(SA.fps / 2), 1)) end, label = "Shift + Left", desc = "sa_hk_back_half" })
 COMP:AddHotkey({ key = KEY_RIGHT, shift = true, fn = function() step(math.max(math.floor(SA.fps / 2), 1)) end, label = "Shift + Right", desc = "sa_hk_fwd_half" })
 

@@ -118,6 +118,8 @@ function S.Track(ply, ent)
 	S.NextUID[ply] = uid
 	S.SetUID(ent, uid)
 	table.insert(S.List(ply), ent)
+	-- a character taken from the map / the Q menu with its face never set (b0.2.6)
+	SPeditor.FlexRestIfUnset(ent)
 	-- twice: values set right after spawning (a loaded scene's names, looks, attachments) too
 	S.ResendNW2(ent, 0.1)
 	S.ResendNW2(ent, 1)
@@ -432,6 +434,12 @@ local function attachFrame(a)
 	if a.phys >= 0 and S.IsRagdoll(parent) then
 		local fp, fa = drawnBody(parent, a.phys)
 		if fp then return fp, fa end
+	elseif a.bone >= 0 and not S.IsRagdoll(parent) and a.bone < parent:GetBoneCount() then
+		-- (b0.2.6) a bone of a model with a skeleton: the server's matrix of it is only right until
+		-- the bone moves (the server does not redraw it), so the client keeps the offset (S.DrawnBone)
+		parent:GetBonePosition(0)
+		local m = parent:GetBoneMatrix(a.bone)
+		if m then return m:GetTranslation(), m:GetAngles() end
 	end
 	return S.GetTransform(parent)
 end
@@ -458,7 +466,20 @@ function S.SendAttachOffset(ent)
 	if not a or not a.lpos then return end
 	ent:SetNW2Vector("SPeditor_AttP", a.lpos)
 	ent:SetNW2Angle("SPeditor_AttA", a.lang)
-	ent:SetNW2Bool("SPeditor_AttRel", a.phys >= 0 and not a.mode and not a.wear)
+	-- (b0.2.6) relative to any bone the object is attached to, of a ragdoll or not
+	ent:SetNW2Bool("SPeditor_AttRel", a.bone >= 0 and not a.mode and not a.wear)
+	-- (b0.2.6) the offset comes from the client, where the bone is drawn (S.DrawnBone)
+	ent:SetNW2Bool("SPeditor_AttDrawn", a.drawn or false)
+end
+
+-- (b0.2.6) the offset of an object from a bone the client draws itself, as the client worked it out
+-- where the bone is drawn; the place the server keeps for the object follows the server's frame
+function S.SetAttachOffset(ent, lp, la)
+	local a = ent.SPeditor_Attach
+	if not a or not a.drawn then return end
+	a.lpos, a.lang = Vector(lp), Angle(la)
+	a.fp, a.fa = attachFrame(a)
+	S.SendAttachOffset(ent)
 end
 
 function S.Detach(ent)
@@ -470,6 +491,7 @@ function S.Detach(ent)
 	ent:SetNW2Bool("SPeditor_Merge", false)
 	ent:SetNW2String("SPeditor_AttachMode", "")
 	ent:SetNW2Bool("SPeditor_AttRel", false)
+	ent:SetNW2Bool("SPeditor_AttDrawn", false)
 end
 
 -- bone: bone index of the parent, -1 (the object root) or S.WEAR (-2): "wear" — clothing,
@@ -487,7 +509,9 @@ function S.AttachCode(bone, mode)
 	return bone
 end
 
-function S.Attach(ent, parent, bone)
+-- off (b0.2.6, optional): the offset from a bone the client draws itself (S.DrawnBone), worked out
+-- where the bone is drawn (C.SendAttach); without it the server works the offset out itself
+function S.Attach(ent, parent, bone, off)
 	if not IsValid(ent) or not IsValid(parent) or ent == parent then return false end
 	-- an object cannot be attached to its own descendant
 	local p, guard = parent, 0
@@ -506,16 +530,28 @@ function S.Attach(ent, parent, bone)
 	end
 	local wear = bone == S.WEAR and not S.IsAux(ent) and not S.IsAux(parent) and parent:GetBoneCount() > 1
 	local phys = -1
+	local secondary = false
 	if S.IsRagdoll(parent) and bone >= 0 and bone < parent:GetBoneCount() then
 		phys = SPeditor.PhysOfBoneUp(parent, bone) or -1
-		if phys >= 0 then bone = parent:TranslatePhysBoneToBone(phys) end   -- the actual bone of the physics object
+		if phys >= 0 and SPeditor.PhysOfBone(parent, bone) == phys then
+			bone = parent:TranslatePhysBoneToBone(phys)   -- the actual bone of the physics object
+		else
+			-- (b0.2.6) a bone that hangs from a body (a finger, hair): kept as it is
+			secondary = phys >= 0
+		end
+	elseif bone >= 0 and bone < parent:GetBoneCount() and not wear and not S.IsAux(parent) then
+		-- (b0.2.6) any bone of a model with a skeleton, physics or not
 	else
 		bone = -1
 	end
+	-- drawn by the client: a bone of a model with a skeleton, or a bone with no body of its own
+	-- (a finger, hair); a constraint and a worn object keep the server's own offsets
+	local drawn = bone >= 0 and not mode and not wear and (not S.IsRagdoll(parent) or secondary)
 
-	ent.SPeditor_Attach = { parent = parent, phys = phys, bone = bone, wear = wear or nil, mode = mode }
+	ent.SPeditor_Attach = { parent = parent, phys = phys, bone = bone, wear = wear or nil, mode = mode, drawn = drawn or nil }
 	S.Attached[ent] = true
 	S.RefreshAttach(ent)
+	if drawn and istable(off) and isvector(off.p) and isangle(off.a) then S.SetAttachOffset(ent, off.p, off.a) end
 	ent:SetNW2Entity("SPeditor_Parent", parent)
 	ent:SetNW2String("SPeditor_AttachMode", mode or "")
 	ent:SetNW2Int("SPeditor_ParentBone", bone)
@@ -894,7 +930,13 @@ function S.ApplyLook(ent, d)
 	ent:SetNW2Float("SPeditor_FlexScale", fs)
 	if fs ~= 1 then look.flexscale = fs end
 
-	local noshadow = d.noshadow and true or false
+	-- (b0.2.6) the gun of a first-person take: drawn in the view of the camera it hangs on with its
+	-- own field of view, as the game draws a view model (the ratio of its field to the view's)
+	local vmf = SPeditor.Clamp(d.vmfov, 0, 4, 0)
+	ent:SetNW2Float("SPeditor_VMFov", vmf)
+	if vmf > 0 then look.vmfov = vmf end
+
+	local noshadow = (d.noshadow or vmf > 0) and true or false
 	ent:DrawShadow(not noshadow)
 	ent:SetNW2Bool("SPeditor_NoShadow", noshadow)
 	if noshadow then look.noshadow = true end
@@ -968,9 +1010,10 @@ function S.ApplyLight(ent, d)
 			SPeditor.Clamp(c[1], 0, 255, 255) / 255,
 			SPeditor.Clamp(c[2], 0, 255, 244) / 255,
 			SPeditor.Clamp(c[3], 0, 255, 224) / 255))
-	ent:SetLightRadius(SPeditor.Clamp(d.radius, 32, 4000, 400))
-	ent:SetLightBrightness(SPeditor.Clamp(d.brightness, 0, 8, 2))
-	ent:SetLightFOV(SPeditor.Clamp(d.fov, 5, 120, 60))
+	-- (b0.2.6) wider ranges, as SFM's lights take (and the unlocked sliders go)
+	ent:SetLightRadius(SPeditor.Clamp(d.radius, 32, 32768, 400))
+	ent:SetLightBrightness(SPeditor.Clamp(d.brightness, 0, 100, 2))
+	ent:SetLightFOV(SPeditor.Clamp(d.fov, 5, 170, 60))
 	if d.enabled ~= nil then ent:SetLightEnabled(d.enabled and true or false) end
 	if d.shadows ~= nil then ent:SetLightShadows(d.shadows and true or false) end
 	if d.ortho ~= nil then ent:SetLightOrtho(d.ortho and true or false) end
@@ -1453,10 +1496,14 @@ function S.ApplyPose(ent, pose)
 
 	if type(pose.flex) == "table" then
 		SPeditor.FlexRest(ent)
+		local byId = {}
 		for k, w in pairs(pose.flex) do
 			local id = mapFlex(k)
-			if id then S.SetFlex(ent, id, w) end
+			if id and tonumber(w) then byId[id] = tonumber(w) end
 		end
+		-- a face saved before it was ever set (sliders at the bottom, b0.2.6): at rest
+		SPeditor.FlexFixUnset(ent, byId)
+		for id, w in pairs(byId) do S.SetFlex(ent, id, w) end
 	end
 
 	S.SetEye(ent, SPeditor.TableToVec(pose.eye))
@@ -1465,11 +1512,23 @@ end
 ---------------------------------------------------------------------
 -- Message receivers
 ---------------------------------------------------------------------
+-- the host gave the editor to more players: the clients that were refused may ask again
+cvars.AddChangeCallback("gmfm_access", function()
+	for _, p in ipairs(player.GetAll()) do p:SetNW2Bool("SPeditor_Denied", false) end
+end, "SPeditor.Denied")
+
 net.Receive(Net.Toggle, function(_, ply)
 	if not SPeditor.CanUse(ply) then
-		S.Notice(ply, "#no_permission", 1)
+		-- (b0.2.6) the client knows it and stops asking: in the GM:FM gamemode on a server the
+		-- guests' clients asked every second and 'no permission' kept popping up
+		ply:SetNW2Bool("SPeditor_Denied", true)
+		if CurTime() > (ply.SPeditor_DeniedAt or 0) then
+			ply.SPeditor_DeniedAt = CurTime() + 30
+			S.Notice(ply, "#no_permission", 1)
+		end
 		return
 	end
+	ply:SetNW2Bool("SPeditor_Denied", false)
 	S.SetActive(ply, net.ReadBool())
 end)
 
@@ -1556,9 +1615,16 @@ S.Receive("Transform", function(ply)
 	local ent = S.ReadOwned(ply)
 	local pos = SPeditor.ReadVecF()
 	local ang = SPeditor.ReadAngF()
+	-- (b0.2.6) an object held at a bone the client draws: the offset from that bone, as the client has it
+	local off = nil
+	if net.ReadBool() then off = { p = SPeditor.ReadVecF(), a = SPeditor.ReadAngF() } end
 	if not ent or not SPeditor.ValidVec(pos) or not SPeditor.ValidAng(ang) then return end
 	S.SetTransform(ent, pos, ang)
-	S.RefreshAttach(ent)       -- an attached object was moved by hand: a new offset
+	if off and ent.SPeditor_Attach and ent.SPeditor_Attach.drawn then
+		S.SetAttachOffset(ent, off.p, off.a)
+	else
+		S.RefreshAttach(ent)       -- an attached object was moved by hand: a new offset
+	end
 end)
 
 S.Receive("Attach", function(ply)
@@ -1570,10 +1636,13 @@ S.Receive("Attach", function(ply)
 		S.Detach(ent)
 		return
 	end
+	-- (b0.2.6) the offset from a bone the client draws (C.SendAttach); then the object is not snapped
+	local off = nil
+	if net.ReadBool() then off = { p = SPeditor.ReadVecF(), a = SPeditor.ReadAngF() } end
 	local old = ent.SPeditor_Attach
 	local same = old and old.parent == parent
-	if not same then S.SnapToBone(ent, parent, bone) end
-	if not S.Attach(ent, parent, bone) then S.Notice(ply, "#err_attach", 1) end
+	if not same and not off then S.SnapToBone(ent, parent, bone) end
+	if not S.Attach(ent, parent, bone, off) then S.Notice(ply, "#err_attach", 1) end
 end)
 
 -- A saved outfit (cl_presets.lua, b0.2.4): every item is made where the character stands and worn
@@ -1602,6 +1671,22 @@ S.Receive("Outfit", function(ply)
 		end
 	end
 	if n > 0 then S.Notice(ply, "#outfit_worn|" .. n, 2) end
+end)
+
+-- (b0.2.6, SFM) A camera kept in focus on an object: its depth of field is aimed at it whatever
+-- moves — the object stays sharp, what is in front and behind blurs. NW2 SPeditor_FocusOn.
+function S.SetFocusOn(cam, target)
+	if not IsValid(cam) or not S.IsCamera(cam) then return false end
+	if not IsValid(target) or target == cam then target = NULL end
+	cam.SPeditor_FocusOn = IsValid(target) and target or nil
+	cam:SetNW2Entity("SPeditor_FocusOn", target)
+	return true
+end
+
+S.Receive("FocusOn", function(ply)
+	local cam = S.ReadOwned(ply)
+	local target = net.ReadEntity()
+	if cam and (not IsValid(target) or target.SPeditor_Owner == ply) then S.SetFocusOn(cam, target) end
 end)
 
 S.Receive("Aim", function(ply)
@@ -1948,6 +2033,52 @@ SPeditor.Hook("SetupPlayerVisibility", "SPeditor.EditorPVS", function(ply)
 			n = n + 1
 		end
 	end
+end)
+
+---------------------------------------------------------------------
+-- (b0.2.6, Workshop: gm_boreas — "out of bounds" areas and a "distorted" interior inside the
+-- dome) Area portal windows (func_areaportalwindow) shut by the distance from the PLAYER'S eyes:
+-- the game judges them from the body, not from the view or the points added above, so a camera
+-- that flew into a building far from the body saw the void through every shut window (gm_boreas:
+-- 30 of them, shut past 1000-4500 units). While anyone is in the editor they are kept open —
+-- their fade distances pushed past the map — and get the map's own back when the last one leaves.
+---------------------------------------------------------------------
+local portalFade = {}
+local function holdPortals(on)
+	if on then
+		for _, e in ipairs(ents.FindByClass("func_areaportalwindow")) do
+			if not portalFade[e] then
+				portalFade[e] = { tonumber(e:GetInternalVariable("m_flFadeStartDist")) or 0, tonumber(e:GetInternalVariable("m_flFadeDist")) or 0 }
+				e:Fire("SetFadeStartDistance", "60000")
+				e:Fire("SetFadeEndDistance", "65000")
+			end
+		end
+		return
+	end
+	for e, d in pairs(portalFade) do
+		if IsValid(e) then
+			e:Fire("SetFadeStartDistance", tostring(d[1]))
+			e:Fire("SetFadeEndDistance", tostring(d[2]))
+		end
+	end
+	portalFade = {}
+end
+S.HoldAreaPortals = holdPortals
+
+local function portalsWanted()
+	for p in pairs(S.Active) do
+		if IsValid(p) then return true end
+	end
+	return false
+end
+SPeditor.Hook("SPeditor_PlayerState", "SPeditor.AreaPortals", function() holdPortals(portalsWanted()) end)
+SPeditor.Hook("PlayerDisconnected", "SPeditor.AreaPortals", function(ply)
+	timer.Simple(0, function() holdPortals(portalsWanted()) end)
+end)
+-- a map cleanup makes the windows anew with the map's distances
+SPeditor.Hook("PostCleanupMap", "SPeditor.AreaPortals", function()
+	portalFade = {}
+	if portalsWanted() then holdPortals(true) end
 end)
 
 S.Receive("Cleanup", function(ply)

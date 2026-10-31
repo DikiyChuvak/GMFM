@@ -22,7 +22,15 @@ local function describe(item)
 	return { src = item.src, name = item.name, file = item.file or "", time = 0.25, scale = 1, length = 0 }
 end
 
+-- (b0.2.6, Workshop: "the explosion and other particles are pausing, I just want to make videos")
+-- A new effect in a scene with animation plays in it, as a particle system dropped into an SFM
+-- shot: keys of its moment run it from the playhead to the end (SAeditor, SPeditor_ObjectSpawned).
+-- Before, it stood at its moment, frozen in the air, until the moment was keyed by hand.
+local cvAutoPlay = CreateClientConVar("gmfm_fx_autoplay", "1", true, false,
+	"GM:FM: a new effect in a scene with animation plays from the playhead to the end", 0, 1)
+
 function UI.SpawnEffect(item)
+	if cvAutoPlay:GetBool() then C.fxAutoPlayUntil = RealTime() + 5 end
 	C.SendEffectSpawn(describe(item))
 end
 
@@ -200,6 +208,15 @@ function UI.BuildEffects()
 	end
 	button(L("effb_add"), "icon16/add.png", function() add(selected()) end)
 	button(L("effb_replace"), "icon16/arrow_refresh.png", function() replace(selected()) end)
+	local auto = vgui.Create("DCheckBoxLabel", bottom)
+	auto:Dock(LEFT)
+	auto:DockMargin(UI.S(10), UI.S(8), 0, UI.S(6))
+	auto:SetText(L("effb_autoplay"))
+	auto:SetFont("SPeditor.Small")
+	auto:SetTextColor(COL.TEXT)
+	auto:SetConVar("gmfm_fx_autoplay")
+	auto:SizeToContents()
+	auto:SetTooltip(L("effb_autoplay_tip"))
 
 	list.DoDoubleClick = function(_, _, row) add(row.SPItem) end
 	list.OnRowSelected = function(_, _, row) preview:SetEffect(row.SPItem) end

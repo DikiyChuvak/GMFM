@@ -181,6 +181,8 @@ if CLIENT then
 	-- An editor hotkey (works while no text is being typed and the camera is not flying).
 	--   o = { key = KEY_SPACE, ctrl = false, shift = false, fn = function() end,
 	-- label = "Space", desc = "a dictionary key for the help window" }
+	-- o.rep = function(n) end (b0.2.6): the key repeats while it is held — after a short pause,
+	-- faster and faster; n is how many steps are due in this frame (the frames of the timeline)
 	-- The player may give it another key in Interface settings → Keys (id "comp:" .. o.id).
 	function COMP:AddHotkey(o)
 		assert(istable(o) and isnumber(o.key) and isfunction(o.fn), "COMP:AddHotkey{ key, fn }")
@@ -219,12 +221,37 @@ if CLIENT then
 	end
 
 	-- Component hotkeys: called from the shared handler (cl_speditor.lua)
+	-- a held key with o.rep (b0.2.6 round 8: holding an arrow ran the playhead one frame per press
+	-- only): REP_DELAY s after the press it repeats at REP_RATE steps a second, growing by REP_RAMP
+	-- a second up to REP_MAX
+	local REP_DELAY, REP_RATE, REP_RAMP, REP_MAX = 0.35, 10, 40, 60
+	local held = {}
 	function Comps.RunHotkeys(blocked)
 		local K = SPeditor.Client.Keys
+		local now = RealTime()
 		for _, h in ipairs(Comps.hotkeys) do
-			if K.Fired("comp:" .. h.id) and not blocked then
+			local id = "comp:" .. h.id
+			if K.Fired(id) and not blocked then
 				local ok, err = pcall(h.fn)
 				if not ok then warn(h.comp.name, ": hotkey: ", tostring(err)) end
+				if h.rep then held[id] = { t0 = now, last = now, acc = 0 } end
+			elseif held[id] then
+				local st = held[id]
+				if blocked or not h.rep or not (K.Down(id) and K.ClickIs(id)) then
+					held[id] = nil
+				else
+					local t = now - st.t0 - REP_DELAY
+					if t > 0 then
+						st.acc = st.acc + (now - math.max(st.last, st.t0 + REP_DELAY)) * math.min(REP_RATE + t * REP_RAMP, REP_MAX)
+						local n = math.floor(st.acc)
+						if n > 0 then
+							st.acc = st.acc - n
+							local ok, err = pcall(h.rep, n)
+							if not ok then warn(h.comp.name, ": hotkey: ", tostring(err)) end
+						end
+					end
+					st.last = now
+				end
 			end
 		end
 	end

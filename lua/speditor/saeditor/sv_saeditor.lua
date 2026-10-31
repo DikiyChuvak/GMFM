@@ -151,6 +151,7 @@ end
 
 -- a snapshot of the face only (a key of a face track)
 local function captureFace(ent)
+	SPeditor.FlexRestIfUnset(ent)
 	local pos, ang = S.GetTransform(ent)
 	local st = { kind = "face", pos = Vector(pos), ang = Angle(ang), flex = {} }
 	for i = 0, ent:GetFlexNum() - 1 do
@@ -1443,14 +1444,21 @@ COMP:NetReceive("Seek", function(ply)
 				if IsValid(e) and e:IsEffectActive(EF_NOINTERP) then e:RemoveEffects(EF_NOINTERP) end
 			end
 		end)
-		-- The confirmation leaves two ticks later: by then physics has passed the new places of
-		-- the bodies to the network, and the client gets them no later than the confirmation.
-		-- So the client may shoot the frame as soon as it has the answer, without a pause.
-		timer.Simple(0, function()
-			timer.Simple(0, function()
+		-- The confirmation leaves SA.ACK_TICKS ticks later: by then physics has passed the new
+		-- places of the bodies to the network, and the client gets them no later than the
+		-- confirmation. So the client may shoot the frame as soon as it has the answer.
+		-- SA.ACK_TICKS = 0 (b0.2.6): the answer goes out with the very snapshot that carries the
+		-- scene (the places are set before the tick's physics, which passes them to the network);
+		-- renders with 0, 1 and 2 ticks came out pixel for pixel the same, and every tick of the
+		-- wait was a game frame or more of every video frame.
+		local function later(n)
+			if n <= 0 then
 				if IsValid(ply) then sendFrame(ply, serial) end
-			end)
-		end)
+				return
+			end
+			timer.Simple(0, function() later(n - 1) end)
+		end
+		later(SA.ACK_TICKS or 0)
 	end
 end)
 
@@ -1470,8 +1478,26 @@ end
 
 SA.CleanSounds = cleanSounds
 
+-- in pieces (b0.2.6): serial, piece, pieces, the piece; the list is taken when all have come
+local soundParts = {}
 COMP:NetReceive("Sounds", function(ply)
-	anim(ply).sounds = cleanSounds(SPeditor.ReadTable())
+	local ser, i, n = net.ReadUInt(16), net.ReadUInt(16), net.ReadUInt(16)
+	local chunk = net.ReadData(net.ReadUInt(16))
+	if n < 1 or n > 64 or i < 1 or i > n then return end
+	local buf = soundParts[ply]
+	if i == 1 then
+		buf = { serial = ser, list = {} }
+		soundParts[ply] = buf
+	elseif not buf or buf.serial ~= ser then
+		return
+	end
+	buf.list[i] = chunk
+	if i < n then return end
+	soundParts[ply] = nil
+	local raw = util.Decompress(table.concat(buf.list), 16 * 1024 * 1024)
+	local list = raw and util.JSONToTable(raw)
+	if not istable(list) then return end
+	anim(ply).sounds = cleanSounds(list)
 	SA.SendSummary(ply)
 end)
 
@@ -2473,7 +2499,8 @@ COMP:SceneData(function(ply, ctx)
 	for i, c in ipairs(a.sounds or {}) do
 		local ent = c.uid ~= 0 and S.FindUID(ply, c.uid) or nil
 		sounds[i] = { id = c.id, path = c.path, f = c.f, obj = ent and ctx.indexOf[ent] or 0, voice = c.voice, vol = c.vol,
-			pitch = c.pitch, dist = c.dist, cin = c.cin, cout = c.cout, fin = c.fin, fout = c.fout }
+			pitch = c.pitch, dist = c.dist, cin = c.cin, cout = c.cout, fin = c.fin, fout = c.fout,
+			loop = c.loop, len = c.len, env = c.env, ofs = c.ofs }
 	end
 	local proc = {}
 	for uid, pr in pairs(a.proc or {}) do
@@ -2562,6 +2589,11 @@ end, function(ply, data, ctx)
 						end
 					end
 					if n > 0 then
+						-- keys made from a face that was never set (b0.2.6): its bottomed-out sliders go
+						-- to rest — lip sync of a TF2 mercenary taken from the Q menu kept them in every key
+						for _, k in pairs(tr.keys) do
+							if istable(k.st.flex) then SPeditor.FlexFixUnset(ent, k.st.flex) end
+						end
 						reorder(tr)
 						a.tracks[face and SA.FaceTrack(ent.SPeditor_UID) or ent.SPeditor_UID] = tr
 					end
@@ -2642,7 +2674,9 @@ end)
 --            nfreq — how fast it changes, Hz; nseed — another pattern of the same noise
 --   spin   — (b0.2, as SFM's "Create rotator") the object turns round one of its own axes all the
 --            time: a wheel, a fan, a propeller, a turntable; degrees a second (minus — the other
---            way), spinax — the axis: 1 pitch (across), 2 yaw (up), 3 roll (forward)
+--            way), spinax — the axis: 1 pitch (across), 2 yaw (up), 3 roll (forward);
+--            spinbone — (b0.2.6) the name of one bone: only that bone turns (a wheel, a screw, a
+--            track link), round its own origin, on its own axes
 local PROC_FIELDS = { breath = { 0, 1, 0 }, rate = { 4, 40, 14 }, blink = { 0, 1, 0 }, head = { 0, 1, 0 },
 	sway = { 0, 64, 0 }, freq = { 0.02, 4, 0.3 }, flicker = { 0, 1, 0 },
 	npos = { 0, 128, 0 }, nrot = { 0, 90, 0 }, nfreq = { 0.05, 8, 0.5 }, nseed = { 0, 999, 0 },
@@ -2669,6 +2703,8 @@ function SA.CleanProc(t)
 	any = out.breath > 0 or out.blink > 0 or out.head > 0 or out.sway > 0 or out.flicker > 0
 		or out.npos > 0 or out.nrot > 0 or out.nbones ~= nil or out.spin ~= 0
 	out.spinax = math.floor(out.spinax + 0.5)
+	-- the rotator turns one bone only when one is named (b0.2.6); nil — the whole object
+	out.spinbone = isstring(t.spinbone) and #t.spinbone > 0 and #t.spinbone < 128 and t.spinbone or nil
 	return any and out or nil
 end
 
@@ -2764,6 +2800,27 @@ function SA.ProcRevert(map)
 			ent.SA_Proc = nil
 		end
 	end
+end
+
+-- the rotator on one bone (b0.2.6): the bone turns round its own origin (the hub of a wheel) on
+-- its own axes, by turn; a physics bone of a ragdoll turns as its body, any other by its manip
+-- turn. s keeps what was there before (ProcRevert puts it back).
+local function spinBone(ent, s, b, turn)
+	local pi = SPeditor.PhysOfBone(ent, b)
+	if pi then
+		local p = ent:GetPhysicsObjectNum(pi)
+		if not IsValid(p) then return end
+		local pos, base = p:GetPos(), p:GetAngles()
+		local _, na = LocalToWorld(vector_origin, turn, vector_origin, base)
+		s.phys = s.phys or {}
+		s.phys[#s.phys + 1] = { pi, pos, base }
+		setPhys(p, pos, na)
+		return
+	end
+	local base = ent:GetManipulateBoneAngles(b)
+	s.bones = s.bones or {}
+	s.bones[b] = s.bones[b] or base
+	ent:ManipulateBoneAngles(b, base + turn)
 end
 
 function SA.ProcApply(a, map, frame)
@@ -2862,7 +2919,10 @@ function SA.ProcApply(a, map, frame)
 				local deg = (spin * t) % 360
 				local ax = pr.spinax or 2
 				local turn = Angle(ax == 1 and deg or 0, ax == 2 and deg or 0, ax == 3 and deg or 0)
-				if S.IsRagdoll(ent) then
+				local sb = pr.spinbone and not S.IsAux(ent) and ent:LookupBone(pr.spinbone) or nil
+				if sb then
+					spinBone(ent, s, sb, turn)
+				elseif S.IsRagdoll(ent) then
 					local root = ent:GetPhysicsObjectNum(0)
 					if IsValid(root) then
 						local rp, ra = root:GetPos(), root:GetAngles()
@@ -2897,7 +2957,8 @@ function SA.ProcApply(a, map, frame)
 						local base = ent:GetManipulateBoneAngles(b)
 						local bs = ns + b * 7.31
 						s.bones = s.bones or {}
-						s.bones[b] = base
+						-- the first of the bone's turns (the rotator) keeps the value to put back
+						s.bones[b] = s.bones[b] or base
 						ent:ManipulateBoneAngles(b, base + Angle(fnoise(nt, bs) * deg, fnoise(nt, bs + 3.3) * deg, fnoise(nt, bs + 6.6) * deg * 0.5))
 					end
 				end
@@ -3439,12 +3500,13 @@ local slow = { base = nil, untilT = 0 }
 COMP:NetReceive("Slow", function(ply)
 	local ts = net.ReadFloat()
 	if not game.SinglePlayer() or ts ~= ts then return end
-	ts = math.Clamp(ts, 0.02, 1)
-	if ts >= 1 then
+	-- 0 (or the old "1") puts the game's own time back; above 1 the game runs faster (b0.2.6)
+	if ts <= 0 or ts == 1 then
 		if slow.base then game.SetTimeScale(slow.base) end
 		slow.base = nil
 		return
 	end
+	ts = math.Clamp(ts, 0.02, 4)
 	slow.base = slow.base or game.GetTimeScale()
 	slow.untilT = RealTime() + 30       -- a heavy frame (4K, many passes) may take long
 	game.SetTimeScale(ts)

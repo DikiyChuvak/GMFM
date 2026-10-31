@@ -553,6 +553,10 @@ SKIN.SPeditor.Icons = {
 	ase_gear                                = sfmIcon("icon_gear_dd", 40, 32),
 	play_loop                               = sfmIcon("icon_cp_play_loop", 32, 32),
 	play_bounce                             = sfmIcon("icon_cp_play_bounce", 32, 32),
+	-- the timeline's three editors (b0.2.6): Clip, Motion, Graph
+	mode_clip                               = sfmIcon("icon_mode_timeline", 32, 32),
+	mode_motion                             = sfmIcon("icon_mode_motioneditor", 32, 32),
+	mode_graph                              = sfmIcon("icon_mode_grapheditor", 32, 32),
 	["icon16/cog.png"]                      = sfmIcon("icon_gear", 40, 32),
 	["icon16/arrow_out.png"]                = sfmIcon("icon_manipulator_move", 32, 32, nil, "icon_manipulator_move_activated_grey"),
 	["icon16/arrow_rotate_clockwise.png"]   = sfmIcon("icon_manipulator_rotate", 32, 32, nil, "icon_manipulator_rotate_activated_grey"),

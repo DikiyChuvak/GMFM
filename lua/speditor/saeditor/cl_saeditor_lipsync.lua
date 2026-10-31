@@ -260,8 +260,16 @@ function SA.LipSync(clip, ent)
 	end
 
 	local env = envelopeWav(clip.path)
+	local Web = SPeditor.WebAudio
 	if env then
 		fromEnvelope(env)
+	elseif Web and Web.Ready() then
+		-- MP3 / OGG decoded by the Web Audio page and measured at once (b0.2.6)
+		Web.Envelope(clip.path, STEP, function(e)
+			if e then fromEnvelope(e) return end
+			SPeditor.Notify(string.format(L("sa_lip_listening"), math.max(math.ceil(t1 - t0), 1)), 0)
+			envelopeListen(clip.path, t0, t1, fromEnvelope)
+		end)
 	else
 		SPeditor.Notify(string.format(L("sa_lip_listening"), math.max(math.ceil(t1 - t0), 1)), 0)
 		envelopeListen(clip.path, t0, t1, fromEnvelope)

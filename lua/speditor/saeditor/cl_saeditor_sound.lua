@@ -10,7 +10,8 @@ The game's own 3D sound is tied to the player's body, and in the editor the play
 still while the picture is taken by the editor's cameras. So the editor works out the
 volume and the left / right balance itself (SA.Spatial) from the camera of the Primary
 Viewport — and, in the render, from the camera the animation is shot with. The same
-numbers drive both the playback (sound.PlayFile channels) and the sound track of the video.
+numbers drive both the playback (the Web Audio page, cl_webaudio.lua — BASS channels of
+sound.PlayFile without it) and the sound track of the video.
 
 The sound track of the video is mixed here, in Lua, one video frame at a time while the
 scene stands on that frame (SA.Audio.Mix): the file is read as bytes, so only uncompressed
@@ -47,10 +48,24 @@ local function copyList(list)
 	return out
 end
 
+-- the whole list, in pieces of 60 KB (b0.2.6): with the volume / pitch lines of recorded engines
+-- it may not fit one message, and a list that did not fit went to the server empty
+local serial = 0
+local PIECE = 60000
 local function send(list)
-	COMP:NetStart("Sounds")
-	SPeditor.WriteTable(list)
-	net.SendToServer()
+	local data = util.Compress(util.TableToJSON(list) or "[]") or ""
+	serial = serial % 65535 + 1
+	local n = math.max(math.ceil(#data / PIECE), 1)
+	for i = 1, n do
+		local chunk = string.sub(data, (i - 1) * PIECE + 1, i * PIECE)
+		COMP:NetStart("Sounds")
+		net.WriteUInt(serial, 16)
+		net.WriteUInt(i, 16)
+		net.WriteUInt(n, 16)
+		net.WriteUInt(#chunk, 16)
+		net.WriteData(chunk, #chunk)
+		net.SendToServer()
+	end
 end
 
 local function apply(list)
@@ -90,6 +105,7 @@ function SA.AddSound(path, opts)
 		id = id + 1, path = path, f = opts.f or math.floor(SA.frame + 0.5), uid = opts.uid or 0, voice = opts.voice,
 		vol = opts.vol or 1, pitch = opts.pitch or 100, dist = opts.dist or (opts.voice and 150 or 300),
 		cin = opts.cin, cout = opts.cout, fin = opts.fin, fout = opts.fout,
+		loop = opts.loop, len = opts.len, env = opts.env, ofs = opts.ofs,
 	})
 	if not clip then return nil end
 	local list = copyList(SA.sounds)
@@ -180,6 +196,10 @@ end
 ---------------------------------------------------------------------
 -- Playback in the editor: one channel per clip, kept on the playhead
 ---------------------------------------------------------------------
+-- (b0.2.6) The clips play through the Web Audio page (cl_webaudio.lua) when it is up; BASS
+-- channels (the game's sound.PlayFile) are kept for a game without the browser.
+local Web = SPeditor.WebAudio
+
 local function dropChannel(id)
 	local e = A.chans[id]
 	if e and IsValid(e.ch) then e.ch:Stop() end
@@ -189,6 +209,22 @@ end
 local function loadChannel(clip)
 	local e = { path = clip.path }
 	A.chans[clip.id] = e
+	if Web and Web.Ready() then
+		e.web = true
+		Web.Load(clip.path, function(len)
+			if A.chans[clip.id] ~= e then return end
+			if not len then
+				e.failed = true
+				A.len[clip.path] = false
+				SPeditor.Notify("#sa_snd_failed|" .. clip.path, 1)
+				return
+			end
+			e.ok = true
+			A.len[clip.path] = len
+			hook.Run("SAeditor_SoundLoaded", clip)
+		end)
+		return
+	end
 	sound.PlayFile(clip.path, "noplay noblock", function(ch)
 		-- the clip was removed or got another file while this one was loading
 		if A.chans[clip.id] ~= e then
@@ -202,10 +238,19 @@ local function loadChannel(clip)
 			return
 		end
 		e.ch = ch
+		SA.OwnChannel(ch)
+		if clip.loop then ch:EnableLooping(true) end
 		A.len[clip.path] = ch:GetLength()
 		hook.Run("SAeditor_SoundLoaded", clip)
 	end)
 end
+
+-- the page came up (or went): the clips load again through it
+COMP:Hook("SPeditor_WebAudioReady", function()
+	for id in pairs(A.chans) do dropChannel(id) end
+	if Web then Web.Update({}) end
+	A.Sync()
+end, "sound")
 
 function A.Sync()
 	local alive = {}
@@ -227,10 +272,12 @@ function A.StopAll()
 	for _, e in pairs(A.chans) do
 		if IsValid(e.ch) and e.ch:GetState() == GMOD_CHANNEL_PLAYING then e.ch:Pause() end
 	end
+	if Web then Web.Update({}) end
 end
 
 -- length of a clip in timeline frames, trimming included (nil — not known yet)
 function SA.SoundLength(clip)
+	if clip.len then return clip.len end
 	local len = A.len[clip.path]
 	if not len then return nil end
 	return math.max(len - (clip.cin or 0) - (clip.cout or 0), 0) / (clip.pitch / 100) * SA.fps
@@ -238,15 +285,56 @@ end
 
 -- The place in the file (seconds) that plays at a timeline frame
 local function fileTime(clip, frame)
-	return (clip.cin or 0) + (frame - clip.f) / SA.fps * (clip.pitch / 100)
+	return SA.ClipFileTime(clip, frame - clip.f, A.len[clip.path])
+end
+
+-- (b0.2.6) the place in the file `df` frames after the start of a clip; a clip the game kept
+-- playing (len frames long, a loop, with its volume / pitch line) wraps round its file; nil —
+-- past its end
+function SA.ClipFileTime(c, df, fileLen)
+	if c.len then
+		if df < 0 or df >= c.len then return nil end
+		local t = (c.ofs or 0) + SA.SoundEnvTime(c, df, SA.fps)
+		local body = (fileLen or 0) - (c.cin or 0) - (c.cout or 0)
+		if c.loop and body > 0.01 then t = t % body end
+		return (c.cin or 0) + t
+	end
+	return (c.cin or 0) + df / SA.fps * (c.pitch / 100)
 end
 
 -- the shortest piece a clip can be trimmed to, in seconds of the file
 local MIN_PIECE = 0.05
 
 -- Cut a clip in two at the frame: the first part ends there, the second starts there
+-- a clip the game kept playing (len, loop, a volume / pitch line): cut by its frames; the second
+-- part goes on from the place in the sound the first one reached
+local function splitLong(list, i, c, frame)
+	local df = math.floor(frame - c.f + 0.5)
+	if df < 1 or df >= c.len then return false end
+	local nextId = 0
+	for _, o in ipairs(list) do nextId = math.max(nextId, o.id) end
+	local second = table.Copy(c)
+	second.id, second.f, second.len = nextId + 1, c.f + df, c.len - df
+	second.ofs = (c.ofs or 0) + SA.SoundEnvTime(c, df, SA.fps)
+	second.env = SA.SoundEnvSlice(c, df, c.len)
+	c.env = SA.SoundEnvSlice(c, 0, df)
+	c.len = df
+	list[i] = SA.CleanSound(c)
+	table.insert(list, i + 1, SA.CleanSound(second))
+	commit(list)
+	return true
+end
+
 function SA.SplitSound(id, frame)
-	local len = A.len[(SA.SoundByID(id) or {}).path or ""]
+	local cl = SA.SoundByID(id)
+	if cl and cl.len then
+		local list = copyList(SA.sounds)
+		for i, c in ipairs(list) do
+			if c.id == id then return splitLong(list, i, c, frame) end
+		end
+		return false
+	end
+	local len = A.len[(cl or {}).path or ""]
 	if not len then return false end
 	local list = copyList(SA.sounds)
 	for i, c in ipairs(list) do
@@ -271,6 +359,18 @@ end
 -- frame = nil puts the side back to the start / end of the file.
 function SA.TrimSound(id, side, frame)
 	local c = SA.SoundByID(id)
+	if c and c.len then
+		-- a clip the game kept playing: cut by its frames (it cannot grow back past what was recorded)
+		local df = frame and math.floor(frame - c.f + 0.5)
+		if not df or df < 1 or df >= c.len then return false end
+		if side == "in" then
+			SA.ChangeSound(id, { f = c.f + df, len = c.len - df, ofs = (c.ofs or 0) + SA.SoundEnvTime(c, df, SA.fps),
+				env = SA.SoundEnvSlice(c, df, c.len) or false })
+		else
+			SA.ChangeSound(id, { len = df, env = SA.SoundEnvSlice(c, 0, df) or false })
+		end
+		return true
+	end
 	local len = c and A.len[c.path]
 	if not len then return false end
 	if side == "in" then
@@ -302,29 +402,64 @@ COMP:Hook("SPeditor_StateChanged", function(on)
 	if on then return end
 	for id in pairs(A.chans) do dropChannel(id) end
 	if IsValid(A.preview) then A.preview:Stop() end
+	if Web then
+		Web.Update({})
+		Web.StopPreview()
+	end
 end, "sound")
 
+-- what a clip does at the playhead: nil (silent), or the place in the file, the volume, the pan
+-- and the speed
+local function clipNow(c, len, pos, ang)
+	local rate = c.pitch / 100
+	local t = fileTime(c, SA.frame)                    -- the place inside the file
+	local df, envVol = SA.frame - c.f, 1
+	if c.len then
+		-- a clip the game kept playing: its own length, volume and pitch along it
+		if t == nil or t >= len - c.cout - 0.01 then return nil end
+		local v, p = SA.SoundEnvAt(c, df)
+		envVol, rate = v, rate * p / 100
+	elseif t < c.cin or t >= len - c.cout - 0.03 then
+		return nil
+	end
+	local vol, pan = SA.Spatial(c, pos, ang)
+	-- fades: seconds of the clip played and left, at its speed
+	if c.len then
+		vol = vol * envVol * SA.SoundFade(c, df / SA.fps, (c.len - df) / SA.fps)
+	else
+		vol = vol * SA.SoundFade(c, (t - c.cin) / rate, (len - c.cout - t) / rate)
+	end
+	-- the volume of the player outside the editor (cl_saeditor_player.lua)
+	if SA.show then vol = vol * (SA.show.mute and 0 or (SA.show.vol or 1)) end
+	return t, vol, pan, rate
+end
+
+local nextWeb = 0
 COMP:Hook("Think", function()
 	if next(A.chans) == nil then return end
 	-- outside the editor too, while the animation is shown in the game (cl_saeditor_show.lua)
 	local playing = SA.playing and (C.active or SA.show) and not SA.rendering
+	-- heard from where the picture is seen: outside the editor — the camera of the show
 	local pos, ang
+	if playing then
+		if SA.show then pos, ang = EyePos(), EyeAngles() else pos, ang = C.GetView() end
+	end
+	local web, sendWeb = {}, RealTime() >= nextWeb
 	for _, c in ipairs(SA.sounds) do
 		local e = A.chans[c.id]
 		local ch = e and e.ch
-		if IsValid(ch) then
-			local rate = c.pitch / 100
-			local t = fileTime(c, SA.frame)                    -- the place inside the file
-			if playing and t >= c.cin and t < ch:GetLength() - c.cout - 0.03 then
-				-- heard from where the picture is seen: outside the editor — the camera of the show
-				if not pos then
-					if SA.show then pos, ang = EyePos(), EyeAngles() else pos, ang = C.GetView() end
+		if e and e.web and e.ok then
+			if playing and sendWeb then
+				local t, vol, pan, rate = clipNow(c, A.len[c.path] or 0, pos, ang)
+				if t then
+					web[#web + 1] = { i = c.id, p = c.path, t = math.Round(t, 3), v = math.Round(vol, 3), n = math.Round(pan, 3),
+						r = math.Round(rate, 4), l = c.loop and 1 or 0, c0 = c.cin, c1 = c.cout }
 				end
-				local vol, pan = SA.Spatial(c, pos, ang)
-				-- fades: seconds of the clip played and left, at its speed
-				vol = vol * SA.SoundFade(c, (t - c.cin) / rate, (ch:GetLength() - c.cout - t) / rate)
-				-- the volume of the player outside the editor (cl_saeditor_player.lua)
-				if SA.show then vol = vol * (SA.show.mute and 0 or (SA.show.vol or 1)) end
+			end
+		elseif IsValid(ch) then
+			local t, vol, pan, rate
+			if playing then t, vol, pan, rate = clipNow(c, ch:GetLength(), pos, ang) end
+			if t then
 				ch:SetVolume(vol)
 				ch:SetPan(pan)
 				ch:SetPlaybackRate(rate)
@@ -339,6 +474,11 @@ COMP:Hook("Think", function()
 				ch:Pause()
 			end
 		end
+	end
+	-- the page gets the sounding clips 40 times a second at most
+	if Web and sendWeb then
+		nextWeb = RealTime() + 0.025
+		Web.Update(web)
 	end
 end, "sound")
 
@@ -400,6 +540,46 @@ local function sampleAt(wav, i)
 end
 
 A.RATE = 44100
+local mixLong
+
+-- (b0.2.6) Before a video every file of the timeline is decoded by the Web Audio page — any WAV
+-- (compressed, 24-bit, …), MP3 and OGG alike; the WAV reader above stays for a game without the
+-- browser and for a file the page could not read. done() once all are ready. false — nothing to
+-- wait for.
+A.webDecoded = A.webDecoded or {}
+function A.PrepareMix(clips, done)
+	if not Web or not Web.Ready() then return false end
+	local need, left = {}, 0
+	for _, c in ipairs(clips) do
+		if not need[c.path] and A.webDecoded[c.path] == nil then
+			need[c.path] = true
+			left = left + 1
+		end
+	end
+	if left == 0 then return false end
+	local fired = false
+	local function finish()
+		if fired then return end
+		fired = true
+		done()
+	end
+	for path in pairs(need) do
+		A.webDecoded[path] = false
+		Web.Decode(path, function(wav)
+			if wav and wav.n > 0 then
+				A.wavs[path] = wav
+				A.webDecoded[path] = true
+			else
+				A.webDecoded[path] = nil     -- tried again before the next video
+			end
+			left = left - 1
+			if left == 0 then finish() end
+		end)
+	end
+	-- the page did not answer (closed, a file it hangs on): the video goes on with what is ready
+	timer.Simple(30, finish)
+	return true
+end
 
 -- A new sound track: mix = A.NewMix(clips, fps, firstFrame, videoFps)
 -- fps — frames a second of the animation (clip start frames), videoFps — of the video
@@ -417,6 +597,54 @@ function A.NewMix(clips, fps, first, vfps)
 	return mix
 end
 
+-- (b0.2.6) a clip the game kept playing (an engine of Glide, a stream): its place in the file
+-- follows the pitch line, a loop wraps round, the volume line scales it. n samples from the
+-- sample n0 of the video's sound track go into left / right.
+mixLong = function(mix, c, wav, n0, n, left, right, pos, ang)
+	local rate = A.RATE
+	local at = c.f - mix.first
+	local df0 = n0 / rate * mix.fps - at
+	local df1 = (n0 + n) / rate * mix.fps - at
+	if df1 <= 0 or df0 >= c.len then
+		mix.gains[c.id] = nil
+		return
+	end
+	local T0 = (c.ofs or 0) + SA.SoundEnvTime(c, df0, mix.fps)
+	local T1 = (c.ofs or 0) + SA.SoundEnvTime(c, df1, mix.fps)
+	local first = math.floor((c.cin or 0) * wav.rate)
+	local body = math.floor(wav.n - (c.cout or 0) * wav.rate) - first
+	if body < 2 then return end
+	local vol, pan = SA.Spatial(c, pos, ang)
+	vol = vol * SA.SoundEnvAt(c, df1)
+	local l1, r1 = stereo(vol, pan)
+	local mono = (c.uid or 0) ~= 0 and wav.ch == 2
+	local prev = mix.gains[c.id]
+	local l0, r0 = prev and prev[1] or l1, prev and prev[2] or r1
+	mix.gains[c.id] = { l1, r1 }
+	local floor = math.floor
+	for i = 0, n - 1 do
+		local u = i / n
+		local df = df0 + (df1 - df0) * u
+		if df >= 0 and df < c.len then
+			local s = (T0 + (T1 - T0) * u) * wav.rate
+			if c.loop then s = s % body elseif s >= body - 1 then s = nil end
+			if s then
+				local whole = floor(s)
+				local frac = s - whole
+				local nxt = whole + 1
+				if nxt >= body then nxt = c.loop and 0 or whole end
+				local al, ar = sampleAt(wav, first + whole)
+				local bl, br = sampleAt(wav, first + nxt)
+				local l, r = al + (bl - al) * frac, ar + (br - ar) * frac
+				if mono then l = (l + r) * 0.5 r = l end
+				local env = SA.SoundFade(c, df / mix.fps, (c.len - df) / mix.fps)
+				left[i + 1] = left[i + 1] + l * env * (l0 + (l1 - l0) * u)
+				right[i + 1] = right[i + 1] + r * env * (r0 + (r1 - r0) * u)
+			end
+		end
+	end
+end
+
 -- The piece of the sound track for video frame number index (from 0), as heard from
 -- pos / ang: 16-bit stereo, A.RATE samples a second. The scene must stand on that frame.
 -- The volume of each clip glides from the previous frame's value to this one's over the
@@ -431,6 +659,7 @@ function A.Mix(mix, index, pos, ang)
 
 	for _, it in ipairs(mix.clips) do
 		local c, wav = it.clip, it.wav
+		if c.len then mixLong(mix, c, wav, n0, n, left, right, pos, ang) else
 		local speed = wav.rate * (c.pitch / 100)                     -- file samples per second of video
 		-- trimming: the clip plays the file from sample first to sample last
 		local first = (c.cin or 0) * wav.rate
@@ -472,6 +701,7 @@ function A.Mix(mix, index, pos, ang)
 				end
 			end
 		end
+		end
 	end
 
 	-- Several loud sounds at once (a burst of shots) add up to more than a sample can hold.
@@ -502,7 +732,9 @@ end
 local function listen(path)
 	if IsValid(A.preview) then A.preview:Stop() end
 	A.preview = nil
+	if Web then Web.StopPreview() end
 	if not path then return end
+	if Web and Web.Play(path, 1) then return end
 	sound.PlayFile(path, "noblock", function(ch)
 		if not IsValid(ch) then
 			SPeditor.Notify("#sa_snd_failed|" .. path, 1)
@@ -599,11 +831,15 @@ function SA.OpenSounds()
 			if not clip then return finish() end
 			added, last = added + 1, clip
 			if not paths[i + 1] then return finish() end
+			local function after(len)
+				f = math.min(f + math.max(math.ceil((len or 0) * SA.fps), 1), SA.MAX_FRAMES)
+				step(i + 1)
+			end
+			if Web and Web.Ready() then Web.Load(path, after) return end
 			sound.PlayFile(path, "noplay noblock", function(ch)
 				local len = IsValid(ch) and ch:GetLength() or 0
 				if IsValid(ch) then ch:Stop() end
-				f = math.min(f + math.max(math.ceil(len * SA.fps), 1), SA.MAX_FRAMES)
-				step(i + 1)
+				after(len)
 			end)
 		end
 		step(1)
