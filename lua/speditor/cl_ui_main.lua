@@ -641,8 +641,8 @@ function UI.Open()
 		end):SetIcon("icon16/disk.png")
 		m:AddOption(L("load_scene") .. "…", function() Dock.ShowPage("scene") end):SetIcon("icon16/folder_go.png")
 		-- (b0.2.7) a duplicator file of the game (data/duplicator/…) placed where the player looks
-		local dupes = m:AddSubMenu(L("dupe_import"))
-		dupes:SetIcon("icon16/page_white_copy.png")
+		local dupes, dupesOpt = m:AddSubMenu(L("dupe_import"))
+		dupesOpt:SetIcon("icon16/page_white_copy.png")
 		local found = {}
 		for _, f in ipairs(file.Find("duplicator/*.txt", "DATA")) do found[#found + 1] = "duplicator/" .. f end
 		for _, d in ipairs(file.Find("duplicator/*", "DATA")) do
