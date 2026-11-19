@@ -136,7 +136,7 @@ function UI.BuildEffects()
 	local function replace(item)
 		if not item then return end
 		if not C.IsEffect(C.selected) then
-			SPeditor.Notify("#fxb_need_effect", 0)
+			SPeditor.Notify("#effb_need_effect", 0)
 			return
 		end
 		UI.ReplaceEffect(C.selected, item)

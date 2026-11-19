@@ -88,7 +88,20 @@ function SPeditor.Hook(event, id, fn)
 		local r = ...
 		SPeditor.LogError(istable(r) and r.msg or tostring(r), ((istable(r) and r.stack) or "") .. "\n(hook " .. where .. ")")
 	end
-	hook.Add(event, id, function(...) return finish(xpcall(fn, onError, ...)) end)
+	-- (b0.2.6-misc.1) timed while the profiler is on (sh_prof.lua, gmfm_prof)
+	local P = SPeditor.Prof
+	local name = "hook " .. where
+	local function timed(t, ...)
+		P.Add(name, SysTime() - t)
+		return finish(...)
+	end
+	hook.Add(event, id, function(...)
+		if P and P.on then
+			local t = SysTime()
+			return timed(t, xpcall(fn, onError, ...))
+		end
+		return finish(xpcall(fn, onError, ...))
+	end)
 end
 
 -- Takes every hook of the events that is not the editor's off for a while (b0.2.1): a hook

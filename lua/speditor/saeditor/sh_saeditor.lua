@@ -5,6 +5,9 @@ local SA = COMP.SA
 
 SA.FPS_LIST   = { 12, 15, 24, 30, 60 }
 SA.MAX_FRAMES = 432000          -- animation length in frames, at most (an hour at 120 fps)
+-- (b0.2.7, TobyCat) the elements of an object that have rows of their own in the timeline (a bit each
+-- in the key's element mask, see SA.KeyElements): the order of the bits
+SA.EL_ORDER = { "pos", "bones", "scale", "flex", "look", "body", "eye", "phys", "att", "lens", "shake", "fx", "color", "light", "moment" }
 SA.MAX_KEYS   = 100000          -- keys per object (a baked 12-minute animation has ~10 000)
 -- the kinds of motion from a key to the next one. "spline" (a0.6, the default for new keys) is
 -- continuous: the object passes through a key without stopping, its speed worked out from the
@@ -164,6 +167,21 @@ end
 function SA.IsFaceTrack(id) return id >= SA.FACE end
 function SA.FaceTrack(uid) return uid + SA.FACE end
 
+-- (b0.2.6-misc.1) The attributes of a camera, light or effect key that can have keys of their own, as
+-- the bones of a model do: part "a<i>" is field i + 1 of its kind's list (the field of the key's
+-- snapshot, sv_saeditor.lua captureState). The rows of an opened-out track; the row is named
+-- by the language key "sa_attr_<field>".
+SA.ATTRS = {
+	camera = { "pos", "ang", "fov", "shake", "shakerot", "shakefreq", "fx" },
+	light  = { "pos", "ang", "col", "radius", "bri", "fov", "on", "f" },
+	effect = { "pos", "ang", "time", "scale", "length" },
+}
+function SA.AttrIndex(kind, field)
+	for i, f in ipairs(SA.ATTRS[kind] or {}) do
+		if f == field then return i - 1 end
+	end
+end
+
 -- Lip sync (a0.6): a mouth shape is five channels, 0..1 each — how open the jaw is, how wide
 -- the lips stretch, how round they are, pressed together (m, b, p), the lower lip under the
 -- teeth (f, v). SA.MouthMap(ent) says which flexes of a model make each channel.
@@ -304,7 +322,7 @@ end
 -- frame = 1 to copy them; they all move together, so a key never lands on one still to move
 -- MOTION (a0.7, the Motion Editor): the edit of the object at frame goes over a time selection,
 -- str = "a0,a1,b0,b1,shape" (full between a1 and b1… see SA.TimeSelWeight)
-SA.OP = { SET = 1, DELETE = 2, MOVE = 3, EASE = 4, CLEAR = 5, CLEAR_ALL = 6, COPY = 7, SHIFT = 8, MOTION = 9, TIME = 10, SPEED = 11, PRESET = 12, BAKE = 13 }
+SA.OP = { SET = 1, DELETE = 2, MOVE = 3, EASE = 4, CLEAR = 5, CLEAR_ALL = 6, COPY = 7, SHIFT = 8, MOTION = 9, TIME = 10, SPEED = 11, PRESET = 12, BAKE = 13, TWEEN = 14 }
 -- the Motion Editor's procedural presets (b0.2, after SFM): they change the keys inside the time selection
 SA.PRESETS = { "smooth", "sharp", "jitter", "hold", "default", "zero", "half", "one", "in", "out", "ramp",
 	"spline", "drop", "release", "round", "steady", "stagger", "paste", "playhead" }
@@ -714,9 +732,22 @@ COMP:Lang("en", {
 	sa_ew_none = "Select a key on the graph (or move the playhead between two keys) to see how it moves",
 	sa_ew_from_to = "Frames %d → %d  (%.2f s)",
 	sa_ghosts = "Ghosts: the selected model is shown see-through in its pose at the key before (blue) and after (green) the playhead",
-	sa_bone_keys = "Bone keys: a key set while a bone is selected (K, auto key after a drag) holds only that bone, and every bone moves between its own keys",
 	sa_bone_key_set = "Bone key at frame %s", sa_bone_key_here = "Set a key of this bone here", sa_bone_key_delete = "Delete the key of this bone",
 	sa_bone_clear = "Delete all keys of this bone",
+	sa_row_position = "Position",
+	sa_track_open = "Open out: a row per moving bone or face slider (double click)",
+	sa_track_fold = "Fold the rows",
+	sa_track_open_all = "Open out everything below (Shift + click on the arrow)", sa_track_fold_all = "Fold everything below",
+	sa_grp_body = "Body", sa_grp_other = "Other",
+	sa_grp_arm_L = "Left arm", sa_grp_arm_R = "Right arm", sa_grp_hand_L = "Left hand", sa_grp_hand_R = "Right hand",
+	sa_grp_leg_L = "Left leg", sa_grp_leg_R = "Right leg",
+	sa_grp_f1 = "Thumb", sa_grp_f2 = "Index", sa_grp_f3 = "Middle", sa_grp_f4 = "Ring", sa_grp_f5 = "Pinky",
+	sa_grp_key_here = "Set a key of these bones here", sa_grp_key_delete = "Delete the key of these bones",
+	sa_grp_clear = "Delete all keys of these bones",
+	sa_attr_pos = "Position", sa_attr_ang = "Rotation", sa_attr_fov = "Field of view", sa_attr_shake = "Shake",
+	sa_attr_shakerot = "Shake rotation", sa_attr_shakefreq = "Shake speed", sa_attr_fx = "Camera effects",
+	sa_attr_col = "Colour", sa_attr_radius = "Radius", sa_attr_bri = "Brightness", sa_attr_on = "On / off",
+	sa_attr_f = "Light settings", sa_attr_time = "Moment", sa_attr_scale = "Scale", sa_attr_length = "Length",
 	sa_hint_moved = "The pose changed at a frame without a key: it will be lost when the playhead moves. Press K (or turn on Auto key) to keep it.",
 	-- a0.6: watching the animation outside the editor
 	sa_show = "Watch in the game (outside the editor)", sa_show_empty = "There is no animation to play yet",
@@ -762,6 +793,14 @@ COMP:Lang("en", {
 	-- a0.5: face keys, frame sets in the render
 	sa_face_key = "Set a face key for the selection (Shift+K): the face gets its own keys, apart from the body",
 	sa_hk_face_key = "Set a face key for the selection", sa_face_row = "Face",
+	sa_el_pos = "Position and turn", sa_el_bones = "Bones", sa_el_scale = "Scale", sa_el_flex = "Flexes", sa_el_look = "Material and colour",
+	sa_el_body = "Skin and bodygroups", sa_el_eye = "Eyes", sa_el_phys = "Physics bodies", sa_el_att = "Attachment",
+	sa_el_lens = "Lens", sa_el_shake = "Shake", sa_el_fx = "Camera effects", sa_el_color = "Colour", sa_el_light = "Light",
+	sa_el_moment = "Moment",
+	sa_tw_menu = "Tween the selection here", sa_tw_prev = "Toward the previous key", sa_tw_next = "Toward the next key",
+	sa_tw_relax = "Relax (toward the middle of the two keys)", sa_tw_push = "Push (away from the middle)", sa_tw_pull = "Pull (toward the middle)",
+	sa_tw_done = "Tween keyed at frame %d", sa_tw_none = "No keys around this frame to tween from",
+	sa_hk_delete_keys = "Delete the selected keys", sa_eyes_row = "Eyes",
 	sa_face_start = "Separate face keys: start here", sa_face_clear = "Remove the face keys (the body keys drive the face again)",
 	sa_face_key_set = "Face key set: frame %d", sa_need_face = "Select a model with a face (flexes)",
 	hist_sa_face_key = "Face key",
@@ -904,7 +943,7 @@ COMP:Lang("en", {
 	phys_on_q = "The model becomes a ragdoll again; its pose and keys are moved onto the ragdoll (offsets of bones a ragdoll cannot have are lost). Go on?",
 	phys_fail = "Could not switch the physics", phys_off_done = "Physics off: the model is posed by its bones", phys_on_done = "Physics on: a ragdoll again",
 	phys_no_ragdoll = "This model has no ragdoll",
-	sa_tl_tip = "Ctrl + wheel — zoom the timeline, Shift + wheel or the middle button — scroll it in time (it goes on before frame 0 and past the end: a key there makes the animation longer), wheel — scroll the rows\nCtrl + click on a key — select several, Shift + drag — select keys in a box, drag a selected key — move them all (with Ctrl — copy)",
+	sa_tl_tip = "Ctrl + wheel — zoom the timeline, Shift + wheel or the middle button — scroll it in time (it goes on before frame 0 and past the end: a key there makes the animation longer), wheel — scroll the rows\nCtrl + click on a key — select several, drag over empty space — select keys in a box (Ctrl / Shift — add to the selection), drag a selected key — move them all (with Ctrl — copy)",
 	sa_rd_samples_100 = "All, as in a still", sa_rd_samples_50 = "Half (faster)", sa_rd_samples_25 = "Quarter (fastest)",
 	sa_rnd_part = "The video is larger than 1.9 GB: it continues in %s",
 	sa_rd_q_100 = "Largest: JPEG 100 (7 times larger)", sa_rd_q_90 = "Normal: JPEG 90", sa_rd_q_70 = "Smaller by 40%: JPEG 70",
@@ -1067,9 +1106,22 @@ COMP:Lang("ru", {
 	sa_ew_none = "Выберите ключ на графике (или поставьте головку между двумя ключами), чтобы увидеть, как он движется",
 	sa_ew_from_to = "Кадры %d → %d  (%.2f с)",
 	sa_ghosts = "Призраки: выбранная модель видна полупрозрачной в позе предыдущего (синяя) и следующего (зелёная) ключа",
-	sa_bone_keys = "Ключи костей: ключ, поставленный при выбранной кости (K, автоключ после перетаскивания), хранит только эту кость, и каждая кость движется между своими ключами",
 	sa_bone_key_set = "Ключ кости на кадре %s", sa_bone_key_here = "Поставить ключ этой кости здесь", sa_bone_key_delete = "Удалить ключ этой кости",
 	sa_bone_clear = "Удалить все ключи этой кости",
+	sa_row_position = "Положение",
+	sa_track_open = "Развернуть: строка на каждую движущуюся кость или ползунок лица (двойной щелчок)",
+	sa_track_fold = "Свернуть строки",
+	sa_track_open_all = "Развернуть всё ниже (Shift + щелчок по стрелке)", sa_track_fold_all = "Свернуть всё ниже",
+	sa_grp_body = "Тело", sa_grp_other = "Прочее",
+	sa_grp_arm_L = "Левая рука", sa_grp_arm_R = "Правая рука", sa_grp_hand_L = "Левая кисть", sa_grp_hand_R = "Правая кисть",
+	sa_grp_leg_L = "Левая нога", sa_grp_leg_R = "Правая нога",
+	sa_grp_f1 = "Большой", sa_grp_f2 = "Указательный", sa_grp_f3 = "Средний", sa_grp_f4 = "Безымянный", sa_grp_f5 = "Мизинец",
+	sa_grp_key_here = "Поставить ключ этих костей здесь", sa_grp_key_delete = "Удалить ключ этих костей",
+	sa_grp_clear = "Удалить все ключи этих костей",
+	sa_attr_pos = "Положение", sa_attr_ang = "Поворот", sa_attr_fov = "Поле зрения", sa_attr_shake = "Тряска",
+	sa_attr_shakerot = "Тряска поворота", sa_attr_shakefreq = "Частота тряски", sa_attr_fx = "Эффекты камеры",
+	sa_attr_col = "Цвет", sa_attr_radius = "Радиус", sa_attr_bri = "Яркость", sa_attr_on = "Вкл. / выкл.",
+	sa_attr_f = "Настройки света", sa_attr_time = "Момент", sa_attr_scale = "Масштаб", sa_attr_length = "Длина",
 	sa_hint_moved = "Поза изменена на кадре без ключа: она пропадёт, когда головка сдвинется. Нажмите K (или включите автоключ), чтобы её сохранить.",
 	-- a0.6: просмотр анимации вне редактора
 	sa_show = "Смотреть в игре (вне редактора)", sa_show_empty = "Пока нечего проигрывать: анимации нет",
@@ -1115,6 +1167,14 @@ COMP:Lang("ru", {
 	-- a0.5: ключи лица, наборы кадров в рендере
 	sa_face_key = "Поставить ключ лица выделенному (Shift+K): у лица свои ключи, отдельно от тела",
 	sa_hk_face_key = "Поставить ключ лица выделенному", sa_face_row = "Лицо",
+	sa_el_pos = "Место и поворот", sa_el_bones = "Кости", sa_el_scale = "Масштаб", sa_el_flex = "Флексы", sa_el_look = "Материал и цвет",
+	sa_el_body = "Скин и бодигруппы", sa_el_eye = "Глаза", sa_el_phys = "Физика", sa_el_att = "Прикрепление",
+	sa_el_lens = "Объектив", sa_el_shake = "Тряска", sa_el_fx = "Эффекты камеры", sa_el_color = "Цвет", sa_el_light = "Свет",
+	sa_el_moment = "Момент",
+	sa_tw_menu = "Твин выделенного здесь", sa_tw_prev = "К предыдущему ключу", sa_tw_next = "К следующему ключу",
+	sa_tw_relax = "Релакс (к середине между ключами)", sa_tw_push = "Push (от середины)", sa_tw_pull = "Pull (к середине)",
+	sa_tw_done = "Твин записан на кадре %d", sa_tw_none = "Рядом с кадром нет ключей для твина",
+	sa_hk_delete_keys = "Удалить выбранные ключи", sa_eyes_row = "Глаза",
 	sa_face_start = "Отдельные ключи лица: начать здесь", sa_face_clear = "Убрать ключи лица (лицом снова управляют ключи тела)",
 	sa_face_key_set = "Ключ лица поставлен: кадр %d", sa_need_face = "Выделите модель с лицом (флексами)",
 	hist_sa_face_key = "Ключ лица",
@@ -1257,7 +1317,7 @@ COMP:Lang("ru", {
 	phys_on_q = "Модель снова станет регдоллом; поза и ключи перенесутся на него (смещения костей, которых у регдолла быть не может, пропадут). Продолжить?",
 	phys_fail = "Не удалось переключить физику", phys_off_done = "Физика выключена: модель позируется костями", phys_on_done = "Физика включена: снова регдолл",
 	phys_no_ragdoll = "У этой модели нет регдолла",
-	sa_tl_tip = "Ctrl + колесо — масштаб таймлайна, Shift + колесо или средняя кнопка — прокрутка по времени (она идёт и до кадра 0, и после конца: ключ там удлиняет анимацию), колесо — прокрутка строк\nCtrl + клик по ключу — выбрать несколько, Shift + перетаскивание — выбрать ключи рамкой, перетащить выбранный ключ — сдвинуть все (с Ctrl — копировать)",
+	sa_tl_tip = "Ctrl + колесо — масштаб таймлайна, Shift + колесо или средняя кнопка — прокрутка по времени (она идёт и до кадра 0, и после конца: ключ там удлиняет анимацию), колесо — прокрутка строк\nCtrl + клик по ключу — выбрать несколько, перетаскивание по пустому месту — выбрать ключи рамкой (Ctrl / Shift — добавить к выбору), перетащить выбранный ключ — сдвинуть все (с Ctrl — копировать)",
 	sa_rd_samples_100 = "Все, как в одном кадре", sa_rd_samples_50 = "Половина (быстрее)", sa_rd_samples_25 = "Четверть (ещё быстрее)",
 	sa_rnd_part = "Видео больше 1,9 ГБ: продолжение в %s",
 	sa_rd_q_100 = "Самое большое: JPEG 100 (в 7 раз больше)", sa_rd_q_90 = "Обычное: JPEG 90", sa_rd_q_70 = "Меньше на 40%: JPEG 70",

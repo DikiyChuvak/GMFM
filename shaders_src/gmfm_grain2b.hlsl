@@ -37,9 +37,10 @@ float4 main(float2 uv : TEXCOORD0) : COLOR
 	float2 p = vpos / max(g_Grain.y, 1.0);
 	float seed = g_Grain.z;
 	float n = noise(p, seed) - 0.5;
-	float3 g = float3(n, n, n);
-	if (g_Grain.w > 0.5)
-		g = float3(n, noise(p, seed + 17.31) - 0.5, noise(p, seed + 41.77) - 0.5);
+	// colour grain by a select, not an if: the if became a real branch (ifc), the same as in
+	// speditor_ao2, whose branch is the suspect of the Linux game's fatal "GLSL translation error"
+	float3 gc = float3(n, noise(p, seed + 17.31) - 0.5, noise(p, seed + 41.77) - 0.5);
+	float3 g = (g_Grain.w > 0.5) ? gc : float3(n, n, n);
 	float lum = dot(col, float3(0.299, 0.587, 0.114));
 	float mid = 4.0 * lum * (1.0 - lum);
 	col = saturate(col + g * g_Grain.x * (0.3 + 0.7 * mid));

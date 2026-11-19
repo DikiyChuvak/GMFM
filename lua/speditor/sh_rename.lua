@@ -15,7 +15,7 @@ SPeditor = SPeditor or {}
 SPeditor.CvarRenamed = {
 	gmfm_access = "speditor_access", gmfm_ase_merged = "speditor_ase_merged",
 	gmfm_ase_nonphys = "speditor_ase_nonphys", gmfm_ase_tree = "speditor_ase_tree",
-	gmfm_aspect = "speditor_aspect", gmfm_autosave = "speditor_autosave", gmfm_bone_keys = "saeditor_bone_keys",
+	gmfm_aspect = "speditor_aspect", gmfm_autosave = "speditor_autosave",
 	gmfm_bone_size = "speditor_bone_size", gmfm_browser_sort = "speditor_browser_sort",
 	gmfm_cam_fov = "speditor_cam_fov", gmfm_cam_speed = "speditor_cam_speed",
 	gmfm_cam_wheel = "speditor_cam_wheel", gmfm_cam_wheel_smooth = "speditor_cam_wheel_smooth",

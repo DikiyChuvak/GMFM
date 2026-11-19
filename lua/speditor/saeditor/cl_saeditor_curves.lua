@@ -137,6 +137,36 @@ SA.ReceiveParts("CurveData", function(t)
 	-- an answer for another object (the selection changed meanwhile) is dropped
 	if CV.uid ~= tonumber(t.uid) or CV.part ~= tonumber(t.part) then return end
 	CV.data = { chans = t.chans or {}, keys = SA.FromPages(t.keys) }
+	-- (b0.2.6-misc.1) the channels each key holds (d = "1101…": a key of some attributes of a camera,
+	-- light or effect only) and the motions of single channels (ce = "3=linear"): every channel
+	-- is drawn between its own keys, as playback moves it
+	local nc = #CV.data.chans
+	local chKeys = {}
+	for c = 1, nc do chKeys[c] = {} end
+	for _, k in ipairs(CV.data.keys) do
+		local d = isstring(k.d) and k.d or ""
+		k.has = {}
+		for c = 1, nc do
+			k.has[c] = string.sub(d, c, c) ~= "0"
+			if k.has[c] then chKeys[c][#chKeys[c] + 1] = k end
+		end
+		local chE
+		for c, e in string.gmatch(isstring(k.ce) and k.ce or "", "(%d+)=(%a+)") do
+			chE = chE or {}
+			chE[tonumber(c)] = e
+		end
+		k.chE = chE
+	end
+	CV.data.chKeys = chKeys
+	-- (b0.2.6-misc.1) the part of each channel (nil: the object's own curves, whose keys are whole keys)
+	if isstring(t.cp) and t.cp ~= "" then
+		CV.data.cp = {}
+		local c = 0
+		for p in string.gmatch(t.cp .. ",", "([^,]*),") do
+			c = c + 1
+			CV.data.cp[c] = p ~= "" and p or nil
+		end
+	end
 	-- the drag in progress keeps its own value
 	if CV.drag and CV.drag.kind == "value" then
 		for _, k in ipairs(CV.data.keys) do
@@ -173,9 +203,12 @@ local function valueAt(keys, c, f, chName)
 	local u = (f - a.f) / math.max(b.f - a.f, 1e-6)
 	local va, vb = a.v[c] or 0, b.v[c] or 0
 	local ai = ANGLE_CH[chName]
+	-- the channel's own motion from this key, else the key's
+	local e, bz = a.e, a.bz
+	if a.chE and a.chE[c] then e, bz = a.chE[c], nil end
 	-- a spline stretch: through the keys around it (the server blends turns as quaternions;
 	-- here each angle channel is unwrapped around this key, close enough for the drawing)
-	if a.e == "spline" then
+	if e == "spline" then
 		local k0, k3 = keys[lo - 1], keys[lo + 2]
 		local function val(k, near)
 			local v = k.v[c] or 0
@@ -189,7 +222,7 @@ local function valueAt(keys, c, f, chName)
 		local w0, w1, w2, w3 = SA.SplineWeights(k0 and k0.f or (2 * a.f - b.f), a.f, b.f, k3 and k3.f or (2 * b.f - a.f), u)
 		return v0 * w0 + v1 * w1 + v2 * w2 + v3 * w3
 	end
-	local w = SA.EaseValue(a.e, u, a.bz)
+	local w = SA.EaseValue(e, u, bz)
 	if ai then
 		local lin = va + math.NormalizeAngle(vb - va) * w
 		-- a turn of the object itself or a physical bone goes along the shortest arc (slerp)
@@ -207,7 +240,7 @@ end
 function SA.CurveValue(c, f)
 	local d = CV.data
 	if not d or not d.chans[c] then return nil end
-	return valueAt(d.keys, c, f, d.chans[c])
+	return valueAt(d.chKeys and d.chKeys[c] or d.keys, c, f, d.chans[c])
 end
 
 ---------------------------------------------------------------------
@@ -293,6 +326,9 @@ function SA.BuildCurves(body)
 
 	local function chans() return CV.data and CV.data.chans or {} end
 	local function keys() return CV.data and CV.data.keys or {} end
+	-- the keys of one channel (b0.2.6-misc.1), and whether a key holds a channel
+	local function chKeys(c) return CV.data and CV.data.chKeys and CV.data.chKeys[c] or keys() end
+	local function has(k, c) return not k.has or k.has[c] end
 	local function shown(name) return CV.visible[name] ~= false end
 
 	-- The curves are drawn from samples worked out once per change. An angle is unwrapped
@@ -315,11 +351,13 @@ function SA.BuildCurves(body)
 		end
 		for c, name in ipairs(cs) do
 			local list, off, prev = {}, {}, nil
-			for _, fr in ipairs(frames) do
-				local v = valueAt(ks, c, fr.f, name)
+			local own = chKeys(c)
+			-- a channel no key holds has no curve
+			for _, fr in ipairs(#own > 0 and frames or {}) do
+				local v = valueAt(own, c, fr.f, name)
 				if ANGLE_CH[name] and prev then v = prev + math.NormalizeAngle(v - prev) end
 				list[#list + 1] = { fr.f, v }
-				if fr.key then off[fr.key.f] = v - (fr.key.v[c] or 0) end
+				if fr.key and has(fr.key, c) then off[fr.key.f] = v - (fr.key.v[c] or 0) end
 				prev = v
 			end
 			samples[c], offs[c] = list, off
@@ -443,12 +481,18 @@ function SA.BuildCurves(body)
 		retarget()
 	end
 
-	-- the easing of the selected key as handles (x1, y1, x2, y2)
+	-- the selected key: its place among the keys of the channel it was picked on, and that list
 	local function selKeyIndex()
 		if not sel then return nil end
-		for i, k in ipairs(keys()) do
-			if k.f == sel.f then return i end
+		local list = sel.c and chKeys(sel.c) or keys()
+		for i, k in ipairs(list) do
+			if k.f == sel.f then return i, list end
 		end
+	end
+	-- the motion from key k on channel c (its own, or the key's)
+	local function easeOf(k, c)
+		if c and k.chE and k.chE[c] then return k.chE[c], nil end
+		return k.e, k.bz
 	end
 
 	-- the motion strip under the graph: the selected key, or the stretch the playhead is in
@@ -461,9 +505,9 @@ function SA.BuildCurves(body)
 		surface.DrawRect(0, 0, w, h)
 		surface.SetDrawColor(COL.BORDER)
 		surface.DrawRect(0, 0, w, 1)
-		local ks = keys()
-		local i = selKeyIndex()
+		local i, ks = selKeyIndex()
 		if not i then
+			ks = keys()
 			for j = 1, #ks - 1 do
 				if SA.frame >= ks[j].f and SA.frame < ks[j + 1].f then i = j break end
 			end
@@ -473,7 +517,8 @@ function SA.BuildCurves(body)
 			draw.SimpleText(L("sa_ew_none"), "SPeditor.Small", 10, h / 2, COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 			return
 		end
-		local words = SA.EaseWords(a.e, a.bz)
+		local ae, abz = easeOf(a, sel and sel.c)
+		local words = SA.EaseWords(ae, abz)
 		surface.SetFont("SPeditor.Small")
 		-- the ball's track starts after the words (but always keeps some room)
 		local tw = math.Clamp(select(1, surface.GetTextSize(words)) + 30, math.floor(w * 0.3), w - 180)
@@ -481,7 +526,7 @@ function SA.BuildCurves(body)
 		draw.SimpleText(words, "SPeditor.Small", 10, 31, COL.ORANGE, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 		-- the real duration of the stretch, but at least half a second so that it can be seen
 		local dur = math.Clamp((b.f - a.f) / SA.fps, 0.5, 3)
-		SA.DrawMotion(tw, 2, w - tw - 8, h - 4, a.e, a.bz, (RealTime() - t0) * MOTION_RUN / dur)
+		SA.DrawMotion(tw, 2, w - tw - 8, h - 4, ae, abz, (RealTime() - t0) * MOTION_RUN / dur)
 	end
 	local function handlesOf(k)
 		if k.e == "bezier" and k.bz then return k.bz end
@@ -489,7 +534,7 @@ function SA.BuildCurves(body)
 	end
 	-- the screen places of the two handles of segment i -> i + 1 on channel c
 	local function handlePoints(i, c, w, h)
-		local ks = keys()
+		local ks = chKeys(c)
 		local a, b = ks[i], ks[i + 1]
 		if not a or not b then return nil end
 		local bz = handlesOf(a)
@@ -572,7 +617,7 @@ function SA.BuildCurves(body)
 		-- keys
 		for _, k in ipairs(ks) do
 			for c, name in ipairs(cs) do
-				if shown(name) then
+				if shown(name) and has(k, c) then
 					local f = (drag and drag.kind == "time" and drag.f == k.f) and dragF or k.f
 					local x, y = sx(f, w), sy(toView(c, shownValue(k, c)), h)
 					local isSel = sel and sel.f == k.f
@@ -584,9 +629,10 @@ function SA.BuildCurves(body)
 				end
 			end
 		end
-		-- handles of the selected key's segment (on the channel it was picked on)
-		local i = selKeyIndex()
-		if i and ks[i + 1] and sel.c and shown(cs[sel.c]) and ks[i].e ~= "hold" then
+		-- handles of the selected key's segment (on the channel it was picked on; not over a
+		-- channel's own motion, which the handles do not set)
+		local i, own = selKeyIndex()
+		if i and own[i + 1] and sel.c and shown(cs[sel.c]) and own[i].e ~= "hold" and not (own[i].chE and own[i].chE[sel.c]) then
 			local hx1, hy1, hx2, hy2, ax, ay, bx, by = handlePoints(i, sel.c, w, h)
 			surface.SetDrawColor(255, 255, 255, 120)
 			surface.DrawLine(ax, ay, hx1, hy1)
@@ -611,8 +657,8 @@ function SA.BuildCurves(body)
 	local function pick(mx, my)
 		local w, h = graph:GetSize()
 		local ks, cs = keys(), chans()
-		local i = selKeyIndex()
-		if i and ks[i + 1] and sel.c and ks[i].e ~= "hold" then
+		local i, own = selKeyIndex()
+		if i and own[i + 1] and sel.c and own[i].e ~= "hold" and not (own[i].chE and own[i].chE[sel.c]) then
 			local hx1, hy1, hx2, hy2 = handlePoints(i, sel.c, w, h)
 			if math.abs(mx - hx1) < HIT + 1 and math.abs(my - hy1) < HIT + 1 then return { handle = 1, i = i } end
 			if math.abs(mx - hx2) < HIT + 1 and math.abs(my - hy2) < HIT + 1 then return { handle = 2, i = i } end
@@ -620,7 +666,7 @@ function SA.BuildCurves(body)
 		local best, bestD
 		for _, k in ipairs(ks) do
 			for c, name in ipairs(cs) do
-				if shown(name) then
+				if shown(name) and has(k, c) then
 					local d = math.max(math.abs(mx - sx(k.f, w)), math.abs(my - sy(toView(c, shownValue(k, c)), h)))
 					if d < HIT and (not bestD or d < bestD) then best, bestD = { key = k, c = c }, d end
 				end
@@ -631,6 +677,27 @@ function SA.BuildCurves(body)
 
 	graph.PickAt = pick           -- what is at a point of the graph (scripts and tests)
 
+	-- (b0.2.6-misc.1) the part a channel's keys are: deleting or moving one takes that part out of the
+	-- key and leaves the rest (a bone's curve key used to delete every bone's key at that frame)
+	local function partOfChan(c)
+		local cp = CV.data and CV.data.cp
+		if not cp then return nil end
+		-- a bone's curves: the parts of its row on the timeline (its body and its offset)
+		if CV.part and CV.part >= 0 and SA.BoneParts then
+			local ent, uid = currentTarget()
+			if IsValid(ent) and uid == CV.uid then return SA.BoneParts(ent, CV.part) end
+		end
+		return c and cp[c] or nil
+	end
+	local function deleteKey(f, c)
+		local p = partOfChan(c)
+		if p then SA.DeleteKeys({ { uid = CV.uid, f = f, parts = p } }) else SA.DeleteKey(CV.uid, f) end
+	end
+	local function moveKey(f, to, c)
+		local p = partOfChan(c)
+		if p then SA.MoveKeys({ { uid = CV.uid, f = f, parts = p } }, to - f) else SA.MoveKey(CV.uid, f, to) end
+	end
+
 	local function keyMenu(k)
 		local m = UI.Menu()
 		local uid = CV.uid
@@ -640,7 +707,8 @@ function SA.BuildCurves(body)
 		end
 		if k.e == "bezier" then em:AddOption(L("sa_ease_bezier")):SetChecked(true) end
 		m:AddOption(L("sa_crv_goto"), function() SA.Seek(k.f) end)
-		m:AddOption(L("sa_key_delete"), function() SA.DeleteKey(uid, k.f) sel = nil end):SetIcon("icon16/key_delete.png")
+		local c = sel and sel.c
+		m:AddOption(L("sa_key_delete"), function() deleteKey(k.f, c) sel = nil end):SetIcon("icon16/key_delete.png")
 		m:Open()
 	end
 
@@ -661,7 +729,7 @@ function SA.BuildCurves(body)
 		if code ~= MOUSE_LEFT then return end
 		s:MouseCapture(true)
 		if hit and hit.handle then
-			local k = keys()[hit.i]
+			local k = chKeys(sel.c)[hit.i]
 			local bz = handlesOf(k)
 			CV.drag = { kind = "handle", which = hit.handle, i = hit.i, id = SA.NextOp(), bz = { bz[1], bz[2], bz[3], bz[4] }, f = k.f }
 			return
@@ -724,7 +792,7 @@ function SA.BuildCurves(body)
 		elseif d.kind == "time" then
 			d.to = math.Clamp(math.floor(fAt(mx, w) + 0.5), 0, SA.frames)
 		elseif d.kind == "handle" then
-			local ks = keys()
+			local ks = chKeys(sel.c)
 			local a, b = ks[d.i], ks[d.i + 1]
 			if not a or not b then return end
 			local _, _, _, _, ax, ay, bx, by = handlePoints(d.i, sel.c, w, h)
@@ -751,7 +819,7 @@ function SA.BuildCurves(body)
 			SA.PushOpHistory("sa curve", d.id)
 		elseif d.kind == "time" then
 			if d.to ~= d.f then
-				SA.MoveKey(CV.uid, d.f, d.to)
+				moveKey(d.f, d.to, d.c)
 				if sel then sel.f = d.to end
 			end
 		elseif d.kind == "handle" then
@@ -778,7 +846,8 @@ function SA.BuildCurves(body)
 	-- buttons on the right: easing of the selected key, view
 	local function ease(e)
 		return function()
-			local k = sel and keys()[selKeyIndex() or 0]
+			local i, list = selKeyIndex()
+			local k = i and list[i]
 			if k then SA.SetEase(CV.uid, k.f, e) else SPeditor.Notify(L("sa_crv_need_key"), 0) end
 		end
 	end

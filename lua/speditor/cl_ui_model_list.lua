@@ -21,6 +21,9 @@ local UI = SPeditor.UI
 local C  = SPeditor.Client
 local L  = SPeditor.L
 local COL = UI.PAL
+-- how long the cursor rests on an icon before the preview shows that model: loaded already, or new
+-- (a new one blocks the game while it loads, seconds for a big character)
+local REST_LOADED, REST_NEW = 0.25, 0.6
 
 local MAX_ICONS = 120
 
@@ -58,14 +61,18 @@ function UI.StartModelScan()
 		local t0 = SysTime()
 		while #queue > 0 and SysTime() - t0 < 0.004 do
 			local dir = table.remove(queue)
-			local files, dirs = file.Find(dir .. "*", "GAME")
-			for _, f in ipairs(files or {}) do
-				if string.sub(f, -4) == ".mdl" then
-					local path = dir .. f
-					if not isUseless(path) then index[#index + 1] = path end
+			-- (b0.2.7) one folder or one name that breaks the scan must not stop the browser
+			local ok, err = pcall(function()
+				local files, dirs = file.Find(dir .. "*", "GAME")
+				for _, f in ipairs(files or {}) do
+					if string.sub(f, -4) == ".mdl" then
+						local path = dir .. f
+						if not isUseless(path) then index[#index + 1] = path end
+					end
 				end
-			end
-			for _, d in ipairs(dirs or {}) do queue[#queue + 1] = dir .. d .. "/" end
+				for _, d in ipairs(dirs or {}) do queue[#queue + 1] = dir .. d .. "/" end
+			end)
+			if not ok then ErrorNoHalt("[GM:FM] model scan: " .. tostring(err) .. "\n") end
 		end
 		if #queue == 0 then
 			scanDone = true
@@ -336,12 +343,33 @@ function UI.BuildBrowser()
 	tabs:Dock(FILL)
 	tabs:DockMargin(0, 4, 0, 0)
 	side.PerformLayout = function(s2, w, h) preview:SetTall(math.Clamp(math.floor(h * 0.55), UI.S(120), w)) end
-	-- the preview changes once the cursor rests on an icon: on the way to the tabs it crosses others
+	-- the preview changes once the cursor rests on an icon: on the way to the tabs it crosses others.
+	-- (b0.2.6-misc.1) Loading a model the game has not loaded yet blocks it (measured with gmfm_prof:
+	-- 2.5 to 5.6 s for an Enhanced Citizens character; GMod has no loading in the background). Such
+	-- a model waits for a longer rest, only if the cursor is still on its icon, and the preview says
+	-- it is loading for a frame before the game stops.
 	preview.Think = function(s2)
-		if s2.SPWant and RealTime() - s2.SPWantT > 0.25 then
-			s2:SetModel(s2.SPWant)
-			s2.SPWant = nil
+		local want = s2.SPWant
+		if not want then return end
+		if not want.loaded and not (IsValid(want.icon) and want.icon:IsHovered()) then
+			s2.SPWant, s2.SPLoading = nil, nil
+			return
 		end
+		if RealTime() - want.t < (want.loaded and REST_LOADED or REST_NEW) then return end
+		if not want.loaded and s2.SPLoading ~= want.model then
+			s2.SPLoading = want.model     -- drawn this frame (PaintOver), loaded the next
+			return
+		end
+		s2.SPWant, s2.SPLoading = nil, nil
+		-- (b0.2.7) a model the preview cannot show must not break the browser's Think
+		local ok, err = pcall(s2.SetModel, s2, want.model)
+		if not ok then ErrorNoHalt("[GM:FM] model preview: " .. tostring(err) .. "\n") end
+	end
+	preview.PaintOver = function(s2, w, h)
+		if not s2.SPLoading then return end
+		surface.SetDrawColor(0, 0, 0, 170)
+		surface.DrawRect(0, 0, w, h)
+		draw.SimpleText(L("pv_loading"), "SPeditor.Small", w / 2, h / 2, COL.TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 	end
 	-- a click puts the model in with the skin picked in the preview
 	local function spawn(model)
@@ -377,10 +405,11 @@ function UI.BuildBrowser()
 		icon.OnCursorEntered = function(s2)
 			if baseEnter then baseEnter(s2) end
 			if not IsValid(preview) then return end
-			if not preview.SPPath then
+			local loaded = util.IsModelLoaded ~= nil and util.IsModelLoaded(model)
+			if not preview.SPPath and loaded then
 				preview:SetModel(model)
 			else
-				preview.SPWant, preview.SPWantT = model, RealTime()
+				preview.SPWant = { model = model, t = RealTime(), loaded = loaded, icon = s2 }
 			end
 		end
 		icon.OpenMenu = function()

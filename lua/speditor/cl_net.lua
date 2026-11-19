@@ -271,6 +271,9 @@ function C.SendCameraFX(ent, fx, now, noHist)
 	fx = table.Copy(fx or {})
 	if not noHist then
 		C.lastCameraEdit = ent      -- auto key (SAeditor) keys this camera even when it is not selected
+		C.editedCam = C.editedCam or {}
+		C.editedCam[ent] = C.editedCam[ent] or {}
+		C.editedCam[ent].fx = true
 		local ref = C.Ref(ent)
 		C.BurstEdit("fx" .. ent:EntIndex(), "camera fx", function() return table.Copy(C.GetCameraFX(ent) or {}) end, fx, function(st)
 			local e = C.Deref(ref)
@@ -615,6 +618,33 @@ function C.SendLightSpawn(ltype, pos, ang, col, radius, brightness, fov)
 	net.SendToServer()
 end
 
+-- (b0.2.6-misc.1) Auto key of a light or effect edited by its sliders: only the attributes that changed
+-- (SA.ATTRS), as for a camera and for the gizmo (C.lastEditAux); a change of something no row
+-- animates (the light's type, shadows, texture; the effect itself) keys the whole object as before
+local function changedAttrs(ent, kind, fields)
+	local comp = SPeditor.Component and SPeditor.Component("saeditor")
+	local SA = comp and comp.SA
+	if not (SA and SA.AttrIndex) or #fields == 0 then return end
+	local list = {}
+	for _, f in ipairs(fields) do
+		local i = SA.AttrIndex(kind, f)
+		if not i then return end
+		list[#list + 1] = "a" .. i
+	end
+	local map = (C.lastEditAux and RealTime() - C.lastEditAux.t < 0.5) and C.lastEditAux.map or {}
+	map[ent] = table.concat(list, ",")
+	C.lastEditAux = { map = map, t = RealTime() }
+end
+-- a real change (a colour read back from the light is a float × 255, the new one whole numbers;
+-- a radius of thousands keeps its float noise)
+local function differs(a, b)
+	if isnumber(a) and isnumber(b) then return math.abs(a - b) > math.max(1e-3, math.abs(b) * 1e-4) end
+	if istable(a) and istable(b) and a.r and b.r then
+		return math.abs(a.r - b.r) > 0.5 or math.abs(a.g - b.g) > 0.5 or math.abs(a.b - b.b) > 0.5
+	end
+	return a ~= b
+end
+
 -- Full light state (for history)
 local function lightState(ent)
 	local c = ent:GetLightColor()
@@ -650,6 +680,22 @@ function C.SendLightEdit(ent, ltype, col, radius, brightness, fov, sh, now, noHi
 		C.BurstEdit("le" .. ent:EntIndex(), "light", function() return cur end, after, function(st)
 			local e = C.Deref(ref)
 			if e then C.SendLightEdit(e, st.ltype, st.col, st.radius, st.brightness, st.fov, st.sh, true, true) end
+		end, function(before, aft)
+			if not IsValid(ent) then return end
+			local fields = {}
+			if differs(before.col, aft.col) then fields[#fields + 1] = "col" end
+			if differs(before.radius, aft.radius) then fields[#fields + 1] = "radius" end
+			if differs(before.brightness, aft.brightness) then fields[#fields + 1] = "bri" end
+			if differs(before.fov, aft.fov) then fields[#fields + 1] = "fov" end
+			local numeric = false
+			for _, f in ipairs(SPeditor.LightFields) do
+				if differs(before.sh[f.key], aft.sh[f.key]) then numeric = true end
+			end
+			if numeric then fields[#fields + 1] = "f" end
+			-- a type, shadows, ortho or a texture: no row animates them
+			if before.ltype ~= aft.ltype or differs(before.sh.shadows, aft.sh.shadows) or differs(before.sh.ortho, aft.sh.ortho)
+				or differs(before.sh.tex, aft.sh.tex) then return end
+			changedAttrs(ent, "light", fields)
 		end)
 	end
 
@@ -734,6 +780,14 @@ function C.SendEffectEdit(ent, patch, now, noHist)
 		C.BurstEdit(key, "effect", function() return before end, after, function(st)
 			local e = C.Deref(ref)
 			if e then C.SendEffectEdit(e, st, true, true) end
+		end, function(b0, aft)
+			if not IsValid(ent) then return end
+			if b0.src ~= aft.src or b0.name ~= aft.name or b0.file ~= aft.file then return end
+			local fields = {}
+			for _, f in ipairs(SPeditor.EffectFields) do
+				if differs(b0[f.key], aft[f.key]) then fields[#fields + 1] = f.key end
+			end
+			changedAttrs(ent, "effect", fields)
 		end)
 	end
 	-- several sliders share one queue slot: what was not sent yet is kept
@@ -773,6 +827,10 @@ function C.SendCameraEdit(ent, field, value, now, noHist)
 	if not IsValid(ent) then return end
 	if not noHist then
 		C.lastCameraEdit = ent
+		-- (b0.2.6-misc.1) the fields edited since the last auto key: it keys only them (SAeditor)
+		C.editedCam = C.editedCam or {}
+		C.editedCam[ent] = C.editedCam[ent] or {}
+		C.editedCam[ent][field] = true
 		local before = C.CameraField(ent, field) or value
 		local ref = C.Ref(ent)
 		C.BurstEdit("ce" .. ent:EntIndex() .. field, field == "fov" and "camera fov" or "camera motion", function() return before end, value, function(v)

@@ -258,15 +258,23 @@ end
 -- rt: the finished frame (w x h); the clips at frame f are laid over it, in place. Returns rt.
 function SA.ApplyClips(rt, w, h, f)
 	f = f or SA.frame or 0
-	if not matGrain then
-		matGrain = screenMat("gmfm_clip_grain2b", "gmfm_grain2b_ps20b")
-		matCC = screenMat("gmfm_clip_cc2b", "gmfm_cc2b_ps20b")
+	-- (b0.2.6-misc.1) under the name that works this session (SPeditor.Render.ShaderName: on Linux a shader
+	-- drawn in one session is dead in the next, so each ships as a copy too); until the names are
+	-- known — a few seconds after the map has loaded — or when neither works, that clip is skipped
+	local R = SPeditor.Render
+	if not matGrain and R.ShaderName("gmfm_grain2b") then
+		matGrain = screenMat("gmfm_clip_" .. R.ShaderName("gmfm_grain2b"), R.ShaderName("gmfm_grain2b"))
+	end
+	if not matCC and R.ShaderName("gmfm_cc2b") then
+		matCC = screenMat("gmfm_clip_" .. R.ShaderName("gmfm_cc2b"), R.ShaderName("gmfm_cc2b"))
 	end
 	local cur = rt
 	for _, c in ipairs(SA.fxClips) do
 		local weight = SA.ClipWeight(c, f)
 		if weight > 0 then
-			if c.k == "grain" then
+			if (c.k == "grain" and not matGrain) or (c.k == "color" and not matCC) then
+				-- its shader is not ready (above)
+			elseif c.k == "grain" then
 				matGrain:SetFloat("$c0_x", math.Clamp(tonumber(SA.ClipParam(c, "amount")) or 0.1, 0, 1) * weight)
 				-- the grain keeps its size in the picture whatever the frame size (1080 lines = 1)
 				matGrain:SetFloat("$c0_y", math.Clamp(tonumber(SA.ClipParam(c, "size")) or 1.5, 1, 6) * math.max(h / 1080, 0.35))

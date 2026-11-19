@@ -48,6 +48,8 @@ local cvPasses   = CreateClientConVar("gmfm_ssao_passes", "16", true, false,
 	"Progressive ambient occlusion of renders (SFM's mode): passes with new directions, averaged (1 = one pass)", 1, 64)
 
 local SSAO_FAR = 8192            -- the far end of the depth pass, units
+-- (b0.2.6-misc.1) Linux / macOS: the depth is packed into 8-bit channels (see depthRT below)
+local PACKED = not system.IsWindows()
 
 function R.SSAOOn() return cvOn:GetBool() end
 
@@ -93,7 +95,10 @@ local matDepthWorld = CreateMaterial("speditor_ao_depth_world", "UnlitGeneric", 
 local matDepthModel = CreateMaterial("speditor_ao_depth_model", "UnlitGeneric", {
 	["$basetexture"] = "vgui/white", ["$model"] = "1", ["$color2"] = "[0 0 0]",
 })
-local function screenMat(name, ps)
+-- rawBase / rawT1 (b0.2.6-misc.1): that slot holds the packed depth: point sampled (see bandRT). Read
+-- "linear" as every slot here: $linearread 1 / $linearwrite 1 hand the numbers through as they
+-- are; 0 turns them from / into sRGB (b0.2.6-misc.1: set to 0 for the packed depth, it distorted it)
+local function screenMat(name, ps, rawBase, rawT1)
 	return CreateMaterial(name, "screenspace_general", {
 		["$pixshader"] = ps,
 		["$basetexture"] = "vgui/white", ["$texture1"] = "vgui/white",
@@ -101,17 +106,64 @@ local function screenMat(name, ps)
 		-- in the pushed render target (a custom vs20 put it off the target)
 		["$ignorez"] = "1", ["$vertextransform"] = "1", ["$copyalpha"] = "0",
 		["$linearread_basetexture"] = "1", ["$linearread_texture1"] = "1", ["$linearwrite"] = "1",
+		-- the packed depth (b0.2.6-misc.1) is read point sampled (see bandRT)
+		["$pointsample_basetexture"] = rawBase and "1" or "0", ["$pointsample_texture1"] = rawT1 and "1" or "0",
 		["$alpha_blend"] = "0", ["$alpha_blend_color_overlay"] = "0",
 	})
 end
 -- The shader materials are made on the first use, not when the addon loads: made while the
 -- game was still starting, they did not get the editor's shaders and drew nothing (white, no
 -- occlusion) for the whole session, in both modes (b0.2 round 6)
-local matAO, matBlur, matSfmAO, matSfmBlur
+local matAO, matBlur, matSfmAO, matSfmBlur, matPack, matPack2, matSmoothH, matSmoothV
+-- (b0.2.6-misc.1) the packed depth's shaders sample a quarter texel in (c3.xy; shaders_src: g_Texel)
+local function texel(m, W, H)
+	m:SetFloat("$c3_x", 0.25 / W)
+	m:SetFloat("$c3_y", 0.25 / H)
+end
+-- (b0.2.6-misc.1, Linux / macOS) The shaders of the packed depth and the occlusion, under the name that
+-- works this session (R.ShaderName, cl_render.lua: a shader drawn in one session there is dead in
+-- the next, so each also ships as a copy). The occlusion waits until they are known, and is off
+-- when one of them works under neither name.
+local PK_SHADERS = { "gmfm_depthpack", "gmfm_depthpack2", "gmfm_depthsmooth", "gmfm_depthsmooth2",
+	"gmfm_sfmao4b_pk", "gmfm_sfmaoblur4b_pk", "speditor_ao2_pk", "speditor_ao2_blur_pk" }
+local function shadersReady()
+	if not PACKED then return true end
+	if not R.ShadersChecked() then return false end
+	for _, b in ipairs(PK_SHADERS) do
+		if not R.ShaderName(b) then return false end
+	end
+	return true
+end
+local function rawMat(name, ps)
+	return CreateMaterial(name, "screenspace_general", {
+		["$pixshader"] = ps,
+		["$basetexture"] = "vgui/white", ["$texture1"] = "vgui/white",
+		["$ignorez"] = "1", ["$vertextransform"] = "1", ["$copyalpha"] = "0",
+		-- the numbers as they are: $linearread / $linearwrite 1 (0 would turn them from / into sRGB)
+		["$linearread_basetexture"] = "1", ["$linearread_texture1"] = "1",
+		["$pointsample_basetexture"] = "1", ["$pointsample_texture1"] = "1",
+		["$linearwrite"] = "1", ["$alpha_blend"] = "0", ["$alpha_blend_color_overlay"] = "0",
+	})
+end
 local function ensureMats()
 	if matAO then return end
 	-- "2": the shaders were fixed (a NaN made the whole frame lose its AO) — a new name, so a
 	-- game that has loaded the old ones in this session or keeps them cached takes the new ones
+	if PACKED then
+		-- (b0.2.6-misc.1) the packed 8-bit depth of Linux / macOS: the *_pk shaders, depth read raw
+		-- the name of each shader that works this session (R.ShaderName); the material is named
+		-- after it, so a session never takes a material made for the other name
+		local function sh(base) return R.ShaderName(base) end
+		matAO      = screenMat("gmfm_m_" .. sh("speditor_ao2_pk"), sh("speditor_ao2_pk"), true, false)
+		matBlur    = screenMat("gmfm_m_" .. sh("speditor_ao2_blur_pk"), sh("speditor_ao2_blur_pk"), false, true)
+		matSfmAO   = screenMat("gmfm_m_" .. sh("gmfm_sfmao4b_pk"), sh("gmfm_sfmao4b_pk"), true, false)
+		matSfmBlur = screenMat("gmfm_m_" .. sh("gmfm_sfmaoblur4b_pk"), sh("gmfm_sfmaoblur4b_pk"), false, true)
+		matPack    = rawMat("gmfm_m_" .. sh("gmfm_depthpack"), sh("gmfm_depthpack"))
+		matPack2   = rawMat("gmfm_m_" .. sh("gmfm_depthpack2"), sh("gmfm_depthpack2"))
+		matSmoothH = rawMat("gmfm_m_" .. sh("gmfm_depthsmooth"), sh("gmfm_depthsmooth"))
+		matSmoothV = rawMat("gmfm_m_" .. sh("gmfm_depthsmooth2"), sh("gmfm_depthsmooth2"))
+		return
+	end
 	matAO   = screenMat("speditor_ao2_main", "speditor_ao2_ps20b")
 	matBlur = screenMat("speditor_ao2_blur", "speditor_ao2_blur_ps20b")
 	-- SFM's, Shader Model 2 (b0.2.1): the ps_3_0 ones of b0.2 are not run at all in a game at
@@ -136,10 +188,40 @@ local FORMAT_R32F = IMAGE_FORMAT_R32F or 27
 -- 32-bit float, one channel: in a 16-bit one the depth of a flat surface went in steps, each
 -- step read as an edge, and a big render (3840 x 3152) was crossed by dark stripes and bands
 -- (measured in game: 46% of the frame darkened against 8% — the real contacts — with R32F)
+-- Linux / macOS (the D3D -> OpenGL layer, ToGL, DirectX level 90): R32F cannot be a render
+-- target there (the engine fell back to 24-bit RGB, which ToGL cannot make — the game closed), and
+-- no float or 16-bit target takes any drawing at all: every one came back black (b0.2.6-misc.1,
+-- gmfm_rendertest, 48 kinds of target tried). Only 8-bit targets work. So the depth is PACKED:
+-- three fog passes, ending at a quarter of the range, a sixteenth and a sixty-fourth, each into an
+-- 8-bit target, packed into one (R, G, B — gmfm_depthpack); the *_pk shaders read the finest
+-- channel that has not reached its end (rawDepth, shaders_src): half a unit to 128 units, 2 to
+-- 512, 8 to 2048, open (as the sky) past that — and count no occlusion smaller than a step
+-- (measured on gm_construct: with 4-unit steps a flat floor came out grey and banded). Two more
+-- depth passes, on these systems only.
+local BANDS = { 4, 16, 64 }      -- the fog of pass k ends at SSAO_FAR / BANDS[k] (shaders_src: rawDepth)
+local DEPTH_FORMAT = PACKED and IMAGE_FORMAT_RGBA8888 or FORMAT_R32F
+local DEPTH_NAME = PACKED and "gmfm_aodepthpk_" or "speditor_aodepth32_"
+function R.SSAOPacked() return PACKED end
+-- (b0.2.6-misc.1, gmfm_rendertest) does the depth target of this system give back what is put in?
+function R.SSAODepthTest()
+	local ok, got = R.ProbeFormat(DEPTH_FORMAT)
+	return string.format("format %s%s: %s (%s)", tostring(DEPTH_FORMAT), PACKED and " (packed, 3 passes)" or "",
+		ok and "works" or "BLACK — SSAO cannot work here", got)
+end
+local bandRTs = {}
+local function bandRT(k, w, h)
+	local key = k .. "_" .. w .. "x" .. h
+	-- point sampled (1): a depth split into a high and a low byte cannot be blended between pixels —
+	-- where the high byte steps up the low one wraps round, and the blend of the two is another
+	-- depth (bilinear filtering laid bands across a sloping floor)
+	bandRTs[key] = bandRTs[key] or GetRenderTargetEx("gmfm_aoband" .. key, w, h, RT_SIZE_LITERAL,
+		MATERIAL_RT_DEPTH_SEPARATE, 1 + 4 + 8, 0, IMAGE_FORMAT_RGBA8888)
+	return bandRTs[key]
+end
 local function depthRT(w, h)
 	local key = w .. "x" .. h
-	depthRTs[key] = depthRTs[key] or GetRenderTargetEx("speditor_aodepth32_" .. key, w, h, RT_SIZE_LITERAL,
-		MATERIAL_RT_DEPTH_SEPARATE, 4 + 8, 0, FORMAT_R32F)
+	depthRTs[key] = depthRTs[key] or GetRenderTargetEx(DEPTH_NAME .. key, w, h, RT_SIZE_LITERAL,
+		MATERIAL_RT_DEPTH_SEPARATE, (PACKED and 1 or 0) + 4 + 8, 0, DEPTH_FORMAT)
 	return depthRTs[key]
 end
 local function aoRT(i, w, h)
@@ -152,8 +234,10 @@ end
 local accRTs = {}
 local function accRT(w, h)
 	local key = w .. "x" .. h
-	accRTs[key] = accRTs[key] or GetRenderTargetEx("gmfm_aoacc_" .. key, w, h, RT_SIZE_LITERAL,
-		MATERIAL_RT_DEPTH_NONE, 4 + 8, 0, IMAGE_FORMAT_RGBA16161616F or 24)
+	-- (b0.2.6-misc.1) the format that works here (R.AccumFormat): a float one came back black on Linux
+	local fmt, tag = R.AccumFormat()
+	accRTs[key] = accRTs[key] or GetRenderTargetEx("gmfm_aoacc" .. tag .. "_" .. key, w, h, RT_SIZE_LITERAL,
+		MATERIAL_RT_DEPTH_NONE, 4 + 8, 0, fmt)
 	return accRTs[key]
 end
 local matWhite = Material("vgui/white")
@@ -163,6 +247,7 @@ local matAccum = CreateMaterial("gmfm_ao_accum", "UnlitGeneric", { ["$nolod"] = 
 -- The depth pass
 ---------------------------------------------------------------------
 local depthPass = false
+local bandDiv = 1            -- (b0.2.6-misc.1) the packed depth's pass: its fog ends at SSAO_FAR / bandDiv
 function R.DepthPassActive() return depthPass end
 
 local function depthFog()
@@ -173,7 +258,7 @@ local function depthFog()
 	render.BrushMaterialOverride(matDepthWorld)
 	render.FogMode(MATERIAL_FOG_LINEAR)
 	render.FogStart(0)
-	render.FogEnd(SSAO_FAR)
+	render.FogEnd(SSAO_FAR / bandDiv)
 	render.FogMaxDensity(1)
 	render.FogColor(255, 255, 255)
 	return true
@@ -183,7 +268,7 @@ SPeditor.Hook("SetupSkyboxFog", "SPeditor.SSAO", function(scale)
 	if not depthPass then return end
 	render.FogMode(MATERIAL_FOG_LINEAR)
 	render.FogStart(0)
-	render.FogEnd(SSAO_FAR * scale)
+	render.FogEnd(SSAO_FAR / bandDiv * scale)
 	render.FogMaxDensity(1)
 	render.FogColor(255, 255, 255)
 	return true
@@ -202,9 +287,59 @@ SPeditor.Hook("PreDrawEffects", "SPeditor.SSAO", function()
 	if depthPass then return true end
 end)
 
--- The depth of the view src (origin, angles, fov — horizontal for aspect) into a W x H texture
+-- The depth of the view src (origin, angles, fov — horizontal for aspect) into a W x H texture.
+-- (b0.2.6-misc.1) Packed (Linux / macOS): three passes of fog ending at SSAO_FAR / 4, / 16 and / 64, packed
+-- into one 8-bit texture by gmfm_depthpack.
+local depthInto
 function R.RenderDepth(src, W, H, aspect)
-	local rt = depthRT(W, H)
+	if not PACKED then return depthInto(depthRT(W, H), src, W, H, aspect) end
+	ensureMats()
+	-- the tone mapping scale exactly 1 while the fog is drawn: the passes are white fog, and the
+	-- scale (auto exposure, a camera's exposure) dimmed it — 250 for 255, so every far pixel read as
+	-- one at the end of the nearest pass (measured on gm_construct after a few minutes: the whole
+	-- frame at 125 units, the occlusion in bands)
+	local tone = render.GetToneMappingScaleLinear and render.GetToneMappingScaleLinear()
+	render.SetToneMappingScaleLinear(Vector(1, 1, 1))
+	local bands = {}
+	for k, div in ipairs(BANDS) do
+		bandDiv = div
+		bands[k] = depthInto(bandRT(k, W, H), src, W, H, aspect)
+		bandDiv = 1
+		if not bands[k] then break end
+	end
+	if tone then render.SetToneMappingScaleLinear(tone) end
+	if #bands < #BANDS then return nil end
+	local packed, mid, rt = bandRT(4, W, H), bandRT(5, W, H), depthRT(W, H)
+	local half = bandRT(6, W, H)
+	local function screenPass(target, mat)
+		render.PushRenderTarget(target)
+		render.Clear(255, 255, 255, 255, true, true)
+		render.SetMaterial(mat)
+		render.DrawScreenQuad()
+		render.PopRenderTarget()
+	end
+	-- packed two textures at a time (gmfm_depthpack: a third sampler drew nothing in some sessions)
+	matPack:SetTexture("$basetexture", bands[1])
+	matPack:SetTexture("$texture1", bands[2])
+	texel(matPack, W, H)
+	screenPass(half, matPack)
+	matPack2:SetTexture("$basetexture", half)
+	matPack2:SetTexture("$texture1", bands[3])
+	texel(matPack2, W, H)
+	screenPass(packed, matPack2)
+	-- the steps of the bands smoothed into a 16-bit depth (gmfm_depthsmooth): across, then down
+	matSmoothH:SetTexture("$basetexture", packed)
+	matSmoothH:SetFloat("$c0_x", 1 / W) matSmoothH:SetFloat("$c0_y", 0) matSmoothH:SetFloat("$c0_z", SSAO_FAR)
+	texel(matSmoothH, W, H)
+	screenPass(mid, matSmoothH)
+	matSmoothV:SetTexture("$basetexture", mid)
+	matSmoothV:SetFloat("$c0_x", 0) matSmoothV:SetFloat("$c0_y", 1 / H) matSmoothV:SetFloat("$c0_z", SSAO_FAR)
+	texel(matSmoothV, W, H)
+	screenPass(rt, matSmoothV)
+	return rt
+end
+
+function depthInto(rt, src, W, H, aspect)
 	local prevHide, prevPass, prevEnt = C.hideUI, C.vpPass, C.renderViewEnt
 	C.hideUI, C.vpPass, C.renderViewEnt = true, "export", src.ent
 	render.PushRenderTarget(rt)
@@ -275,6 +410,7 @@ end
 function R.SSAOMask(src, W, H, aspect, passes, seed)
 	local on, rad, str, bias = R.SSAOParams(src)
 	if not on or not src then return nil end
+	if not shadersReady() then return nil end
 	ensureMats()
 	aspect = aspect or (W / H)
 	local depth = R.RenderDepth(src, W, H, aspect)
@@ -294,6 +430,7 @@ function R.SSAOMask(src, W, H, aspect, passes, seed)
 		m:SetFloat("$c1_y", tx / aspect)
 		m:SetFloat("$c1_z", 1 / W)
 		m:SetFloat("$c1_w", 1 / H)
+		texel(m, W, H)
 		passes = math.Clamp(math.floor(passes or 1), 1, 64)
 		local sx, sy = seedOf(seed)
 		if passes <= 1 then
@@ -345,6 +482,7 @@ function R.SSAOMask(src, W, H, aspect, passes, seed)
 		matSfmBlur:SetFloat("$c1_x", 0.02)
 		matSfmBlur:SetFloat("$c1_y", sx)
 		matSfmBlur:SetFloat("$c1_z", sy)
+		texel(matSfmBlur, W, H)
 		pass(a, matSfmBlur)
 		R.lastAO, R.lastDepth = a, depth
 		return a
@@ -360,10 +498,12 @@ function R.SSAOMask(src, W, H, aspect, passes, seed)
 	matAO:SetFloat("$c1_y", tx / aspect)
 	matAO:SetFloat("$c1_z", 1 / W)
 	matAO:SetFloat("$c1_w", 1 / H)
+	texel(matAO, W, H)
 	pass(a, matAO)
 
 	matBlur:SetTexture("$texture1", depth)
 	matBlur:SetFloat("$c0_z", SSAO_FAR)
+	texel(matBlur, W, H)
 	matBlur:SetFloat("$c0_w", radius)
 	matBlur:SetTexture("$basetexture", a)
 	matBlur:SetFloat("$c0_x", 1 / W) matBlur:SetFloat("$c0_y", 0)

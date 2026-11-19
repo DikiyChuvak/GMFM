@@ -85,6 +85,41 @@ function IK.RotateAngle(ang, from, to)
 	return f:AngleEx(u)
 end
 
+-- (b0.2.6-misc.1) A two-link chain from root (links l1, l2) reaching for target, the middle bent
+-- toward pole (a direction; only its part square to the root-target line counts). Returns mid,
+-- end, or nil when pole gives no side (then IK.Solve's own bend plane is the one to use).
+function IK.SolveToward(root, l1, l2, target, pole)
+	local toT = target - root
+	local dist = toT:Length()
+	if dist < 1e-3 or l1 < 1e-3 or l2 < 1e-3 then return nil end
+	local dir = toT / dist
+	local side = pole - dir * pole:Dot(dir)
+	if side:LengthSqr() < 1e-6 then return nil end
+	local d = math.min(math.max(dist, math.abs(l1 - l2) * 1.0005 + 0.01), (l1 + l2) * 0.9995)
+	local cosA = math.min(math.max((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1), 1)
+	local sinA = math.sqrt(1 - cosA * cosA)
+	return root + dir * (l1 * cosA) + side:GetNormalized() * (l1 * sinA), root + dir * d
+end
+
+-- (b0.2.6-misc.1) ang turned round axis (a unit vector in the world) by deg degrees
+function IK.RotateAround(ang, axis, deg)
+	local f = rotateVec(ang:Forward(), axis, deg)
+	local u = rotateVec(ang:Up(), axis, deg)
+	return f:AngleEx(u)
+end
+
+-- The manip angle that turns a bone to the world angle want, its parent being at parentNew.
+-- it = { a0 = the bone's world angle now, parentAng = its parent's, m0ang = its manip angle now }
+-- (a bone's local turn is rest * manip). Moved here from cl_gizmo.lua (b0.2.6-misc.1: the fingers use it).
+function IK.ManipFor(it, want, parentNew)
+	local _, cur = WorldToLocal(vector_origin, it.a0, vector_origin, it.parentAng)     -- rest * m0
+	local _, inv = WorldToLocal(vector_origin, angle_zero, vector_origin, it.m0ang)     -- m0^-1
+	local _, rest = LocalToWorld(vector_origin, inv, vector_origin, cur)                 -- rest
+	local _, loc = WorldToLocal(vector_origin, want, vector_origin, parentNew)           -- wanted local
+	local _, m = WorldToLocal(vector_origin, loc, vector_origin, rest)                   -- rest^-1 * local
+	return m
+end
+
 -- End links for which IK switches on (by bone name)
 local END_PATTERNS = { "hand", "foot", "wrist", "ankle", "toe", "paw", "hoof" }
 function IK.IsEndEffector(boneName)

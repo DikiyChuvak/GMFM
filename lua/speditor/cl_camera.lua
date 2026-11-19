@@ -171,10 +171,48 @@ end
 local cvAutoAim = CreateClientConVar("gmfm_autoaim", "0", true, false, "Work camera: keep looking at the selected object (SFM's Auto Aim Work Camera)", 0, 1)
 function C.AutoAim() return cvAutoAim:GetBool() end
 
-local function beginNav(name, button)
+---------------------------------------------------------------------
+-- (b0.2.6-misc.1) Navigation in the Secondary Viewport, as in SFM: the same buttons fly what it shows —
+-- the work camera (kept in C.camera.saved while the Primary looks through a scene camera), or a
+-- scene camera, which is moved and keyed as when it is flown in the Primary. Before, only the
+-- Primary Viewport could be navigated.
+---------------------------------------------------------------------
+local secCam = {}
+function C.MouseInSecondary()
+	local UI = SPeditor.UI
+	local vp = UI and UI.SecondaryVP
+	if not IsValid(vp) or not IsValid(vp.view) or not vp.view:IsVisible() then return false end
+	if UI.PageShown and not UI.PageShown("secondary") then return false end
+	local hp = vgui.GetHoveredPanel()
+	return IsValid(hp) and (hp == vp.view or hp:HasParent(vp.view))
+end
+-- the camera state the Secondary Viewport shows (nil — nothing it could move)
+local function secondaryState()
+	local UI = SPeditor.UI
+	local vp = UI and UI.SecondaryVP
+	local src = IsValid(vp) and vp.GetSource and vp.GetSource() or nil
+	if not src then return nil end
 	local cam = C.camera
+	if not IsValid(src.ent) then return cam.saved or cam end
+	if src.ent == cam.viewEnt then return cam end
+	if not C.IsCamera(src.ent) then return nil end
+	-- taken from where the camera is now, every time a navigation starts: it may be animated
+	local p, a = SPeditor.LivePos(src.ent)
+	secCam = { viewEnt = src.ent, pos = Vector(p.x, p.y, p.z), target = Vector(p.x, p.y, p.z),
+		angles = Angle(a.p, a.y, a.r), targetAngles = Angle(a.p, a.y, a.r), ang = Angle(a.p, a.y, a.r) }
+	return secCam
+end
+-- the scene camera being flown in the Secondary Viewport (auto key keys it as the Primary's)
+function C.SecondaryNavCamera()
+	return IsValid(secCam.viewEnt) and secCam.viewEnt or nil
+end
+
+local function beginNav(name, button, cam)
+	cam = cam or C.camera
+	C.navCam = cam
 	local mx, my = input.GetCursorPos()
-	local m = { name = name, button = button, sx = mx, sy = my, lx = mx, ly = my, dist = 200, t0 = RealTime(), moved = 0 }
+	local m = { name = name, button = button, sx = mx, sy = my, lx = mx, ly = my, dist = 200, t0 = RealTime(), moved = 0,
+		secondary = cam ~= C.camera }
 	if name == "orbit" then
 		if IsValid(C.selected) then
 			m.pivot = C.GetEntityTransform(C.selected)
@@ -196,7 +234,7 @@ local function endNav()
 	gui.EnableScreenClicker(true)
 	if m then input.SetCursorPos(m.sx, m.sy) end
 	-- a short RMB click without movement is not flight but the menu of the object under the cursor
-	if m and m.name == "fly" and RealTime() - m.t0 < 0.3 and m.moved < 6 and not C.exporting then
+	if m and m.name == "fly" and not m.secondary and RealTime() - m.t0 < 0.3 and m.moved < 6 and not C.exporting then
 		timer.Simple(0.03, function()
 			if not C.active or C.camMode or not C.MouseInViewport() then return end
 			local ent = C.PickEntity()
@@ -254,20 +292,29 @@ SPeditor.Hook("Think", "SPeditor.CameraUpdate", function()
 		and not input.IsMouseDown(MOUSE_RIGHT) then
 		C.navWaitUp = nil
 	end
-	-- FIXED: navigation only inside the Primary Viewport
-	if not m and not C.exporting and not C.navWaitUp and C.MouseInViewport() then
+	-- navigation inside the Primary Viewport, or (b0.2.6-misc.1) the Secondary one
+	local navTarget
+	if not m and not C.exporting and not C.navWaitUp then
+		if C.MouseInViewport() then
+			navTarget = cam
+		elseif C.MouseInSecondary() and (input.IsMouseDown(MOUSE_RIGHT) or input.IsMouseDown(MOUSE_MIDDLE)
+			or ((input.IsKeyDown(KEY_LALT) or input.IsKeyDown(KEY_RALT)) and input.IsMouseDown(MOUSE_LEFT))) then
+			navTarget = secondaryState()
+		end
+	end
+	if navTarget then
 		local alt = input.IsKeyDown(KEY_LALT) or input.IsKeyDown(KEY_RALT)
 		local lmb = input.IsMouseDown(MOUSE_LEFT)
 		local mmb = input.IsMouseDown(MOUSE_MIDDLE)
 		local rmb = input.IsMouseDown(MOUSE_RIGHT)
 		if alt then
-			if lmb and not C.gizmo.drag then beginNav("orbit", MOUSE_LEFT)
-			elseif mmb then beginNav("pan", MOUSE_MIDDLE)
-			elseif rmb then beginNav("dolly", MOUSE_RIGHT) end
+			if lmb and not C.gizmo.drag then beginNav("orbit", MOUSE_LEFT, navTarget)
+			elseif mmb then beginNav("pan", MOUSE_MIDDLE, navTarget)
+			elseif rmb then beginNav("dolly", MOUSE_RIGHT, navTarget) end
 		elseif rmb then
-			beginNav("fly", MOUSE_RIGHT)
+			beginNav("fly", MOUSE_RIGHT, navTarget)
 		elseif mmb then
-			beginNav("pan", MOUSE_MIDDLE)
+			beginNav("pan", MOUSE_MIDDLE, navTarget)
 		end
 		m = C.camMode
 	end
@@ -281,7 +328,10 @@ SPeditor.Hook("Think", "SPeditor.CameraUpdate", function()
 		local c = C.CenterOf(C.selected)
 		if c and c:DistToSqr(cam.target) > 1 then cam.targetAngles = (c - cam.target):Angle() end
 	end
+	-- the state the mouse moves: the Primary's camera, or what the Secondary Viewport shows
+	local nav = (m and m.secondary and C.navCam) or cam
 	if m then
+		local cam = nav
 		local dx, dy = C.navDx or 0, C.navDy or 0
 		C.navDx, C.navDy = 0, 0
 		if dx == 0 and dy == 0 then
@@ -310,9 +360,33 @@ SPeditor.Hook("Think", "SPeditor.CameraUpdate", function()
 	C.ApplyWheel(cam, m, dt)
 
 	local amount = 1 - math.exp(-SMOOTH_K * dt)
+	-- (b0.2.6-misc.1) the state the Secondary Viewport moves glides as the Primary's does
+	local sn = C.navCam
+	if sn and sn ~= cam and sn.target and sn.targetAngles then
+		sn.angles = LerpAngle(amount, sn.angles, sn.targetAngles)
+		sn.ang = sn.angles
+		if m and m.secondary and m.name == "orbit" then
+			sn.pos = m.pivot - sn.angles:Forward() * m.distance
+			sn.target = Vector(sn.pos.x, sn.pos.y, sn.pos.z)
+		else
+			sn.pos = LerpVector(amount, sn.pos, sn.target)
+		end
+		if IsValid(sn.viewEnt) and (sn.sentPos == nil or sn.sentPos:DistToSqr(sn.pos) > 0.01 or anglesChanged(sn.sentAng, sn.angles)) then
+			C.SendTransform(sn.viewEnt, sn.pos, sn.angles)
+			sn.sentPos = Vector(sn.pos.x, sn.pos.y, sn.pos.z)
+			sn.sentAng = Angle(sn.angles.p, sn.angles.y, sn.angles.r)
+			C.secFlown = { ent = sn.viewEnt, t = RealTime() }
+			hook.Run("SPeditor_ViewCameraMoved", sn.viewEnt)
+		end
+		-- at rest and let go: done
+		if not m and sn.pos:DistToSqr(sn.target) <= 0.01 and not anglesChanged(sn.angles, sn.targetAngles) then
+			C.navCam = nil
+			if sn == secCam then secCam = {} end
+		end
+	end
 	cam.angles = LerpAngle(amount, cam.angles, cam.targetAngles)
 	cam.ang = cam.angles
-	if m and m.name == "orbit" then
+	if m and not m.secondary and m.name == "orbit" then
 		cam.pos = m.pivot - cam.angles:Forward() * m.distance
 		cam.target = Vector(cam.pos.x, cam.pos.y, cam.pos.z)
 	else
@@ -551,6 +625,25 @@ function C.StopViewCamera()
 	cam.zoomPending = nil
 	if IsValid(ent) then C.SendCameraView(ent, false) end
 	hook.Run("SPeditor_ViewChanged", nil)
+end
+
+-- (b0.2.7, asked on the Workshop) the work view is where a light is and looks the way it shines:
+-- the light's place and turn, its field of view when it is a spot
+function C.LookFromLight(ent)
+	if not C.IsLight(ent) then return end
+	local cam = C.camera
+	if IsValid(cam.viewEnt) then
+		SPeditor.Notify("#look_from_light_busy", 1)
+		return
+	end
+	local p, a = SPeditor.LivePos(ent)
+	cam.pos = Vector(p.x, p.y, p.z)
+	cam.angles = Angle(a.p, a.y, a.r)
+	cam.ang = cam.angles
+	cam.target = p + a:Forward() * 100
+	cam.targetAngles = Angle(a.p, a.y, a.r)
+	local fov = tonumber(ent:GetLightFOV()) or 0
+	C.SetWorkFOV(fov > 0 and fov or 75)
 end
 
 function C.MatchCameraToWork(ent)

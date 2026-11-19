@@ -137,16 +137,16 @@ UI.AddGuide({ id = "sa_keys", order = 10, icon = "icon16/key.png", title = { en 
 			"Space plays it. That is an animation.",
 			"Auto key (the red dot button): every edit sets the key by itself — pose and move on.",
 			"New keys are Continuous: the motion flows through them without stopping (other kinds — right click a key → Motion to the next key).",
-			"Keys can be dragged; Ctrl + drag copies. Ctrl + click picks several keys, Shift + drag over empty space picks keys in a box — then they all move, change their motion and are deleted together. Right click a key for its menu." },
+			"Keys can be dragged; Ctrl + drag copies. Ctrl + click picks several keys, a drag over empty space picks keys in a box (Ctrl / Shift adds to them) — then they all move, change their motion and are deleted together (X, or Delete with the mouse over the timeline). Right click a key for its menu." },
 		ru = { "Выделите персонажа и нажмите K: ключ на кадре 0.",
 			"Щёлкните линейку на кадре 24 (одна секунда), измените позу, снова нажмите K.",
 			"Пробел воспроизводит. Это уже анимация.",
 			"Автоключ (кнопка с красной точкой): каждая правка сама ставит ключ — позируйте и идите дальше.",
 			"Новые ключи — «Непрерывно»: движение перетекает через них без остановок (другие виды — ПКМ по ключу → Движение к следующему ключу).",
-			"Ключи можно перетаскивать; Ctrl + перетаскивание копирует. Ctrl + клик выбирает несколько ключей, Shift + перетаскивание по пустому месту — ключи рамкой; тогда они двигаются, меняют движение и удаляются вместе. ПКМ по ключу — его меню." } },
+			"Ключи можно перетаскивать; Ctrl + перетаскивание копирует. Ctrl + клик выбирает несколько ключей, перетаскивание по пустому месту — ключи рамкой (Ctrl / Shift добавляют к ним); тогда они двигаются, меняют движение и удаляются вместе (X или Delete, когда мышь над таймлайном). ПКМ по ключу — его меню." } },
 	{ "h", "The timeline, part by part", "Таймлайн по частям" },
 	{ "keys", w = 170, {
-		{ "Ruler (frame numbers)", "click — go to that frame; Shift + drag — select time", "щелчок — перейти на кадр; Shift + перетаскивание — выделить время", "Линейка (номера кадров)" },
+		{ "Ruler (frame numbers)", "click or drag — move the playhead; Shift + drag — select time", "щелчок или перетаскивание — двигать указатель кадра; Shift + перетаскивание — выделить время", "Линейка (номера кадров)" },
 		{ "Blue line", "the playhead: the frame you see and edit", "головка: кадр, который вы видите и правите", "Синяя линия" },
 		{ "Diamond", "a key; its colour and shape tell the motion to the next key", "ключ; цвет и форма говорят, как он движется к следующему", "Ромб" },
 		{ "Row on the left", "one object (and its bones or face under it)", "один объект (и его кости или лицо под ним)", "Строка слева" },
@@ -185,6 +185,19 @@ UI.AddGuide({ id = "sa_keys", order = 10, icon = "icon16/key.png", title = { en 
 	{ "see", "sa_marks", "bookmarks, play modes (once / loop / bounce), the shot list", "закладки, режимы воспроизведения (раз / круг / туда-обратно), список планов" },
 	{ "see", "first_anim", "a first animation from start to video", "первая анимация от начала до видео" },
 	{ "see", "sa_curves", "how objects move between keys, smooth motion", "как объект движется между ключами, плавность" },
+	{ "see", "sa_elements", "the element tracks of an object (double click its name)", "дорожки элементов объекта (двойной клик по имени)" },
+	{ "see", "sa_tween", "the tween machine: a step between the keys", "твин: шаг между ключами" },
+} })
+
+-- (b0.2.7, TobyCat) the element tracks of an object, opened by a double click on its name in the timeline
+UI.AddGuide({ id = "sa_elements", order = 10.3, icon = "icon16/key.png", title = { en = "Timeline: element tracks", ru = "Таймлайн: дорожки элементов" }, blocks = {
+	{ "p", "Double click an object's name on the timeline to open its element tracks: one row for every part that the object's keys change. The parts are position and turn, bones, scale, flexes, material and colour, skin and bodygroups, eyes, physics, attachment, lens, camera shake and effects, light and the moment of an effect. Double click the name again to close them.",
+		"Двойной клик по имени объекта на таймлайне открывает его дорожки элементов: по строке на каждую часть, которую меняют ключи объекта. Части: место и поворот, кости, масштаб, флексы, материал и цвет, скин и бодигруппы, глаза, физика, прикрепление, объектив, тряска и эффекты камеры, свет и момент эффекта. Двойной клик по имени закрывает их." },
+	{ "img", "speditor/help/tl_elements.jpg", "The element tracks of a character: the keys of each part (position, scale, flexes, material, skin).",
+		"Дорожки элементов персонажа: ключи каждой части (место, масштаб, флексы, материал, скин)." },
+	{ "p", "A row shows only the keys that change its part. A click on one of its keys moves the playhead to that frame. The keys are still edited on the object's row: a key holds the whole pose, so moving it moves all its parts together. Keys for each part on their own are not in this version.",
+		"Строка показывает только ключи, которые меняют её часть. Клик по одному из её ключей переносит курсор на его кадр. Сами ключи правятся на строке объекта: ключ хранит всю позу целиком, поэтому его перенос двигает все части вместе. Отдельных ключей на каждую часть в этой версии нет." },
+	{ "see", "sa_keys", "the keys and the timeline", "ключи и таймлайн" },
 } })
 
 UI.AddGuide({ id = "sa_curves", order = 11, icon = "icon16/chart_curve.png", title = { en = "How objects move between keys (curves)", ru = "Как объект движется между ключами (кривые)" }, blocks = {
@@ -217,10 +230,10 @@ UI.AddGuide({ id = "sa_curves", order = 11, icon = "icon16/chart_curve.png", tit
 		"Каждая линия — одно значение выделенной кости или объекта во времени (X Y Z — место, P Yw R — поворот). Здесь записанная кисть: с непрерывными ключами линии проходят через точки без изломов. Полоса внизу показывает, как движется выбранный ключ — словами и шариком." },
 	{ "steps",
 		en = { "Open it: the chart button of the timeline (or Edit → Animation → Curve editor). It shows what is selected — select a bone to see that bone.",
-			"Drag a key point up / down to change its value, left / right to move it in time.",
+			"Drag a key point up / down to change its value, left / right to move it in time. On a bone's curves (or a camera's, light's, effect's channel) moving or deleting a key takes only that bone or attribute: the rest of the key stays, as on the bone's row of the timeline.",
 			"Drag one of the two round handles after a key to bend the motion yourself. Pull a handle above the next key and the object goes past it and comes back:" },
 		ru = { "Откройте: кнопка с графиком на таймлайне (или Правка → Анимация → Редактор кривых). Он показывает выделенное — выделите кость, чтобы видеть её.",
-			"Тяните точку ключа вверх / вниз, чтобы изменить значение, влево / вправо — чтобы сдвинуть во времени.",
+			"Тяните точку ключа вверх / вниз, чтобы изменить значение, влево / вправо — чтобы сдвинуть во времени. На кривых кости (или канала камеры, света, эффекта) сдвиг и удаление ключа касаются только этой кости или атрибута: остальной ключ остаётся, как на строке кости в таймлайне.",
 			"Тяните одну из двух круглых ручек после ключа, чтобы согнуть движение самому. Вытяните ручку выше следующего ключа — объект проскочит его и вернётся:" } },
 	{ "demo", h = 120, draw = overshootDemo, "An own curve: the handle above the top line (the next key) makes the motion overshoot — good for a punch, a head turn, a bouncing stop.",
 		"Своя кривая: ручка выше верхней линии (следующего ключа) даёт перелёт — хорошо для удара, поворота головы, упругой остановки." },
@@ -295,18 +308,20 @@ UI.AddGuide({ id = "sa_motion", order = 11.5, icon = "icon16/time.png", title = 
 } })
 
 UI.AddGuide({ id = "sa_bones", order = 12, icon = "icon16/arrow_branch.png", title = { en = "Bone keys and ghosts", ru = "Ключи костей и призраки" }, blocks = {
-	{ "p", "Normally a key holds the whole character. With Bone keys on, a key set while a bone is selected holds only that bone — every bone gets keys of its own, as in SFM: an arm can wave twice while the head turns once.",
-		"Обычно ключ хранит всего персонажа. С включёнными «Ключами костей» ключ, поставленный при выделенной кости, хранит только её — у каждой кости свои ключи, как в SFM: рука может махнуть дважды, пока голова повернётся один раз." },
+	{ "p", "K keys the whole character. With Auto key, dragging a bone keys only the bones the drag moved, and a bone's row on the timeline keys that bone alone — every bone gets keys of its own, as in SFM: an arm can wave twice while the head turns once.",
+		"K ставит ключ всему персонажу. С автоключом перетаскивание кости ставит ключ только сдвинутым костям, а строка кости на таймлайне — только этой кости: у каждой кости свои ключи, как в SFM: рука может махнуть дважды, пока голова повернётся один раз." },
 	{ "demo", h = 80, draw = boneKeysDemo, "The right arm has keys at 0 and 0.4 of the timeline, the left one at 0 and 1: each moves between its own keys.",
 		"У правой руки ключи на 0 и 0.4 таймлайна, у левой — на 0 и 1: каждая движется между своими ключами." },
 	{ "steps",
-		en = { "Turn on Bone keys: the branch button of the timeline (or Edit → Animation → Bone keys).",
-			"Select a bone and press K — a key of that bone only. With Auto key, dragging a bone keys just the bones the drag moved.",
+		en = { "Turn on Auto key (the red dot of the timeline) and drag a bone: a key of just the bones the drag moved.",
+			"Or double-click the character's name on the timeline to open out its track, and right click a bone's row → Set a key of this bone here.",
 			"The selected bone gets its own row under the character: its keys only. Drag them, delete them (right click) — the rest of the character is not touched.",
+			"The bones sit in groups by body part: Body, Left arm, Left hand (a group per finger), Left leg… A group's row has the keys of all its bones, and dragging a key there moves them together. Click a group's arrow (or double-click it) to open it, Shift + click to open everything under it; the group of a selected bone opens by itself.",
 			"Keys of some bones are drawn as small hollow diamonds on the character's row; full keys as usual." },
-		ru = { "Включите «Ключи костей»: кнопка с веткой на таймлайне (или Правка → Анимация → Ключи костей).",
-			"Выделите кость и нажмите K — ключ только этой кости. С автоключом перетаскивание кости ставит ключ только тем костям, которые сдвинулись.",
+		ru = { "Включите автоключ (красная точка на таймлайне) и перетащите кость: ключ получат только сдвинутые кости.",
+			"Или дважды щёлкните имя персонажа на таймлайне, чтобы раскрыть его трек, и ПКМ по строке кости → «Поставить ключ этой кости здесь».",
 			"У выделенной кости появляется своя строка под персонажем: только её ключи. Их можно двигать и удалять (ПКМ) — остальной персонаж не меняется.",
+			"Кости собраны в группы по частям тела: Тело, Левая рука, Левая кисть (группа на каждый палец), Левая нога… На строке группы ключи всех её костей, и ключ, сдвинутый там, двигает их вместе. Щелчок по стрелке группы (или двойной щелчок) раскрывает её, Shift + щелчок — всё, что под ней; группа выделенной кости раскрывается сама.",
 			"Ключи отдельных костей рисуются на строке персонажа маленькими полыми ромбами, полные ключи — как обычно." } },
 	{ "h", "Ghosts", "Призраки" },
 	{ "img", "speditor/help/bonekeys.jpg", "Ghosts on: the arm at the key before the playhead is drawn see-through in blue, at the key after it — in green. Below — the row of the selected bone.",
@@ -316,8 +331,8 @@ UI.AddGuide({ id = "sa_bones", order = 12, icon = "icon16/arrow_branch.png", tit
 	{ "h", "b0.2.5: every bone on its own row", "b0.2.5: каждая кость на своей строке" },
 	{ "img", "speditor/help/bonekeys_rows.jpg", "The selected character shows a row for every bone with keys of its own. L_UpperArm has the motion Hold from 20 to 40 — the other bones keyed at frame 20 keep their smooth motion.",
 		"Под выбранным персонажем — строка для каждой кости со своими ключами. У L_UpperArm движение Hold от 20 до 40 — остальные кости с ключами на кадре 20 сохраняют плавное движение." },
-	{ "p", "Right click a key on a bone's row → Motion to the next key: it changes the motion of that bone only, even when other bones are keyed at the same frame (before, the whole key took it). With Bone keys on, K on the whole character (no bone selected) leaves the bones that have keys of their own alone — the channels stay separate, as in SFM.",
-		"ПКМ по ключу на строке кости → «Движение к следующему ключу»: меняется движение только этой кости, даже если на том же кадре ключи других костей (раньше его получал весь ключ). С включёнными «Ключами костей» K по всему персонажу (кость не выделена) не трогает кости, у которых свои ключи, — каналы остаются раздельными, как в SFM." },
+	{ "p", "Right click a key on a bone's row → Motion to the next key: it changes the motion of that bone only, even when other bones are keyed at the same frame (before, the whole key took it).",
+		"ПКМ по ключу на строке кости → «Движение к следующему ключу»: меняется движение только этой кости, даже если на том же кадре ключи других костей (раньше его получал весь ключ)." },
 	{ "see", "sa_keys", "keys and the timeline", "ключи и таймлайн" },
 	{ "see", "posing", "IK, stretch, locks", "IK, растяжение, замки" },
 	{ "result", "Layered animation: separate rhythms for the arms, the head and the body, and the neighbouring poses always in sight.",
@@ -391,12 +406,12 @@ UI.AddGuide({ id = "sa_rec", order = 12.5, icon = "icon16/webcam.png", title = {
 			"Start recording: the editor closes, a countdown runs, then REC blinks in the corner. Play. The animation you already have plays along, so you can act against it.",
 			"Backspace stops the take. The editor opens: you are in the scene as a ragdoll of your player model (skin, bodygroups, player colour) with your weapon in the hand, every NPC with its weapon, the sounds on the timeline and the effects as objects. Objects of the map that moved during the take move in the animation at the same moments.",
 			"Camera of the take → First person (camera in the eyes), the default: a camera <your name> view (rec) strictly in your character's eyes, keyed along the take, looking where you aimed — even if the game showed you from behind. Third person (no camera of the player): no such camera; you film the take with your own scene cameras. With no camera cuts yet the video goes through it at once; your own body is not drawn in it, as in the game (the weapon in your hands is seen only from other cameras).",
-			"Edit it like any animation: delete keys, fix a pose (with Bone keys — just one arm), add cameras and cuts, record another take on top." },
+			"Edit it like any animation: delete keys, fix a pose (with Auto key — just one arm), add cameras and cuts, record another take on top." },
 		ru = { "Поставьте головку туда, где должен начаться дубль. Откройте «Запись игры» и выберите, что записывать: NPC вокруг (в радиусе), звуки, эффекты, как часто брать ключ.",
 			"«Начать запись»: редактор закроется, пойдёт отсчёт, потом в углу замигает REC. Играйте. Уже сделанная анимация идёт вместе с записью — можно играть против неё.",
 			"Backspace останавливает дубль. Откроется редактор: в сцене вы — рэгдолл вашей модели игрока (скин, бодигруппы, цвет игрока) с оружием в руке, каждый NPC со своим оружием, звуки на таймлайне и эффекты отдельными объектами. Объекты карты, которые двигались во время дубля, двигаются в анимации в те же моменты.",
 			"«Камера дубля» → «1-е лицо (камера в глазах)», по умолчанию: камера <ваш ник> view (rec) строго в глазах вашего персонажа, с ключами по всему дублю, смотрит туда, куда вы целились, — даже если игра показывала вас со спины. «3-е лицо (без камеры игрока)»: такой камеры нет, дубль снимают ваши камеры сцены. Если смен камер ещё нет, видео сразу идёт через неё; ваше тело в ней не рисуется, как в игре (оружие в руках видно только с других камер).",
-			"Правьте как любую анимацию: удалите лишние ключи, поправьте позу (с ключами костей — одну руку), добавьте камеры и смены камер, запишите поверх ещё один дубль." } },
+			"Правьте как любую анимацию: удалите лишние ключи, поправьте позу (с автоключом — одну руку), добавьте камеры и смены камер, запишите поверх ещё один дубль." } },
 	{ "h", "Getting ready for the take: weapons, countdown, time limit", "Подготовка к дублю: оружие, отсчёт, время" },
 	{ "steps",
 		en = { "The take part of the Record gameplay window: the countdown before the take (1–10 seconds), a time limit (the take stops by itself; 0 — none), full health and armour before it, god mode during it.",
@@ -489,6 +504,9 @@ UI.AddGuide({ id = "sa_rec", order = 12.5, icon = "icon16/webcam.png", title = {
 	{ "h", "Physics: what falls", "Физика: что падает" },
 	{ "p", "The Physics button records the selected props and ragdolls (all of them when nothing is selected) with their physics, with the editor open or closed. Models without physics (a prop with bones, most SFM and TF2 characters) and objects attached to a bone have nothing to fall with: they are left out, and the editor says how many. One take holds up to 32 objects. The Physics choice in the Record window is for the game takes.",
 		"Кнопка «Физика» записывает выбранные пропы и ragdoll (а если ничего не выбрано — все) вместе с их физикой, при открытом и закрытом редакторе. Модели без физики (проп с костями, большинство персонажей SFM и TF2) и объекты, привязанные к кости, падать не могут: их пропускаем, и редактор говорит, сколько пропущено. В одной записи до 32 объектов. Выбор «Физика» в окне записи относится к игровым takes." },
+	{ "h", "Player model", "Модель игрока" },
+	{ "p", "Record → Player model: type a model path such as models/player/kleiner.mdl and the player in a gameplay take has that model. Empty keeps your own model. Another addon may force its own model on spawn. Player skin: the skin number of that model for the take (0, 1, 2…); empty keeps the model's own skin.",
+		"Запись → Модель игрока: введите путь к модели, например models/player/kleiner.mdl, и игрок в игровом take будет с этой моделью. Пусто — своя модель. Другой аддон может навязать свою модель при появлении. Скин игрока: номер скина этой модели для take (0, 1, 2…); пусто — свой скин модели." },
 } })
 
 UI.AddGuide({ id = "sa_face", order = 14, icon = "icon16/emoticon_smile.png", title = { en = "Faces and lip sync", ru = "Лица и липсинк" }, blocks = {
@@ -620,6 +638,9 @@ UI.AddGuide({ id = "sa_smh", order = 18, icon = "icon16/arrow_switch.png", title
 			"«Записать сохранение SMH» записывает выделенные объекты как сохранение, которое загрузит SMH." } },
 	{ "see", "adopt", "your dupes and saves", "свои дупы и сейвы" },
 	{ "result", "Old SMH animations continue in SAeditor, and back.", "Старые анимации SMH продолжаются в SAeditor — и обратно." },
+	{ "h", "Face poser motion from SMH", "Движение face poser из SMH" },
+	{ "p", "The face sliders of a Stop Motion Helper save are matched by the flex name as well as by number, so a face poser motion saved in SMH keys the face of the model in GM:FM.",
+		"Ползунки лица из сохранения Stop Motion Helper находят флекс и по имени, и по номеру, поэтому движение face poser, записанное в SMH, ставит ключи лицу модели в GM:FM." },
 } })
 
 ---------------------------------------------------------------------
@@ -748,8 +769,8 @@ UI.AddGuide({ id = "sa_good", order = 10.5, section = "anim", icon = "icon16/sta
 			"Замах (anticipation): перед большим движением — маленькое в обратную сторону. Присед перед прыжком, отвод руки перед броском. «Ещё…» → «С замахом» делает это для одного отрезка.",
 			"Ничто не стоит совсем неподвижно: в долгой паузе оставьте едва заметное движение (moving hold), иначе персонаж выглядит застывшим." } },
 	{ "h", "5. Overlap and follow-through", "5. Захлёст и доводка" },
-	{ "p", "Parts of a body do not move together. The hips lead, the chest follows, the head and the hands come last and go on a little after the body has stopped. With Bone keys on, shift the keys of the head and the arms 2–4 frames later than the body's.",
-		"Части тела не двигаются одновременно. Таз ведёт, грудь следует, голова и кисти приходят последними и продолжают чуть-чуть после того, как тело остановилось. С включёнными «Ключами костей» сдвиньте ключи головы и рук на 2–4 кадра позже ключей тела." },
+	{ "p", "Parts of a body do not move together. The hips lead, the chest follows, the head and the hands come last and go on a little after the body has stopped. Open out the track (double-click its name) and shift the keys of the head and the arms 2–4 frames later than the body's.",
+		"Части тела не двигаются одновременно. Таз ведёт, грудь следует, голова и кисти приходят последними и продолжают чуть-чуть после того, как тело остановилось. Раскройте трек (двойной щелчок по имени) и сдвиньте ключи головы и рук на 2–4 кадра позже ключей тела." },
 	{ "img", "speditor/help/bonekeys.jpg", "Bone keys: the selected bone has its own row and its own rhythm; ghosts show its pose at the keys around.",
 		"Ключи костей: у выделенной кости своя строка и свой ритм; призраки показывают её позу в соседних ключах." },
 	{ "h", "6. Life: breathing, blinking, the face", "6. Жизнь: дыхание, моргание, лицо" },
@@ -806,8 +827,8 @@ UI.AddGuide({ id = "sa_good", order = 10.5, section = "anim", icon = "icon16/sta
 
 -- b0.1: people could not find how to animate the eyes (Workshop comments) — a guide per body part
 UI.AddGuide({ id = "sa_body", order = 12.2, section = "anim", icon = "icon16/user.png", title = { en = "Animating hands, legs, eyes and head", ru = "Анимация рук, ног, глаз и головы" }, blocks = {
-	{ "p", "Every part of a character is animated the same way: pose it, press K, go to another frame, pose it again, press K. What differs is how each part is posed. Bone keys (the branch button of the timeline) let every part keep keys of its own.",
-		"Любая часть персонажа анимируется одинаково: поставьте её, нажмите K, перейдите на другой кадр, поставьте снова, нажмите K. Отличается только то, как ставится каждая часть. «Ключи костей» (кнопка с веткой на таймлайне) дают каждой части свои ключи." },
+	{ "p", "Every part of a character is animated the same way: pose it, press K, go to another frame, pose it again, press K. What differs is how each part is posed. With Auto key every part keeps keys of its own: open out the track (double-click its name) to see them.",
+		"Любая часть персонажа анимируется одинаково: поставьте её, нажмите K, перейдите на другой кадр, поставьте снова, нажмите K. Отличается только то, как ставится каждая часть. С автоключом у каждой части свои ключи: раскройте трек (двойной щелчок по имени), чтобы их увидеть." },
 	{ "h", "Hands and arms", "Кисти и руки" },
 	{ "steps",
 		en = { "Turn the rig on (R, or the doll button of the viewport bar): the hands get boxes, the elbows diamonds.",
@@ -1041,4 +1062,13 @@ UI.AddGuide({ id = "sa_rec_npcs", order = 12.6, section = "anim", icon = "icon16
 	{ "tip", "In the GM:FM gamemode this is how NPCs get into a take — there is no spawn menu. In Sandbox it works the same, next to the spawn menu.",
 		"В режиме GM:FM только так NPC и попадают в дубль — меню спавна там нет. В Sandbox всё работает так же, вместе с меню спавна." },
 	{ "try", "Open NPCs of the take", "Открыть «NPC дубля»", fn = function() SA.OpenNPCPicker() end },
+} })
+
+-- (b0.2.7, n3wtun) the tween machine: a step of the selected objects toward or away from the keys around a frame
+UI.AddGuide({ id = "sa_tween", order = 10.6, icon = "icon16/arrow_switch.png", title = { en = "Tween machine: between the keys", ru = "Твин: между ключами" }, blocks = {
+	{ "p", "A pose that is almost right does not need to be posed again. Move the playhead between two keys, select the objects, then right click the object's row → Tween the selection here. The steps: toward the previous key, toward the next key, relax (toward the middle of the two keys), push (away from the middle, the pose gets more of its own shape) and pull (back toward the middle). Each one at 25, 50 or 100 %.",
+		"Почти правильную позу не нужно ставить заново. Переведите курсор между двумя ключами, выделите объекты и правым кликом по строке объекта выберите Твин выделенного здесь. Шаги: к предыдущему ключу, к следующему ключу, релакс (к середине между двумя ключами), push (от середины: поза приобретает больше собственной формы) и pull (обратно к середине). Каждый шаг на 25, 50 или 100 %." },
+	{ "p", "A step writes a key at the playhead, so the result plays like any key and Undo takes it back. The steps work on the objects' bodies (position, turn, bones, flexes); a face track is tweened by its own keys.",
+		"Шаг записывает ключ на курсоре, поэтому результат проигрывается как любой ключ, а Отмена его убирает. Шаги работают с телом объекта (место, поворот, кости, флексы); лицо твинится своими ключами." },
+	{ "see", "sa_keys", "the keys and the timeline", "ключи и таймлайн" },
 } })

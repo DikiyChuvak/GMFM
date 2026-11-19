@@ -339,6 +339,70 @@ function S.GetTransform(ent)
 	return ent:GetPos(), ent:GetAngles()
 end
 
+-- (b0.2.7, LVS and the like) the parts of a vehicle that are physics of their own: its wheels, their
+-- steering handlers and the track parts. The game moves them only through their constraints (ropes,
+-- ballsockets, elastics), so a body moved by a key left them behind: they fell asleep where they were
+-- (measured in game: a trailer's wheels stayed 255 units behind after a 300-unit key). A rig takes its
+-- parts along: they are frozen and placed at the body's place, each with the offset it had when the
+-- rig was first placed. Only parts whose base is this body (LVS sets it), not a vehicle towed by it.
+S.RIG_CLASSES = { lvs_wheeldrive_wheel = true, lvs_wheeldrive_steerhandler = true, lvs_wheeldrive_trackphysics = true }
+
+-- the rig of an entity (its parts with their offsets), built on the body's place as it is now; nil when
+-- it has none. A body without parts is looked at again after half a second (LVS makes the wheels a
+-- moment after it spawns).
+function S.RigOf(ent)
+	if ent.SPeditor_Rig ~= nil then
+		if ent.SPeditor_Rig then return ent.SPeditor_Rig end
+		if CurTime() < (ent.SPeditor_RigLater or 0) then return nil end
+	end
+	local group = constraint.GetAllConstrainedEntities(ent) or {}
+	local parts = {}
+	for e in pairs(group) do
+		if IsValid(e) and e ~= ent and S.RIG_CLASSES[e:GetClass()] and e.GetBase and e:GetBase() == ent then parts[e] = true end
+	end
+	-- a steering handler has no base: it is a part when a ballsocket joins it to a part of the rig
+	for e in pairs(group) do
+		if IsValid(e) and e:GetClass() == "lvs_wheeldrive_steerhandler" and not e.GetBase then
+			for _, c in pairs(constraint.GetTable(e) or {}) do
+				local other = c.Ent1 == e and c.Ent2 or c.Ent1
+				if parts[other] then parts[e] = true break end
+			end
+		end
+	end
+	local rig = {}
+	for e in pairs(parts) do
+		local lp, la = WorldToLocal(e:GetPos(), e:GetAngles(), ent:GetPos(), ent:GetAngles())
+		rig[#rig + 1] = { ent = e, pos = lp, ang = la }
+	end
+	if #rig == 0 then
+		ent.SPeditor_Rig = false
+		ent.SPeditor_RigLater = CurTime() + 0.5
+		return nil
+	end
+	ent.SPeditor_Rig = rig
+	return rig
+end
+
+-- the rig's parts at the body's new place: frozen (they do not fall apart), set where the offsets put them.
+-- travel: the distance the body has rolled (S.TravelAt, in units): a wheel turns about its axle by it,
+-- as a wheel that rolls without slipping does (LVS: the roll of the wheel is what its tracks scroll by).
+-- LVS wheels turn in the roll (r) of their angles, and forward travel is a negative roll (measured in game).
+function S.RigPlace(rig, pos, ang, travel)
+	if not rig then return end
+	for _, p in ipairs(rig) do
+		local e = p.ent
+		if IsValid(e) then
+			local po = e:GetPhysicsObject()
+			if IsValid(po) then po:EnableMotion(false) end
+			local radius = e.GetRadius and e:GetRadius() or 0
+			local roll = (travel and radius > 0) and -math.deg(travel / radius) or 0
+			local np, na = LocalToWorld(p.pos, p.ang + Angle(0, 0, roll), pos, ang)
+			e:SetPos(np)
+			e:SetAngles(na)
+		end
+	end
+end
+
 function S.SetTransform(ent, pos, ang)
 	if S.IsRagdoll(ent) then
 		local root = ent:GetPhysicsObjectNum(0)
@@ -357,8 +421,11 @@ function S.SetTransform(ent, pos, ang)
 			end
 		end
 	else
+		-- the rig is read where the body stands before it moves (its parts' offsets)
+		local rig = S.RigOf(ent)
 		ent:SetPos(pos)
 		ent:SetAngles(ang)
+		S.RigPlace(rig, pos, ang, ent.SPeditor_Travel)
 	end
 end
 
@@ -2044,6 +2111,7 @@ end)
 -- their fade distances pushed past the map — and get the map's own back when the last one leaves.
 ---------------------------------------------------------------------
 local portalFade = {}
+local portalOpened = {}   -- (b0.2.7) doors between areas (func_areaportal) that the editor opened
 local function holdPortals(on)
 	if on then
 		for _, e in ipairs(ents.FindByClass("func_areaportalwindow")) do
@@ -2051,6 +2119,13 @@ local function holdPortals(on)
 				portalFade[e] = { tonumber(e:GetInternalVariable("m_flFadeStartDist")) or 0, tonumber(e:GetInternalVariable("m_flFadeDist")) or 0 }
 				e:Fire("SetFadeStartDistance", "60000")
 				e:Fire("SetFadeEndDistance", "65000")
+			end
+		end
+		-- (b0.2.7) the solid kind of areaportal (hospitals, gm_nomercyhospital) shuts by its own input
+		for _, e in ipairs(ents.FindByClass("func_areaportal")) do
+			if not portalOpened[e] then
+				portalOpened[e] = true
+				e:Fire("Open")
 			end
 		end
 		return
@@ -2062,6 +2137,11 @@ local function holdPortals(on)
 		end
 	end
 	portalFade = {}
+	-- a door the map starts shut (no "Start Open" flag) goes back to shut
+	for e in pairs(portalOpened) do
+		if IsValid(e) and not e:HasSpawnFlags(1) then e:Fire("Close") end
+	end
+	portalOpened = {}
 end
 S.HoldAreaPortals = holdPortals
 
@@ -2077,7 +2157,7 @@ SPeditor.Hook("PlayerDisconnected", "SPeditor.AreaPortals", function(ply)
 end)
 -- a map cleanup makes the windows anew with the map's distances
 SPeditor.Hook("PostCleanupMap", "SPeditor.AreaPortals", function()
-	portalFade = {}
+	portalFade, portalOpened = {}, {}
 	if portalsWanted() then holdPortals(true) end
 end)
 

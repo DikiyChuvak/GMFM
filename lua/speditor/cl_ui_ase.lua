@@ -236,6 +236,21 @@ function UI.BuildASE(body)
 	local cur = { ent = nil, scope = "all" }   -- what the presets and controls show
 	local rebuildControls, rebuildPresets, rebuildTree, addSkeleton
 
+	-- (b0.2.6-misc.1) the hand whose Finger Poser is shown: the selected hand or finger bone, or the
+	-- fingers' group / the hand's bone picked in the tree
+	local function handSide(ent)
+		local F = SPeditor.Fingers
+		if not F or not isModel(ent) then return nil end
+		local s = C.selected == ent and F.SideOf(ent, C.selBone)
+		if s then return s end
+		local g = string.match(cur.scope or "", "^bones:(.+)Fingers$")
+		if g == "Right" or g == "Left" then
+			s = string.sub(g, 1, 1)
+			return F.Hands(ent)[s] and s or nil
+		end
+		return F.SideOf(ent, tonumber(string.match(cur.scope or "", "^bone:(%d+)$") or ""))
+	end
+
 	-----------------------------------------------------------------
 	-- Toolbar: "+", search, gear
 	-----------------------------------------------------------------
@@ -476,6 +491,7 @@ function UI.BuildASE(body)
 		presets:Clear()
 		rowAlt = false
 		local ent = cur.ent
+		cur.hand = handSide(ent)
 		if not IsValid(ent) then
 			presetHeader(L("no_selection"))
 			return
@@ -531,6 +547,20 @@ function UI.BuildASE(body)
 			return
 		end
 
+		-- (b0.2.6-misc.1) a hand selected: GMod's finger presets for it
+		local hand = cur.hand and SPeditor.Fingers.Hands(ent)[cur.hand]
+		if hand then
+			local F = SPeditor.Fingers
+			presetHeader(L("fp_hand_" .. cur.hand))
+			for _, pr in ipairs(F.PRESETS) do
+				presetRow(L("fp_" .. pr.id), function() F.ApplyPreset(ent, hand, pr.id) end)
+			end
+			local other = F.Hands(ent)[cur.hand == "L" and "R" or "L"]
+			if other then
+				presetRow(L("fp_mirror"), function() F.Mirror(ent, hand) end)
+				presetRow(L("fp_other"), function() C.Select(ent, other.bone) end)
+			end
+		end
 		if ent:GetFlexNum() > 0 then
 			presetHeader(L("face"))
 			presetRow(L("face_preset_default"), function() applyFlexPreset(ent, "default") end)
@@ -651,6 +681,23 @@ function UI.BuildASE(body)
 				C.gizmo.mode = "scale"
 			end)
 		end
+	end
+
+	-- (b0.2.6-misc.1) the Finger Poser (as GMod's tool): a dot per joint, the curl of the whole hand
+	local function fingerControls(ent, side)
+		local F = SPeditor.Fingers
+		local hand = F.Hands(ent)[side]
+		if not hand then return end
+		ctrlHeader(L("fp_hand_" .. side), side == "R" and COL.RED or COL.GREEN)
+		local fp = vgui.Create("SPeditorFingerPoser", controls)
+		fp:Dock(TOP)
+		fp:DockMargin(0, 2, 0, 2)
+		fp:Setup(ent, hand, UI.S(300))
+		fp:SetTooltip(L("fp_tip"))
+		ctrl({ label = L("fp_curl"), min = -0.5, max = 1, value = F.Curl(ent, hand), default = 0, decimals = 2,
+			onChange = function(v, final) F.SetCurl(ent, hand, v, final) end,
+			getter = function() return IsValid(ent) and F.Curl(ent, hand) or nil end })
+		UI.ToggleRow(controls, L("fp_restrict"), function() return F.Restricted() end, function(v) F.SetRestricted(v) end)
 	end
 
 	local function lightControls(ent)
@@ -1083,6 +1130,7 @@ function UI.BuildASE(body)
 		controls:Clear()
 		ctrlAlt = false
 		local ent = cur.ent
+		cur.hand = handSide(ent)
 		if not IsValid(ent) then
 			ctrlTitle = L("no_selection")
 			return
@@ -1094,6 +1142,7 @@ function UI.BuildASE(body)
 		if C.IsEffect(ent) then effectControls(ent) return end
 
 		local scope = cur.scope
+		if cur.hand then fingerControls(ent, cur.hand) end
 		local faceGroup = string.match(scope, "^face:(.+)$")
 		local boneGroup = string.match(scope, "^bones:(.+)$")
 		local oneBone = tonumber(string.match(scope, "^bone:(%d+)$") or "")
@@ -1270,6 +1319,7 @@ function UI.BuildASE(body)
 
 		if C.IsAux(ent) then
 			m:AddOption(L("aim_at"), function() C.OpenAimMenu(ent) end)
+			if C.IsLight(ent) then m:AddOption(L("look_from_light"), function() C.LookFromLight(ent) end):SetIcon("icon16/lightbulb.png") end
 			if C.IsCamera(ent) then
 				m:AddOption(L("look_through"), function() C.StartViewCamera(ent) end)
 				m:AddOption(L("match_cam_work"), function() C.MatchCameraToWork(ent) end)
@@ -1557,6 +1607,10 @@ function UI.BuildASE(body)
 				node:SetExpanded(true)
 				tree:SetSelectedItem(node)
 			end
+		elseif handSide(ent) ~= cur.hand then
+			-- (b0.2.6-misc.1) a hand picked or left on the same model: its Finger Poser comes or goes
+			rebuildPresets()
+			rebuildControls()
 		end
 	end)
 

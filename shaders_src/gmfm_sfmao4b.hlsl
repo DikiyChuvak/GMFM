@@ -24,6 +24,36 @@ const float4 g_Params : register(c0);
 const float4 g_View   : register(c1);
 const float4 g_Seed   : register(c2);
 
+// (b0.2.7) The depth as the float target holds it: (view depth / far)^2. PACKED_DEPTH (the *_pk
+// shaders, Linux / macOS: no float target can be drawn into there): three 8-bit fog passes (half a
+// unit to 128 units, 2 units to 512, 8 units to 2048; past that, open as the sky), packed and then
+// smoothed into 16 bits by gmfm_depthsmooth (R = high byte, G = low byte of depth / far).
+// quantStep: the size of one step of the fog passes there, in units (0: float depth).
+#ifdef PACKED_DEPTH
+#define NORMAL_STEP 1.0
+// c3.xy (b0.2.7): a quarter of a texel. The depth is point sampled, and under the game's OpenGL
+// layer the quad's coordinates fall on the borders between texels: a lookup there took the row
+// above or below at random — rows doubled and skipped, the smoothing and the normals in steps
+// (measured: row-to-row depth 0, 3, 0, 2.5 … for an even 1.4). A quarter texel in is inside the
+// right one whether the coordinate sits on a border or a centre.
+const float4 g_Texel : register(c3);
+float rawDepth(float2 uv)
+{
+	// smoothed into 16 bits by gmfm_depthsmooth: R = high byte, G = low byte of depth / far
+	float2 t = tex2D(DepthSampler, uv + g_Texel.xy).rg;
+	float d = t.r + t.g / 255.0;
+	return d * d;
+}
+float quantStep(float dUnits, float far)
+{
+	return (dUnits < 0.9 * far / 64.0) ? far / (64.0 * 255.0) : ((dUnits < 0.9 * far / 16.0) ? far / (16.0 * 255.0) : far / (4.0 * 255.0));
+}
+#else
+#define NORMAL_STEP 1.0
+float rawDepth(float2 uv) { return tex2D(DepthSampler, uv).r; }
+float quantStep(float dUnits, float far) { return 0.0; }
+#endif
+
 static const float3 KERNEL[16] = {
 	float3(0.382308, 0.077423, 0.225959), float3(-0.209320, 0.143444, 0.244130),
 	float3(-0.022970, -0.001453, 0.052189), float3(0.302899, -0.102654, 0.516715),
@@ -38,7 +68,7 @@ static const float3 KERNEL[16] = {
 float depthAt(float2 uv)
 {
 	// max(): the blended value can come out a hair below zero next to the camera (sqrt -> NaN)
-	return sqrt(max(tex2D(DepthSampler, uv).r, 0.0)) * g_Params.z;
+	return sqrt(max(rawDepth(uv), 0.0)) * g_Params.z;
 }
 
 // sin() is not there in ps_2_b: Dave Hoskins' hash12
@@ -58,13 +88,13 @@ float3 viewPos(float2 uv)
 
 float4 main(float2 uv : TEXCOORD0) : COLOR
 {
-	float sky = tex2D(DepthSampler, uv).r;
+	float sky = rawDepth(uv);
 	float3 p = viewPos(uv);
 
-	float3 pr = viewPos(uv + float2(g_View.z, 0));
-	float3 pl = viewPos(uv - float2(g_View.z, 0));
-	float3 pd = viewPos(uv + float2(0, g_View.w));
-	float3 pu = viewPos(uv - float2(0, g_View.w));
+	float3 pr = viewPos(uv + float2(g_View.z * NORMAL_STEP, 0));
+	float3 pl = viewPos(uv - float2(g_View.z * NORMAL_STEP, 0));
+	float3 pd = viewPos(uv + float2(0, g_View.w * NORMAL_STEP));
+	float3 pu = viewPos(uv - float2(0, g_View.w * NORMAL_STEP));
 	float3 dx = (length(pr - p) < length(p - pl)) ? (pr - p) : (p - pl);
 	float3 dy = (length(pd - p) < length(p - pu)) ? (pd - p) : (p - pu);
 	float3 n = normalize(cross(dy, dx) + float3(0, 0, -1e-6));
@@ -89,7 +119,10 @@ float4 main(float2 uv : TEXCOORD0) : COLOR
 		float3 s = o + k * reach;
 		s.z = max(s.z, 1.0);
 		float2 su = s.xy / (s.z * g_View.xy) * float2(0.5, -0.5) + 0.5;
-		float dz = s.z - depthAt(su);
+		float seen = depthAt(su);
+		// packed depth (b0.2.7): a point behind by less than half a step of the depth is not hidden —
+		// the steps of a flat floor read as ledges and darkened it in bands
+		float dz = s.z - seen - 0.5 * quantStep(seen, g_Params.z);
 		float c = saturate(1.0 / (dz * g_Params.y + 0.618) - 0.618);
 		occ += (dz > 0) ? c : 0;
 	}

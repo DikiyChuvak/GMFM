@@ -217,7 +217,8 @@ local function vp2Frozen(src, pw, ph)
 	end
 	-- on a change: anything dragged (gizmo, slider, camera) counts as one, the rest is compared
 	local SA = SPeditor.Component and SPeditor.Component("saeditor").SA
-	if C.gizmo.drag or input.IsMouseDown(MOUSE_LEFT) or (SA and SA.playing) then
+	-- (b0.2.6-misc.1) and a navigation (the Secondary Viewport can be flown now)
+	if C.gizmo.drag or C.camMode or C.navCam or input.IsMouseDown(MOUSE_LEFT) or (SA and SA.playing) then
 		vp2.sig = nil
 		if not fastNow and now - vp2.at < VP2_BUSY then return true end
 		vp2.at = now
@@ -304,10 +305,28 @@ local function buildViewport(title, key, pass)
 	UI.IconButton(bar, "icon16/world.png", L("view_space"), function()
 		C.gizmo.space = (C.gizmo.space == "world") and "local" or "world"
 	end, function() return C.gizmo.space == "world" end)
-	UI.IconButton(bar, "icon16/user_go.png", L("ik_hint") .. " (I)", function()
+	local ikBtn = UI.IconButton(bar, "icon16/user_go.png", L("ik_hint") .. " (I)\n" .. L("ik_rclick"), function()
 		C.SetIK(not C.gizmo.ik)
 		if C.gizmo.ik then SPeditor.Notify(L("ik_hint"), 0) end
 	end, function() return C.gizmo.ik end)
+	-- (b0.2.6-misc.1) what IK does, in one place (they were spread over the View menu)
+	local function ikMenu()
+		local m = SPeditor.UI.Menu()
+		m:AddOption(L("ik_hint"), function() C.SetIK(not C.gizmo.ik) end):SetChecked(C.gizmo.ik and true or false)
+		m:AddOption(L("autopose"), function() C.SetAutoPose(not C.AutoPoseOn()) end):SetChecked(C.AutoPoseOn())
+		m:AddSpacer()
+		m:AddOption(L("ik_feet"), function() C.SetIKFeet(not C.gizmo.ikFeet) end):SetChecked(C.gizmo.ikFeet and true or false)
+		m:AddOption(L("ik_hands"), function() C.SetIKHands(not C.gizmo.ikHands) end):SetChecked(C.gizmo.ikHands and true or false)
+		m:Open()
+	end
+	ikBtn.DoRightClick = ikMenu
+	-- (b0.2.6-misc.1) Auto pose (cl_autopose.lua): lit while it acts (it needs IK or the rig, and turns IK on)
+	local apBtn = UI.IconButton(bar, "icon16/group_go.png", L("autopose") .. "\n" .. L("ik_rclick"), function()
+		local on = not C.AutoPoseActive()
+		C.SetAutoPose(on)
+		SPeditor.Notify(L(on and "autopose_on" or "autopose_off"), 0)
+	end, function() return C.AutoPoseActive() end)
+	apBtn.DoRightClick = ikMenu
 	-- the character rig (a0.9, cl_rig.lua)
 	UI.IconButton(bar, "icon16/user_suit.png", L("rig_hint") .. " (" .. C.Keys.Text("rig") .. ")", function()
 		C.SetRig(not C.RigOn())
@@ -621,6 +640,28 @@ function UI.Open()
 			end)
 		end):SetIcon("icon16/disk.png")
 		m:AddOption(L("load_scene") .. "…", function() Dock.ShowPage("scene") end):SetIcon("icon16/folder_go.png")
+		-- (b0.2.7) a duplicator file of the game (data/duplicator/…) placed where the player looks
+		local dupes = m:AddSubMenu(L("dupe_import"))
+		dupes:SetIcon("icon16/page_white_copy.png")
+		local found = {}
+		for _, f in ipairs(file.Find("duplicator/*.txt", "DATA")) do found[#found + 1] = "duplicator/" .. f end
+		for _, d in ipairs(file.Find("duplicator/*", "DATA")) do
+			if d ~= "." and d ~= ".." and not string.find(d, "%.") then
+				for _, f in ipairs(file.Find("duplicator/" .. d .. "/*.txt", "DATA")) do found[#found + 1] = "duplicator/" .. d .. "/" .. f end
+			end
+		end
+		table.sort(found)
+		if #found == 0 then
+			dupes:AddOption(L("dupe_none"))
+		end
+		for i = 1, math.min(#found, 60) do
+			local path = found[i]
+			dupes:AddOption(string.gsub(path, "^duplicator/", ""), function()
+				net.Start(Net.ImportDupe)
+				net.WriteString(path)
+				net.SendToServer()
+			end)
+		end
 		m:AddOption(L("act_render") .. "…", function() UI.OpenRenderDialog() end):SetIcon("icon16/picture_save.png")
 		-- b0.2.6: SFM's Export Poster — a still refined pass by pass
 		m:AddOption(L("poster_title") .. "…", function() UI.OpenPoster() end):SetIcon("icon16/picture.png")
@@ -790,6 +831,8 @@ function UI.Open()
 		steps("gmfm_snap_scale", { 0.05, 0.1, 0.25, 0.5 }, "view_snap_scale")
 		m:AddOption(L("ik_feet"), function() C.SetIKFeet(not C.gizmo.ikFeet) end):SetChecked(C.gizmo.ikFeet and true or false)
 		m:AddOption(L("ik_hands"), function() C.SetIKHands(not C.gizmo.ikHands) end):SetChecked(C.gizmo.ikHands and true or false)
+		-- (b0.2.6-misc.1) Auto pose (cl_autopose.lua)
+		m:AddOption(L("autopose"), function() C.SetAutoPose(not C.AutoPoseOn()) end):SetChecked(C.AutoPoseOn())
 		-- ambient occlusion in the viewports (b0.2.6, gmfm_vp_ssao)
 		local ao = m:AddSubMenu(L("view_vp_ao"))
 		local cur = SPeditor.Render.ViewportAOMode and SPeditor.Render.ViewportAOMode() or 1
@@ -989,6 +1032,7 @@ function UI.Open()
 	Dock.Reset("default")
 	Dock.RestoreLast()
 	UI.builtScale = UI.Scale()
+	UI.builtW, UI.builtH = ScrW(), ScrH()
 	hook.Run("SPeditor_UIBuilt")
 end
 
@@ -1029,7 +1073,8 @@ function UI.ShowCompPage(id)
 end
 
 function UI.Close()
-	if #Dock.windows > 0 then Dock.SaveLast() end
+	-- the layout as fractions of the screen it was built on (it may have changed since)
+	if #Dock.windows > 0 then Dock.SaveLast(UI.builtW, UI.builtH) end
 	setKeyboardInput(false)
 	Dock.Clear()
 	if IsValid(UI.ColorPopup) then UI.ColorPopup:Remove() end
@@ -1065,6 +1110,8 @@ function UI.Rebuild()
 	local fullbright = C.fullbright
 	-- the scale changed: the windows opened by hand get the size they would have at the new one
 	local k = UI.Scale() / (UI.builtScale or UI.Scale())
+	-- the resolution changed: the windows opened by hand keep their place on the screen
+	local kx, ky = ScrW() / (UI.builtW or ScrW()), ScrH() / (UI.builtH or ScrH())
 	local extra = {}
 	for key in pairs(REOPEN) do
 		local w = Dock.ByKey(key)
@@ -1083,10 +1130,22 @@ function UI.Rebuild()
 			local ww = math.min(math.max(math.Round(e.w * k), w.minW or 0), ScrW())
 			local hh = math.min(math.max(math.Round(e.h * k), w.minH or 0), ScrH() - MENU_H - STATUS_H)
 			w:SetSize(ww, hh)
-			w:SetPos(math.Clamp(e.x, 0, ScrW() - ww), math.Clamp(e.y, MENU_H, math.max(ScrH() - STATUS_H - hh, MENU_H)))
+			w:SetPos(math.Clamp(math.Round(e.x * kx), 0, ScrW() - ww),
+				math.Clamp(math.Round(e.y * ky), MENU_H, math.max(ScrH() - STATUS_H - hh, MENU_H)))
 		end
 	end
 end
+
+-- (b0.2.6-misc.1) The game's resolution changed (Options → Video) with the editor open: its bars
+-- and windows were laid out for the old size and stayed in a corner of the new one. The editor
+-- is rebuilt for the new screen; the automatic interface scale follows the height, so the fonts too.
+SPeditor.Hook("OnScreenSizeChanged", "SPeditor.UIResize", function()
+	timer.Create("SPeditor.UIResize", 0.1, 1, function()
+		UI.CreateFonts()
+		local C = SPeditor.Client
+		if C and C.active and UI.builtW and (UI.builtW ~= ScrW() or UI.builtH ~= ScrH()) then UI.Rebuild() end
+	end)
+end)
 
 -- (b0.2.6) The editor's windows are not drawn while a video renders (cl_saeditor_video.lua): every
 -- game frame painted all of them, a few milliseconds each, and a video frame takes several game

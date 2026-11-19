@@ -645,7 +645,10 @@ local floatTargets = {}
 local function getFloatRT(name, w, h)
 	local rt = floatTargets[name]
 	if not rt then
-		rt = GetRenderTargetEx("speditor_" .. name, w, h, RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_NONE, 4 + 8, 0, IMAGE_FORMAT_RGBA16161616F or 24)
+		-- (b0.2.6-misc.1) the format that works on this system (R.AccumFormat): float on Windows; on
+		-- Linux a float target came back black, and every render with it
+		local fmt, tag = R.AccumFormat()
+		rt = GetRenderTargetEx("speditor_" .. name .. tag, w, h, RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_NONE, 4 + 8, 0, fmt)
 		floatTargets[name] = rt
 	end
 	return rt
@@ -666,6 +669,153 @@ local function drawFull(mat, rt, alpha)
 	render.SetMaterial(mat)
 	render.DrawScreenQuad()
 end
+
+-- (b0.2.6-misc.1) Does a target of this format take a frame laid on as the averaging lays it, and give
+-- it back? An 8-bit frame of a known colour is blended into it and copied out to 8 bits again.
+-- On Linux (the D3D -> OpenGL layer) float targets passed every step and came back black: the
+-- renders, their preview and the saved pictures were black (gmfm_rendertest, steps 3 and 4).
+local probeN = 0
+function R.ProbeFormat(fmt, w, h)
+	w, h = w or 32, h or 16
+	probeN = probeN + 1
+	local src = getRT("probe_src_" .. w .. "x" .. h, w, h)
+	render.PushRenderTarget(src)
+	render.Clear(200, 100, 50, 255, true, true)
+	render.PopRenderTarget()
+	local rt = GetRenderTargetEx("gmfm_probe_" .. probeN .. "_" .. tostring(fmt), w, h, RT_SIZE_LITERAL,
+		MATERIAL_RT_DEPTH_NONE, 4 + 8, 0, fmt)
+	render.PushRenderTarget(rt)
+	render.Clear(0, 0, 0, 255)
+	matBlend:SetTexture("$basetexture", src)
+	matBlend:SetFloat("$alpha", 1)
+	render.SetMaterial(matBlend)
+	render.DrawScreenQuad()
+	render.PopRenderTarget()
+	local out = getRT("probe_out_" .. w .. "x" .. h, w, h)
+	render.PushRenderTarget(out)
+	render.Clear(255, 0, 255, 255, true, true)
+	matShow:SetTexture("$basetexture", rt)
+	render.SetMaterial(matShow)
+	render.DrawScreenQuad()
+	render.CapturePixels()
+	local r, g, b = render.ReadPixel(math.floor(w / 2), math.floor(h / 2))
+	render.PopRenderTarget()
+	return math.abs((r or 0) - 200) <= 3 and math.abs((g or 0) - 100) <= 3 and math.abs((b or 0) - 50) <= 3,
+		string.format("%s %s %s", tostring(r), tostring(g), tostring(b))
+end
+
+-- The format of the targets that average frames (the passes of a render, the progressive
+-- occlusion): 16-bit float where it works, else 8-bit (rounding over many passes, but a picture).
+-- Checked once, the first time a render needs it (it must run while the game draws).
+local accFormat, accTag
+function R.AccumFormat()
+	if accFormat then return accFormat, accTag end
+	local f16 = IMAGE_FORMAT_RGBA16161616F or 24
+	if system.IsWindows() or R.ProbeFormat(f16) then
+		accFormat, accTag = f16, ""
+	else
+		accFormat, accTag = IMAGE_FORMAT_RGBA8888, "_8"
+		MsgC(Color(255, 200, 80), "[GM:FM] float render targets do not work on this system: renders average their passes in 8 bits\n")
+	end
+	return accFormat, accTag
+end
+
+---------------------------------------------------------------------
+-- (b0.2.6-misc.1) Linux / macOS: the editor's shaders under two names (R.ShaderName).
+-- The game there (shaderapidx9, mat_autoload_glshaders / mat_autosave_glshaders) writes every
+-- pair of shaders it drew into glshaders.cfg and builds them all again when the next session
+-- starts — before the addon is mounted, so an addon's shader is not found then and is marked
+-- broken for that whole session: it draws nothing (or screenspace_general copies its base
+-- texture), it is not written down at the end, and the session after that it works again. Every
+-- custom shader worked every other session (measured: 16 copies of one shader under 16 names, all
+-- working in one session, all dead in the next, the same with a fresh NVIDIA shader cache).
+-- So every shader drawn there also ships as <name>x_ps20b, a copy (shaders_src/build_vcs.py),
+-- and each session every one is drawn once on a small target, one a frame, a few seconds after
+-- the map has loaded: the first of the two names that works is used — the other one was the one
+-- written down. A shader is never drawn under the name that failed, so the two take turns.
+---------------------------------------------------------------------
+local LIVE_BASES = { "gmfm_depthpack", "gmfm_depthpack2", "gmfm_depthsmooth", "gmfm_depthsmooth2",
+	"gmfm_sfmao4b_pk", "gmfm_sfmaoblur4b_pk", "speditor_ao2_pk", "speditor_ao2_blur_pk",
+	"gmfm_cc2b", "gmfm_grain2b", "gmfm_sfmbloom2b" }
+local live, liveState, liveBad = {}, "wait", {}
+local liveMapAt = IsValid(LocalPlayer()) and -1e9 or nil
+SPeditor.Hook("InitPostEntity", "GMFM.ShaderLive", function() liveMapAt = SysTime() end)
+
+local function shaderAlive(name, n)
+	local W = 16
+	local src = getRT("live_src_" .. W, W, W)
+	local out = getRT("live_out_" .. W, W, W)
+	render.PushRenderTarget(src)
+	render.Clear(200, 100, 50, 255, true, true)
+	render.PopRenderTarget()
+	local m = CreateMaterial("gmfm_live_" .. n .. "_" .. name, "screenspace_general", {
+		["$pixshader"] = name, ["$basetexture"] = "vgui/white", ["$texture1"] = "vgui/white",
+		["$ignorez"] = "1", ["$vertextransform"] = "1", ["$copyalpha"] = "0",
+		-- the numbers as they are (1: no sRGB conversion), so a dead shader's copy is exactly the input
+		["$linearread_basetexture"] = "1", ["$linearread_texture1"] = "1", ["$linearwrite"] = "1",
+		["$alpha_blend"] = "0", ["$alpha_blend_color_overlay"] = "0",
+	})
+	m:SetTexture("$basetexture", src)
+	m:SetTexture("$texture1", src)
+	-- settings that make every one of them change the picture (a colour correction or a grain
+	-- of zero would hand the frame back as it is, as a dead shader does)
+	m:SetFloat("$c0_x", 0.2) m:SetFloat("$c0_y", 1) m:SetFloat("$c0_z", 1) m:SetFloat("$c0_w", 1)
+	m:SetFloat("$c1_x", 1) m:SetFloat("$c1_y", 1) m:SetFloat("$c1_z", 1 / W) m:SetFloat("$c1_w", 1 / W)
+	m:SetFloat("$c2_z", 1 / W) m:SetFloat("$c2_w", 1 / W)
+	render.PushRenderTarget(out)
+	render.Clear(255, 0, 255, 255, true, true)
+	render.SetMaterial(m)
+	render.DrawScreenQuad()
+	render.CapturePixels()
+	local r, g, b = render.ReadPixel(W / 2, W / 2)
+	render.PopRenderTarget()
+	-- dead: nothing drawn (the clear colour), or the base texture handed back as it is
+	return not ((r == 255 and g == 0 and b == 255) or (r == 200 and g == 100 and b == 50))
+end
+
+local function checkShaders()
+	liveState = "running"
+	local i, alias, n = 1, false, 0
+	SPeditor.Hook("PostRender", "GMFM.ShaderLive", function()
+		local base = LIVE_BASES[i]
+		if not base then
+			hook.Remove("PostRender", "GMFM.ShaderLive")
+			liveState = "done"
+			if #liveBad > 0 then
+				MsgC(Color(255, 200, 80), "[GM:FM] these shaders did not load under either name, their effects are off this session: "
+					.. table.concat(liveBad, ", ") .. "\n")
+			end
+			return
+		end
+		n = n + 1
+		local name = base .. (alias and "x" or "") .. "_ps20b"
+		if shaderAlive(name, n) then
+			live[base], i, alias = name, i + 1, false
+		elseif not alias then
+			alias = true                 -- the copy, the next frame
+		else
+			live[base], i, alias = false, i + 1, false
+			liveBad[#liveBad + 1] = base
+		end
+	end)
+end
+-- a few seconds after the map has loaded, without waiting to be asked: the FX clips and the bloom
+-- find their shaders ready
+timer.Create("GMFM.ShaderLiveStart", 1, 0, function()
+	if system.IsWindows() or liveState ~= "wait" then timer.Remove("GMFM.ShaderLiveStart") return end
+	if liveMapAt and SysTime() - liveMapAt >= 3 then checkShaders() end
+end)
+
+-- The name to draw the shader "base" (no _ps20b) under: on Windows always base_ps20b; elsewhere the
+-- one of the two that works this session — nil while they are being checked (the effect waits)
+-- or when neither works (the effect is off)
+function R.ShaderName(base)
+	if system.IsWindows() then return base .. "_ps20b" end
+	if liveState ~= "done" then return nil end
+	return live[base] or nil
+end
+-- true when the names are known (always on Windows)
+function R.ShadersChecked() return system.IsWindows() or liveState == "done" end
 
 -- The alpha channel of a frame may hold depth; make it opaque before blending
 local function opaqueAlpha(rt)
@@ -1171,3 +1321,103 @@ function R.RenderBase(src, W, H, opts)
 	opts.aoDone = nil
 	return out
 end
+
+---------------------------------------------------------------------
+-- (b0.2.6-misc.1) gmfm_rendertest: the stages of a render one by one, each read back as the colour of
+-- the middle pixel — to find where a render goes black (Linux: renders and their preview came
+-- out black while the viewports were fine). Prints to the console; nothing is saved.
+---------------------------------------------------------------------
+local function midPixel(rt, w, h)
+	render.PushRenderTarget(rt)
+	render.CapturePixels()
+	local r, g, b = render.ReadPixel(math.floor(w / 2), math.floor(h / 2))
+	render.PopRenderTarget()
+	return string.format("%s %s %s", tostring(r), tostring(g), tostring(b))
+end
+local function testFloat(label, fmt, src8, w, h)
+	local rt = GetRenderTargetEx("gmfm_rtest_" .. label .. "_" .. math.floor(SysTime() * 1000), w, h, RT_SIZE_LITERAL,
+		MATERIAL_RT_DEPTH_NONE, 4 + 8, 0, fmt)
+	render.PushRenderTarget(rt)
+	render.Clear(0, 0, 0, 255)
+	drawFull(matBlend, src8, 1)
+	render.PopRenderTarget()
+	local out = getRT("rtest_out_" .. w .. "x" .. h, w, h)
+	render.PushRenderTarget(out)
+	render.Clear(255, 0, 255, 255, true, true)
+	drawFull(matShow, rt)
+	render.PopRenderTarget()
+	return midPixel(out, w, h)
+end
+concommand.Add("gmfm_rendertest", function()
+	local W, H = 128, 72
+	hook.Add("PostRender", "gmfm_rendertest", function()
+		hook.Remove("PostRender", "gmfm_rendertest")
+		local function say(fmt, ...) MsgC(Color(120, 200, 255), "[GM:FM render test] ", Color(230, 230, 230), string.format(fmt, ...), "\n") end
+		say("%s; expected colours in brackets", system.IsLinux() and "Linux" or (system.IsOSX() and "macOS" or "Windows"))
+		-- 1. an ordinary 8-bit target, cleared
+		local rt8 = getRT("rtest8_" .. W .. "x" .. H, W, H)
+		render.PushRenderTarget(rt8)
+		render.Clear(200, 100, 50, 255, true, true)
+		render.PopRenderTarget()
+		say("1 clear, 8-bit target: %s  (200 100 50)", midPixel(rt8, W, H))
+		-- 2. copied through the opaque material into another 8-bit target
+		local out = getRT("rtest_out_" .. W .. "x" .. H, W, H)
+		render.PushRenderTarget(out)
+		render.Clear(255, 0, 255, 255, true, true)
+		drawFull(matShow, rt8)
+		render.PopRenderTarget()
+		say("2 copy 8-bit -> 8-bit: %s  (200 100 50)", midPixel(out, W, H))
+		-- 3. the accumulation of a render: an 8-bit frame blended into a float target, back to 8-bit
+		say("3 via RGBA16F (renders' averaging): %s  (200 100 50)", testFloat("16f", IMAGE_FORMAT_RGBA16161616F or 24, rt8, W, H))
+		say("4 via RGBA32F: %s  (200 100 50)", testFloat("32f", IMAGE_FORMAT_RGBA32323232F or 29, rt8, W, H))
+		say("5 via RGBA8888 (blend as in 3): %s  (200 100 50)", testFloat("8", IMAGE_FORMAT_RGBA8888, rt8, W, H))
+		say("5b via RGBA16161616 (16-bit integer): %s  (200 100 50)", testFloat("16i", IMAGE_FORMAT_RGBA16161616 or 25, rt8, W, H))
+		local fmt = R.AccumFormat()
+		say("5c renders average their passes in format %s (%s)", tostring(fmt), fmt == IMAGE_FORMAT_RGBA8888 and "8-bit fallback" or "float")
+		if R.SSAODepthTest then say("5d SSAO depth target: %s", R.SSAODepthTest()) end
+		-- 8. (SSAO on Linux) is a float target written and unreadable by the copy material only, or not
+		-- written at all? Read straight from it, and through a screenspace_general shader as SSAO reads
+		-- its depth (the grain shader at amount 0 is a plain copy)
+		for _, f in ipairs({ { "RGBA32F", IMAGE_FORMAT_RGBA32323232F or 29 }, { "RGBA16F", IMAGE_FORMAT_RGBA16161616F or 24 } }) do
+			local name, fmt = f[1], f[2]
+			local frt = GetRenderTargetEx("gmfm_rtest8_" .. name .. "_" .. math.floor(SysTime() * 1000), W, H, RT_SIZE_LITERAL,
+				MATERIAL_RT_DEPTH_SEPARATE, 4 + 8, 0, fmt)
+			render.PushRenderTarget(frt)
+			render.Clear(200, 100, 50, 255, true, true)
+			render.PopRenderTarget()
+			say("8a %s cleared, read straight: %s  (200 100 50)", name, midPixel(frt, W, H))
+			for _, lr in ipairs({ 0, 1 }) do
+				local m = CreateMaterial("gmfm_rtest8_" .. name .. lr .. "_" .. math.floor(SysTime() * 1000), "screenspace_general", {
+					["$pixshader"] = "gmfm_grain2b_ps20b", ["$basetexture"] = "vgui/white",
+					["$ignorez"] = "1", ["$vertextransform"] = "1", ["$copyalpha"] = "0",
+					["$linearread_basetexture"] = tostring(lr), ["$linearwrite"] = tostring(lr),
+					["$alpha_blend"] = "0", ["$alpha_blend_color_overlay"] = "0",
+				})
+				m:SetTexture("$basetexture", frt)
+				m:SetFloat("$c0_x", 0) m:SetFloat("$c0_y", 1) m:SetFloat("$c0_z", 1) m:SetFloat("$c0_w", 0)
+				m:SetFloat("$c1_z", 1 / W) m:SetFloat("$c1_w", 1 / H)
+				local o = getRT("rtest_out_" .. W .. "x" .. H, W, H)
+				render.PushRenderTarget(o)
+				render.Clear(255, 0, 255, 255, true, true)
+				render.SetMaterial(m)
+				render.DrawScreenQuad()
+				render.PopRenderTarget()
+				say("8%s %s through a shader (linearread %d): %s  (200 100 50, or near it)", lr == 0 and "b" or "c", name, lr, midPixel(o, W, H))
+			end
+		end
+		-- 6. the scene itself, drawn as a render draws it
+		local UI = SPeditor.UI
+		local src = UI and IsValid(UI.PrimaryVP) and UI.PrimaryVP.GetSource and UI.PrimaryVP.GetSource()
+		if src then
+			local ok, err = pcall(function()
+				local rt = R.RenderToRT(src, W, H, false)
+				say("6 scene, as a render draws it: %s  (not 0 0 0 / 16 16 16 unless the view is dark)", midPixel(rt, W, H))
+				local rtf = R.RenderToRT(src, W, H, true)
+				say("7 scene, fullbright: %s", midPixel(rtf, W, H))
+			end)
+			if not ok then say("6 scene: Lua error %s", tostring(err)) end
+		else
+			say("6 scene: no Primary Viewport source (open the editor)")
+		end
+	end)
+end)

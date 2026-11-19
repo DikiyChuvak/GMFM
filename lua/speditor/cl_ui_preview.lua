@@ -22,6 +22,7 @@ local L  = SPeditor.L
 local COL = UI.PAL
 
 local RT_SIZE = 512
+local rowsOf   -- the rows of a model's Sequences, Activities and Skins tabs (below)
 local previews = setmetatable({}, { __mode = "k" })    -- [panel] = true
 local serial = 0
 
@@ -143,7 +144,12 @@ function UI.ModelPreview(parent)
 		self.SPPath = path
 		drop(self)
 		self.SPSeq, self.SPSkin, self.SPBoxes = nil, 0, nil
+		-- (b0.2.6-misc.1) the profiler (gmfm_prof): loading a model blocks the game until it is in;
+		-- its materials load on the first draw (the PostRender hook SPeditor.Previews)
+		local P = SPeditor.Prof
+		local t = SysTime()
 		local ent = ClientsideModel(path, RENDERGROUP_OPAQUE)
+		if P and P.on then P.Add("cl model browser: load the preview model", SysTime() - t) end
 		if not IsValid(ent) then return end
 		ent:SetNoDraw(true)
 		ent:SetIK(false)
@@ -326,27 +332,78 @@ function UI.ModelPreviewTabs(parent, mp)
 		filter:Dock(TOP)
 		filter:DockMargin(2, 2, 2, 2)
 		filter:SetTall(UI.S(20))
-		local list = vgui.Create("DListView", host)
+		-- (b0.2.6-misc.1) A character has a thousand sequences and more (the citizens' shared
+		-- animations). A DListView keeps a few panels per line and walks them all every frame:
+		-- filled in full it froze the game on every model the cursor rested on, and while shown it
+		-- took the frame from ~5 to ~25 ms (measured with gmfm_prof). One panel now draws only the
+		-- rows in sight; the rows are worked out when the tab is first shown (Want).
+		local list = vgui.Create("DPanel", host)
 		list:Dock(FILL)
-		list:SetHeaderHeight(0)
-		list:SetMultiSelect(false)
-		list:AddColumn("")
-		if UI.StyleListView then UI.StyleListView(list) end
-		host.rows = {}
+		list:DockMargin(2, 0, 2, 2)
+		local bar = vgui.Create("DVScrollBar", list)
+		bar:Dock(RIGHT)
+		local ROW = UI.S(17)
+		host.rows, host.shown, host.sel = {}, {}, nil
+		local function relayout() bar:SetUp(list:GetTall(), #host.shown * ROW) end
+		list.PerformLayout = function() relayout() end
+		list.OnMouseWheeled = function(_, d) return bar:OnMouseWheeled(d) end
+		local function rowAt(my)
+			return math.floor((my - bar:GetOffset()) / ROW) + 1
+		end
+		list.Paint = function(s2, w, h)
+			surface.SetDrawColor(COL.LIST_BG or COL.BG)
+			surface.DrawRect(0, 0, w, h)
+			local off = bar:GetOffset()
+			local rw = w - (bar:IsVisible() and bar:GetWide() or 0)
+			local first = math.max(1, math.floor(-off / ROW) + 1)
+			local hot
+			if s2:IsHovered() then
+				local mx, my = s2:CursorPos()
+				if mx < rw then hot = rowAt(my) end
+			end
+			for i = first, math.min(#host.shown, first + math.ceil(h / ROW)) do
+				local r = host.shown[i]
+				local y = (i - 1) * ROW + off
+				if r[2] == host.sel or i == hot then
+					surface.SetDrawColor(r[2] == host.sel and COL.SEL or COL.HOVER)
+					surface.DrawRect(0, y, rw, ROW)
+				end
+				draw.SimpleText(r[1], "SPeditor.Small", 6, y + ROW / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+			end
+		end
+		list.OnMousePressed = function(s2, code)
+			if code ~= MOUSE_LEFT then return end
+			local _, my = s2:CursorPos()
+			local r = host.shown[rowAt(my)]
+			if r then
+				host.sel = r[2]
+				onPick(r[2])
+			end
+		end
 		function host:Fill(rows, current)
 			self.rows = rows
 			local q = string.lower(filter:GetValue() or "")
-			list:Clear()
+			local shown = {}
 			for _, r in ipairs(rows) do
-				if q == "" or string.find(string.lower(r[1]), q, 1, true) then
-					local line = list:AddLine(r[1])
-					line.SPData = r[2]
-					if r[2] == current then line:SetSelected(true) end
-				end
+				if q == "" or string.find(string.lower(r[1]), q, 1, true) then shown[#shown + 1] = r end
 			end
+			self.shown = shown
+			if current ~= nil then self.sel = current end
+			relayout()
+			bar:SetScroll(0)
+		end
+		function host:Want(fn, current)
+			self.want, self.wantCur = fn, current
+			self.rows, self.shown, self.sel = {}, {}, nil
+			relayout()
+		end
+		host.Think = function(self)
+			if not self.want or not self:IsVisible() then return end
+			local fn = self.want
+			self.want = nil
+			self:Fill(fn() or {}, self.wantCur)
 		end
 		filter.OnChange = function() host:Fill(host.rows, nil) end
-		list.OnRowSelected = function(_, _, line) onPick(line.SPData) end
 		host.filter = filter
 		return host
 	end
@@ -362,27 +419,43 @@ function UI.ModelPreviewTabs(parent, mp)
 	sheet:AddSheet(L("pv_tab_skin"), skins)
 
 	mp.OnModelChanged = function(_, ent)
-		local srows, arows, seen = {}, {}, {}
-		for i = 0, ent:GetSequenceCount() - 1 do
-			local name = ent:GetSequenceName(i)
-			srows[#srows + 1] = { name, i }
-			local act = ent:GetSequenceActivityName(i)
-			if act and act ~= "" and not seen[act] then
-				seen[act] = true
-				-- an activity plays the sequence the game would pick for it
-				local id = ent:GetSequenceActivity(i)
-				local pick = (id and id >= 0) and ent:SelectWeightedSequence(id) or i
-				arows[#arows + 1] = { act, (pick and pick >= 0) and pick or i }
-			end
+		-- the rows are worked out once, when one of the three tabs is first shown
+		local built
+		local function build()
+			if built then return built end
+			if not IsValid(ent) then return nil end
+			local P = SPeditor.Prof
+			local t = SysTime()
+			built = rowsOf(ent)
+			if P and P.on then P.Add("cl model browser: preview lists", SysTime() - t) end
+			return built
 		end
-		local krows = {}
-		for i = 0, math.max(ent:SkinCount() - 1, 0) do krows[#krows + 1] = { "skin" .. i, i } end
-		seqs:Fill(srows, mp.SPSeq)
-		acts:Fill(arows, nil)
-		skins:Fill(krows, 0)
+		seqs:Want(function() local b = build() return b and b.s end, mp.SPSeq)
+		acts:Want(function() local b = build() return b and b.a end, nil)
+		skins:Want(function() local b = build() return b and b.k end, 0)
 	end
 	if IsValid(mp.SPEnt) then mp:OnModelChanged(mp.SPEnt) end
 	return sheet
+end
+
+-- the rows of the Sequences, Activities and Skins tabs of a model
+rowsOf = function(ent)
+	local srows, arows, seen = {}, {}, {}
+	for i = 0, ent:GetSequenceCount() - 1 do
+		local name = ent:GetSequenceName(i)
+		srows[#srows + 1] = { name, i }
+		local act = ent:GetSequenceActivityName(i)
+		if act and act ~= "" and not seen[act] then
+			seen[act] = true
+			-- an activity plays the sequence the game would pick for it
+			local id = ent:GetSequenceActivity(i)
+			local pick = (id and id >= 0) and ent:SelectWeightedSequence(id) or i
+			arows[#arows + 1] = { act, (pick and pick >= 0) and pick or i }
+		end
+	end
+	local krows = {}
+	for i = 0, math.max(ent:SkinCount() - 1, 0) do krows[#krows + 1] = { "skin" .. i, i } end
+	return { s = srows, a = arows, k = krows }
 end
 
 ---------------------------------------------------------------------

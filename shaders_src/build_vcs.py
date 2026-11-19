@@ -33,13 +33,39 @@ def vcs(bytecode, crc):
     return head + recs + struct.pack("<I", 0) + body
 
 
+# (b0.2.7) the shaders only Linux / macOS draw: their cmps made safe for the game's ToGL there
+# (fix_cmp.py: it writes a cmp out a component at a time without a copy of the destination)
+LINUX_ONLY = ("gmfm_depthpack", "gmfm_depthpack2", "gmfm_depthsmooth", "gmfm_depthsmooth2",
+              "gmfm_sfmao4b_pk", "gmfm_sfmaoblur4b_pk", "speditor_ao2_pk", "speditor_ao2_blur_pk")
+
 os.makedirs(OUT, exist_ok=True)
 for obj in sorted(glob.glob(os.path.join(HERE, "*.o"))):
     name = os.path.splitext(os.path.basename(obj))[0]
     code = open(obj, "rb").read()
+    if name in LINUX_ONLY:
+        import fix_cmp
+        code, n = fix_cmp.fix(code)
+        if n:
+            print(name, "cmps made safe:", n)
     src = os.path.join(HERE, name + ".hlsl")
     crc = zlib.crc32(open(src, "rb").read()) if os.path.exists(src) else 0
     suffix = "" if name.endswith(("_ps30", "_vs30")) else "_ps20b"
     path = os.path.join(OUT, name + suffix + ".vcs")
     open(path, "wb").write(vcs(code, crc))
     print(path, os.path.getsize(path))
+
+# (b0.2.7) Linux / macOS: every shader the editor draws there also goes out as a copy named
+# <name>x_ps20b (byte for byte the same). The game there remembers the shaders it drew in
+# glshaders.cfg and builds them again when the next session starts — before the addon is
+# mounted, so they are not found and stay dead for that session (lua/speditor/cl_render.lua,
+# R.ShaderName): each session the editor uses whichever of the two names works.
+import shutil
+LINUX_ALIASES = ["gmfm_depthpack", "gmfm_depthpack2", "gmfm_depthsmooth", "gmfm_depthsmooth2",
+                 "gmfm_sfmao4b_pk", "gmfm_sfmaoblur4b_pk", "speditor_ao2_pk", "speditor_ao2_blur_pk",
+                 "gmfm_cc2b", "gmfm_grain2b", "gmfm_sfmbloom2b"]
+for base in LINUX_ALIASES:
+    src = os.path.join(OUT, base + "_ps20b.vcs")
+    if os.path.exists(src):
+        dst = os.path.join(OUT, base + "x_ps20b.vcs")
+        shutil.copyfile(src, dst)
+        print(dst, "(copy)")

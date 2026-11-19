@@ -158,6 +158,8 @@ local function captureFace(ent)
 		local w = SPeditor.FlexGet(ent, i)
 		if math.abs(w) > 0.001 then st.flex[i] = w end
 	end
+	-- (b0.2.6-misc.1) where the eyes look is the face track's too (its Eyes row, part "e0")
+	if ent.SPeditor_Eye then st.eye = Vector(ent.SPeditor_Eye) end
 	return st
 end
 
@@ -201,6 +203,23 @@ local function applyFlex(ent, a, b, u, whole)
 	end
 end
 
+-- the eyes: between two keys that both aim them the point moves over; a key without an
+-- aim takes the eyes back to looking ahead (when it is reached)
+local function eyeBetween(ea, eb, u)
+	if ea and eb then return lerpV(ea, eb, u) end
+	if ea then return u < 1 and ea or nil end
+	if eb then return u >= 1 and eb or nil end
+end
+local function applyEye(ent, a, b, u)
+	local ea, eb = a.eye, b.eye
+	local eye = eyeBetween(ea, eb, u)
+	if eye then
+		if not ent.SPeditor_Eye or ent.SPeditor_Eye:DistToSqr(eye) > 0.0001 then S.SetEye(ent, eye) end
+	elseif (ea or eb) and ent.SPeditor_Eye then
+		S.SetEye(ent, nil)
+	end
+end
+
 -- noFace: the object has a face track, which drives the face instead
 local function applyProp(ent, a, b, u, noFace)
 	local pos, ang = lerpV(a.pos, b.pos, u), slerp(a.ang, b.ang, u)
@@ -222,8 +241,8 @@ local function applyProp(ent, a, b, u, noFace)
 		for i, w in pairs(world) do setPhys(ent:GetPhysicsObjectNum(i), w[1], w[2]) end
 	else
 		if not ent.SPeditor_Attach and SPeditor.ValidVec(pos) and SPeditor.ValidAng(ang) then
-			ent:SetPos(pos)
-			ent:SetAngles(ang)
+			-- through S.SetTransform: a vehicle's wheels go with its body (S.RigOf)
+			S.SetTransform(ent, pos, ang)
 		end
 		local sa, sb = a.scale or 1, b.scale or 1
 		if S.CanScale(ent) and (sa ~= 1 or sb ~= 1 or ent.SPeditor_Scale) then S.SetScale(ent, lerpN(sa, sb, u)) end
@@ -276,18 +295,8 @@ local function applyProp(ent, a, b, u, noFace)
 		end
 	end
 
-	-- the eyes: between two keys that both aim them the point moves over; a key without an
-	-- aim takes the eyes back to looking ahead (when it is reached)
-	local ea, eb = a.eye, b.eye
-	local eye
-	if ea and eb then eye = lerpV(ea, eb, u)
-	elseif ea then eye = u < 1 and ea or nil
-	elseif eb then eye = u >= 1 and eb or nil end
-	if eye then
-		if not ent.SPeditor_Eye or ent.SPeditor_Eye:DistToSqr(eye) > 0.0001 then S.SetEye(ent, eye) end
-	elseif (ea or eb) and ent.SPeditor_Eye then
-		S.SetEye(ent, nil)
-	end
+	-- the eyes (b0.2.6-misc.1: the face track's when the object has one)
+	if not noFace then applyEye(ent, a, b, u) end
 
 	-- colour and opacity (fading in and out)
 	-- the keyed colour is applied whenever the object has another one: two hidden keys in a row
@@ -369,7 +378,10 @@ end
 local function applyState(ent, a, b, u, noFace)
 	if a.kind ~= b.kind then b = a end
 	if a.kind == "face" then
-		if not S.IsAux(ent) then applyFlex(ent, a, b, u, true) end
+		if not S.IsAux(ent) then
+			applyFlex(ent, a, b, u, true)
+			applyEye(ent, a, b, u)
+		end
 	elseif a.kind == "light" then
 		if S.IsLight(ent) then applyLight(ent, a, b, u) end
 	elseif a.kind == "camera" then
@@ -394,19 +406,27 @@ local function partIndex(part) return string.sub(part, 1, 1), tonumber(string.su
 -- The frames of the full keys, and for every part named by some bone key the frames of the
 -- keys that define it. Worked out again when the track changes (its order, its size or its
 -- stamp, which setKey and the part operations bump).
+-- (b0.2.6-misc.1) a new evaluation of a track begins with cacheOf: the spline blends shared by its parts
+-- (segment) last only for that evaluation, so an edit can never meet an old blend
+local memoPass = 0
 local function cacheOf(tr)
+	memoPass = memoPass + 1
 	local c = tr.cache
 	if c and c.order == tr.order and c.n == #tr.order and c.stamp == tr.stamp then return c end
 	c = { order = tr.order, n = #tr.order, stamp = tr.stamp, full = {}, parts = {} }
 	local special = {}
 	for _, f in ipairs(tr.order) do
-		local st = tr.keys[f].st
+		local k = tr.keys[f]
+		local st = k.st
 		if st.only then
 			for p in pairs(st.only) do special[p] = true end
 		else
 			c.full[#c.full + 1] = f
 			for p in pairs(st.skip or {}) do special[p] = true end
 		end
+		-- a part given a motion of its own moves between its keys with it, even on a track of
+		-- full keys only (the row of an attribute, a slider or a bone opened out)
+		for p in pairs(k.pe or {}) do special[p] = true end
 	end
 	c.has = next(special) ~= nil
 	for p in pairs(special) do
@@ -505,6 +525,119 @@ local function mixState(sts, ws)
 	return out
 end
 
+-- (b0.2.7) two keys of an object in the same place and turn (a prop, a camera, a light)
+local function sameSpot(a, b)
+	if a.kind == "face" then
+		-- the same face sliders: nothing moves between the two keys
+		for id, w in pairs(a.flex or {}) do
+			if math.abs(w - ((b.flex or {})[id] or 0)) > 1e-4 then return false end
+		end
+		for id, w in pairs(b.flex or {}) do
+			if not (a.flex or {})[id] and math.abs(w) > 1e-4 then return false end
+		end
+		return true
+	end
+	if a.kind ~= "prop" and a.kind ~= "camera" and a.kind ~= "light" then return false end
+	if not (a.pos and b.pos) or a.pos:DistToSqr(b.pos) > 1e-6 then return false end
+	if a.ang and b.ang and (math.abs(math.AngleDifference(a.ang.p, b.ang.p)) > 0.01
+		or math.abs(math.AngleDifference(a.ang.y, b.ang.y)) > 0.01 or math.abs(math.AngleDifference(a.ang.r, b.ang.r)) > 0.01) then
+		return false
+	end
+	-- the same bone offsets, flexes and physics bodies too: only then nothing moves in between
+	if a.kind == "prop" then
+		for id in pairs(a.bones or {}) do
+			local x, y = a.bones[id], (b.bones or {})[id] or ZERO_BONE
+			if x.p:DistToSqr(y.p) > 1e-6 or x.s:DistToSqr(y.s) > 1e-6 then return false end
+		end
+		for id in pairs(b.bones or {}) do
+			if not (a.bones or {})[id] and b.bones[id].p:LengthSqr() > 1e-6 then return false end
+		end
+		for id in pairs(a.flex or {}) do
+			if math.abs((a.flex[id] or 0) - ((b.flex or {})[id] or 0)) > 1e-4 then return false end
+		end
+		for id in pairs(b.flex or {}) do
+			if not (a.flex or {})[id] and math.abs(b.flex[id]) > 1e-4 then return false end
+		end
+		for i, p in pairs(a.phys or {}) do
+			local q = (b.phys or {})[i]
+			if not q or p.p:DistToSqr(q.p) > 1e-6 then return false end
+		end
+		for i, q in pairs(b.phys or {}) do
+			if not (a.phys or {})[i] then return false end
+		end
+	end
+	return true
+end
+
+-- (b0.2.6-misc.1) What mixState gives for the field k (and its entry id: a body, a bone, a slider), with
+-- the same fill-ins, without blending the rest of the snapshot
+local function mixField(sts, ws, k, id)
+	local a, b = sts[2][k], sts[3][k]
+	if a == nil and b == nil then return nil end
+	if id == nil then return mix({ sts[1][k], a, b, sts[4][k] }, ws) end
+	local def = ZERO_DEFAULT[k]
+	if def ~= nil then
+		-- bones, flexes: an entry missing from a snapshot is zero; one missing from all four is not set
+		local vals, any = {}, false
+		for i = 1, 4 do
+			local t = sts[i][k]
+			local x = istable(t) and t[id] or nil
+			if x ~= nil then any = true else x = def end
+			vals[i] = x
+		end
+		return any and mix(vals, ws) or nil
+	end
+	-- a table of entries (the bodies): mix's own fill-in of a missing table, then the entry
+	local base = a
+	if base == nil then base = b end
+	if not istable(base) then return nil end
+	local v = {}
+	for i = 1, 4 do
+		local x = sts[i][k]
+		if x == nil or type(x) ~= type(base) then x = (i <= 2) and (a or b) or (b or a) end
+		v[i] = x
+	end
+	if v[2][id] == nil and v[3][id] == nil then return nil end
+	return mix({ v[1][id], v[2][id], v[3][id], v[4][id] }, ws, ZERO_DEFAULT[id])
+end
+
+-- (b0.2.6-misc.1) mixState for one part (a body, a bone, a face slider, the eyes, an attribute): a snapshot
+-- holding only what partValue (and the readers of an attribute or the eyes) read of it. A part's
+-- spline stretch blended the whole snapshot before: ~70 times per ragdoll per tick (the profiler).
+-- nil: a part it does not know (mixState then)
+local function mixPart(sts, ws, part)
+	local kind, idx = partIndex(part)
+	if not idx then return nil end
+	local out = {}
+	for k in pairs(COPY_FIELDS) do
+		local v = sts[2][k]
+		if v == nil then v = sts[3][k] end
+		out[k] = v
+	end
+	out.resolved = true
+	local function entry(k)
+		if sts[2][k] ~= nil or sts[3][k] ~= nil then out[k] = { [idx] = mixField(sts, ws, k, idx) } end
+	end
+	if kind == "p" and idx == 0 then
+		out.pos, out.ang = mixField(sts, ws, "pos"), mixField(sts, ws, "ang")
+	elseif kind == "p" then
+		entry("phys")
+	elseif kind == "b" then
+		entry("bones")
+	elseif kind == "f" then
+		entry("flex")
+	elseif kind == "e" then
+		out.eye = mixField(sts, ws, "eye")
+	elseif kind == "a" then
+		local field = (SA.ATTRS[out.kind] or {})[idx + 1]
+		if not field then return nil end
+		if not COPY_FIELDS[field] then out[field] = mixField(sts, ws, field) end
+	else
+		return nil
+	end
+	return out
+end
+
 -- The two snapshots a track gives at the frame frame and the share of the way between them.
 -- order — the frames to look at: the full keys by default (bone keys are left to the parts
 -- they hold); nil when there are none. A spline stretch gives one worked-out snapshot twice.
@@ -532,14 +665,36 @@ local function segment(tr, frame, order, part)
 	local ka, kb = tr.keys[fa], tr.keys[fb]
 	local e, bz = ka.e, ka.bz
 	if part and ka.pe and ka.pe[part] then e, bz = ka.pe[part], nil end
-	if e == "spline" and ka.st.kind == kb.st.kind then
+	-- (b0.2.7) a spline between two keys in the same place stays there: the curve through the keys
+	-- around it overshot past both of them (the object moved away from a held pose and came back)
+	if e == "spline" and ka.st.kind == kb.st.kind and not sameSpot(ka.st, kb.st) then
 		local f0, f3 = order[lo - 1], order[hi + 1]
 		local s0 = f0 and tr.keys[f0].st or ka.st
 		local s3 = f3 and tr.keys[f3].st or kb.st
 		if s0.kind ~= ka.st.kind then s0, f0 = ka.st, nil end
 		if s3.kind ~= kb.st.kind then s3, f3 = kb.st, nil end
+		-- (b0.2.6-misc.1) a part's stretch (a bone key, a slider, an attribute) blends the whole snapshot of
+		-- its four keys; parts sharing the same four keys at this frame share the blend: the profiler
+		-- showed ~70 full-pose blends per ragdoll per tick, most of them the same. Only the per-part
+		-- callers (which only read the result) use it, within one evaluation (memoPass).
 		local w0, w1, w2, w3 = SA.SplineWeights(f0 or (2 * fa - fb), fa, fb, f3 or (2 * fb - fa), (frame - fa) / (fb - fa))
+		local P = SPeditor.Prof
+		-- (b0.2.6-misc.1) a part's stretch: only that part is blended
+		local one = part and mixPart({ s0, ka.st, kb.st, s3 }, { w0, w1, w2, w3 }, part)
+		if one then
+			if P.on then P.Count("sv spline blends of one part", 1) end
+			return one, one, 0
+		end
+		local c, key = part and tr.cache, nil
+		if c then
+			if c.memoFrame ~= frame or c.memoPass ~= memoPass then c.memoFrame, c.memoPass, c.memo = frame, memoPass, {} end
+			key = tostring(f0 or "-") .. ":" .. fa .. ":" .. fb .. ":" .. tostring(f3 or "-")
+			local hit = c.memo[key]
+			if hit then return hit, hit, 0 end
+		end
 		local st = mixState({ s0, ka.st, kb.st, s3 }, { w0, w1, w2, w3 })
+		if key then c.memo[key] = st end
+		if P.on then P.Count("sv spline blends of a whole snapshot", 1) end
 		return st, st, 0
 	end
 	return ka.st, kb.st, SA.EaseValue(e, (frame - fa) / (fb - fa), bz)
@@ -562,23 +717,39 @@ local function smoothCamera(ent, tr, frame, half)
 		end
 	end
 	if frame < lo or frame > hi then return end
-	local pos, fwd, up, fov, sum = Vector(0, 0, 0), Vector(0, 0, 0), Vector(0, 0, 0), 0, 0
+	-- (b0.2.6-misc.1) a field between the keys that hold it: the keys of some attributes only (auto key)
+	-- leave the others to the keys around them
+	local c = cacheOf(tr)
+	local function field(t, name, mix)
+		local part = "a" .. SA.AttrIndex("camera", name)
+		local list = c.parts[part]
+		local a, b, u = segment(tr, t, list or c.full, list and part or nil)
+		if not a or a[name] == nil then return nil end
+		local vb = b[name]
+		if vb == nil then vb = a[name] end
+		return mix(a[name], vb, u)
+	end
+	-- each field on its own: one no key holds (a flown camera has keys of its place and turn
+	-- only) stays as the keys left it
+	local pos, fwd, up, fov = Vector(0, 0, 0), Vector(0, 0, 0), Vector(0, 0, 0), 0
+	local sp, sa, sf = 0, 0, 0
 	for i = -SMOOTH_STEPS, SMOOTH_STEPS do
 		local w = 1 - math.abs(i) / (SMOOTH_STEPS + 1)
-		local a, b, u = segment(tr, math.Clamp(frame + i / SMOOTH_STEPS * half, lo, hi))
-		local ang = slerp(a.ang, b.ang, u)
-		pos:Add(lerpV(a.pos, b.pos, u) * w)
-		fwd:Add(ang:Forward() * w)
-		up:Add(ang:Up() * w)
-		fov = fov + lerpN(a.fov, b.fov, u) * w
-		sum = sum + w
+		local t = math.Clamp(frame + i / SMOOTH_STEPS * half, lo, hi)
+		local p, ang, fv = field(t, "pos", lerpV), field(t, "ang", slerp), field(t, "fov", lerpN)
+		if p then pos:Add(p * w) sp = sp + w end
+		if ang then
+			fwd:Add(ang:Forward() * w)
+			up:Add(ang:Up() * w)
+			sa = sa + w
+		end
+		if fv then fov, sf = fov + fv * w, sf + w end
 	end
-	if fwd:LengthSqr() < 1e-6 then return end
 	if not ent.SPeditor_Attach then
-		ent:SetPos(pos / sum)
-		ent:SetAngles(fwd:AngleEx(up))
+		if sp > 0 then ent:SetPos(pos / sp) end
+		if sa > 0 and fwd:LengthSqr() > 1e-6 then ent:SetAngles(fwd:AngleEx(up)) end
 	end
-	ent:SetCameraFOV(fov / sum)
+	if sf > 0 then ent:SetCameraFOV(fov / sf) end
 end
 
 -- one bone offset between two keys
@@ -628,6 +799,14 @@ local function partValue(st, part)
 	if idx == 0 and kind == "p" then return { p = st.pos, a = st.ang } end
 	if kind == "p" then return st.phys and st.phys[idx] end
 	if kind == "b" then return (st.bones or {})[idx] or ZERO_BONE end
+	-- (b0.2.6-misc.1) a face slider (flex) of a face track key: a number, 0 when the key lacks it
+	if kind == "f" then return (st.flex or {})[idx] or 0 end
+	if kind == "e" then return st.eye end
+	-- (b0.2.6-misc.1) an attribute of a camera, light or effect (SA.ATTRS)
+	if kind == "a" then
+		local field = (SA.ATTRS[st.kind] or {})[idx + 1]
+		return field and st[field]
+	end
 end
 
 -- A model whose track has bone keys, at a frame: the full keys give the base (or the object as
@@ -665,6 +844,40 @@ local function resolveProp(ent, tr, frame)
 	return st
 end
 
+-- (b0.2.6-misc.1) A face track whose sliders have keys of their own, at a frame: the full face keys
+-- give the base (or the face as it is, when there are none), and every keyed slider is worked
+-- out between its own keys — the slider rows of an opened-out Face row.
+local function resolveFace(ent, tr, frame)
+	local c = cacheOf(tr)
+	local a, b, u = segment(tr, frame, c.full)
+	local st
+	if a and a.kind == "face" then
+		st = { kind = "face", flex = {}, eye = eyeBetween(a.eye, b.eye, u) }
+		local fa, fb = a.flex or {}, b.flex or {}
+		for id, w in pairs(fa) do st.flex[id] = lerpN(w, fb[id] or 0, u) end
+		for id, w in pairs(fb) do
+			if fa[id] == nil then st.flex[id] = lerpN(0, w, u) end
+		end
+	else
+		st = captureFace(ent)
+	end
+	for part, list in pairs(c.parts) do
+		local kind, idx = partIndex(part)
+		if kind == "f" then
+			local pa, pb, pu = segment(tr, frame, list, part)
+			if pa then
+				local va = partValue(pa, part) or 0
+				local vb = pb and partValue(pb, part) or va
+				st.flex[idx] = lerpN(va, vb, pu)
+			end
+		elseif kind == "e" then
+			local pa, pb, pu = segment(tr, frame, list, part)
+			if pa then st.eye = eyeBetween(pa.eye, (pb or pa).eye, pu) end
+		end
+	end
+	return st
+end
+
 -- The state of a track at a frame as a single snapshot (the ghosts of the timeline)
 function SA.StateAt(ent, tr, frame)
 	if #tr.order == 0 then return nil end
@@ -673,6 +886,34 @@ function SA.StateAt(ent, tr, frame)
 	if not a then return nil end
 	if a.kind == "prop" and b.kind == "prop" then return blendProp(a, b, u) end
 	return a
+end
+
+-- (b0.2.7, the tween machine) the pose an object takes at a frame for one tween step, worked out from
+-- the keys before and after it: "prev" / "next" blend toward that key, "relax" toward the middle of
+-- the two, "push" away from the middle (the pose's own distance from it, s more) and "pull" toward
+-- it. s is the strength (1 = the whole way). nil when the track has no prop pose around the frame.
+function SA.TweenPose(ent, tr, frame, kind, s)
+	local cur = resolveProp(ent, tr, frame)
+	if not cur or cur.kind ~= "prop" then return nil end
+	local prevF, nextF
+	for _, f in ipairs(tr.order) do
+		if f < frame then prevF = f end
+		if f > frame and not nextF then nextF = f end
+	end
+	local prevS = prevF and tr.keys[prevF] and tr.keys[prevF].st
+	local nextS = nextF and tr.keys[nextF] and tr.keys[nextF].st
+	if not prevS or prevS.kind ~= "prop" then prevS = nil end
+	if not nextS or nextS.kind ~= "prop" then nextS = nil end
+	-- with one side missing, the other side stands for both
+	prevS = prevS or nextS or cur
+	nextS = nextS or prevS
+	local mid = blendProp(prevS, nextS, 0.5)
+	if kind == "prev" then return blendProp(cur, prevS, s) end
+	if kind == "next" then return blendProp(cur, nextS, s) end
+	if kind == "relax" then return blendProp(cur, mid, s) end
+	if kind == "push" then return blendProp(mid, cur, 1 + s) end
+	if kind == "pull" then return blendProp(mid, cur, 1 - s) end
+	return nil
 end
 
 -- Keyed attaching (see attState): does the track switch it at all (its keys disagree)?
@@ -731,22 +972,120 @@ local function attApply(ent, tr, frame)
 	end
 end
 
+-- (b0.2.6-misc.1) one attribute (SA.ATTRS) between two snapshots -> object
+local function applyAttr(ent, a, b, u, idx)
+	local field = (SA.ATTRS[a.kind] or {})[idx + 1]
+	if not field or a[field] == nil then return end
+	local va, vb = a[field], b[field]
+	if vb == nil then vb = va end
+	if field == "pos" then
+		if not ent.SPeditor_Attach then ent:SetPos(lerpV(va, vb, u)) end
+	elseif field == "ang" then
+		if not ent.SPeditor_Attach then ent:SetAngles(slerp(va, vb, u)) end
+	elseif a.kind == "camera" then
+		if field == "fov" then ent:SetCameraFOV(lerpN(va, vb, u))
+		elseif field == "shake" then ent:SetShakeAmp(lerpN(va, vb, u))
+		elseif field == "shakerot" then ent:SetShakeRot(lerpN(va, vb, u))
+		elseif field == "shakefreq" then ent:SetShakeFreq(lerpN(va, vb, u))
+		elseif field == "fx" then applyCameraFX(ent, va, vb, u) end
+	elseif a.kind == "light" then
+		if field == "col" then ent:SetLightColor(lerpV(va, vb, u))
+		elseif field == "radius" then ent:SetLightRadius(lerpN(va, vb, u))
+		elseif field == "bri" then ent:SetLightBrightness(lerpN(va, vb, u))
+		elseif field == "fov" then ent:SetLightFOV(lerpN(va, vb, u))
+		elseif field == "on" then ent:SetLightEnabled(va and true or false)
+		elseif field == "f" then
+			for _, f in ipairs(SPeditor.LightFields) do
+				local x, y = va[f.key], vb[f.key]
+				if x and y then ent["Set" .. f.nw](ent, lerpN(x, y, u)) end
+			end
+		end
+	elseif a.kind == "effect" then
+		if field == "time" then ent:SetFxTime(math.max(lerpN(va, vb, u), 0))
+		elseif field == "scale" then ent:SetFxScale(lerpN(va or 1, vb or 1, u))
+		elseif field == "length" then ent:SetFxLength(lerpN(va or 0, vb or 0, u)) end
+	end
+end
+
+-- A camera, light or effect whose attributes have keys of their own: the full keys first, then
+-- every keyed attribute between its own keys
+local function applyAuxParts(ent, tr, frame)
+	local c = cacheOf(tr)
+	local a, b, u = segment(tr, frame, c.full)
+	if a then applyState(ent, a, b, u) end
+	for part, list in pairs(c.parts) do
+		local kind, idx = partIndex(part)
+		if kind == "a" then
+			local pa, pb, pu = segment(tr, frame, list, part)
+			if pa then applyAttr(ent, pa, pb or pa, pu, idx) end
+		end
+	end
+end
+
 -- A track at the frame frame -> object
+-- (b0.2.7) the distance a vehicle's body has travelled along its own forward by the keys, from the first
+-- frame to this one (the poses between keys as playback takes them). Worked out frame by frame once per
+-- track (its stamp), so scrubbing back and forth adds nothing twice. S.RigPlace rolls the wheels by it.
+function S.TravelAt(ent, tr, frame)
+	local c = tr.travel
+	if not c or c.stamp ~= (tr.stamp or 0) or c.n ~= #tr.order then
+		c = { stamp = tr.stamp or 0, n = #tr.order, cum = { [0] = 0 }, last = 0 }
+		tr.travel = c
+	end
+	frame = math.max(0, math.floor(frame + 0.5))
+	while c.last < frame do
+		local g = c.last
+		local s0, s1 = resolveProp(ent, tr, g), resolveProp(ent, tr, g + 1)
+		local d = 0
+		if s0 and s1 and s0.kind == "prop" and s1.kind == "prop" and s1.pos and s1.ang then
+			d = (s1.pos - s0.pos):Dot(s1.ang:Forward())
+		end
+		c.cum[g + 1] = c.cum[g] + d
+		c.last = g + 1
+	end
+	return c.cum[frame] or 0
+end
+
 local function applyTrack(ent, tr, frame, noFace)
 	if #tr.order == 0 then return end
+	-- a vehicle's wheels roll with its travel (S.RigPlace); the rig is read before the body moves
+	local first = tr.keys[tr.order[1]]
+	if first and first.st and first.st.kind == "prop" and S.RigOf(ent) then ent.SPeditor_Travel = S.TravelAt(ent, tr, frame) end
 	attApply(ent, tr, frame)
+	local function camSmooth()
+		if S.IsCamera(ent) and #tr.order > 1 then
+			local smooth = ent:GetCamSmooth()
+			if smooth > 0.01 then smoothCamera(ent, tr, frame, smooth * anim(ent.SPeditor_Owner).fps) end
+		end
+	end
+	if cacheOf(tr).has and S.IsAux(ent) then
+		applyAuxParts(ent, tr, frame)
+		camSmooth()
+		return
+	end
 	if cacheOf(tr).has and not S.IsAux(ent) then
+		if tr.keys[tr.order[1]].st.kind == "face" then
+			local st = resolveFace(ent, tr, frame)
+			applyFlex(ent, st, st, 0, true)
+			applyEye(ent, st, st, 0)
+			return
+		end
+		-- (b0.2.6-misc.1) the profiler (sh_prof.lua): working out the pose vs setting it
+		local P = SPeditor.Prof
+		local t = P.on and SysTime()
 		local st = resolveProp(ent, tr, frame)
+		local t2 = t and SysTime()
 		if st then applyProp(ent, st, st, 0, noFace) end
+		if t then
+			P.Add("sv per-part track: pose from the keys", t2 - t)
+			P.Add("sv per-part track: set bodies and bones", SysTime() - t2)
+		end
 		return
 	end
 	local a, b, u = segment(tr, frame)
 	if not a then return end
 	applyState(ent, a, b, u, noFace)
-	if a.kind == "camera" and S.IsCamera(ent) and #tr.order > 1 then
-		local smooth = ent:GetCamSmooth()
-		if smooth > 0.01 then smoothCamera(ent, tr, frame, smooth * anim(ent.SPeditor_Owner).fps) end
-	end
+	if a.kind == "camera" then camSmooth() end
 end
 
 local function entMap(ply)
@@ -842,13 +1181,25 @@ local function worldRest(a)
 end
 
 function SA.ApplyTracks(a, map, frame)
+	local P = SPeditor.Prof
 	for id, tr in pairs(a.tracks) do
 		local face = SA.IsFaceTrack(id)
 		local ent = map[face and (id - SA.FACE) or id]
 		-- an object whose physics is being recorded (sv_saeditor_record.lua) moves by itself
 		if IsValid(ent) and not ent.SPeditor_PhysRec then
+			local t = P.on and SysTime()
 			local ok, err = pcall(applyTrack, ent, tr, frame, not face and a.tracks[SA.FaceTrack(id)] ~= nil)
 			if not ok then COMP:Print("apply: ", tostring(err)) end
+			-- (b0.2.6-misc.1) the profiler: the time of each kind of track, how many keys and parts it has
+			if t then
+				local kind = face and "face" or (S.IsAux(ent) and "camera/light/effect" or (S.IsRagdoll(ent) and "ragdoll" or "prop"))
+				P.Add("sv apply track: " .. kind, SysTime() - t)
+				P.Count("sv tracks applied", 1)
+				P.Count("sv keys in applied tracks", #tr.order)
+				local np = 0
+				for _ in pairs(cacheOf(tr).parts or {}) do np = np + 1 end
+				P.Count("sv keyed parts evaluated (per-part)", np)
+			end
 		end
 	end
 end
@@ -873,12 +1224,157 @@ local function copyTrack(tr)
 	return { keys = keys, order = order }
 end
 
+-- The parts of a model that change from key to key ("p0,p3,b14"; nil — none, or not a model):
+-- the rows of a track opened out on the timeline (a double click on its name). Worked out
+-- again only when the track changes (as cacheOf).
+local function nearValue(x, y)
+	if x == nil or y == nil then return x == y end
+	if isvector(x) then return x:DistToSqr(y) < 1e-4 end
+	if isangle(x) then
+		return math.abs(math.AngleDifference(x.p, y.p)) < 0.01 and math.abs(math.AngleDifference(x.y, y.y)) < 0.01
+			and math.abs(math.AngleDifference(x.r, y.r)) < 0.01
+	end
+	return x == y
+end
+local function sameValue(u, v)
+	if isnumber(u) or isnumber(v) then return isnumber(u) and isnumber(v) and math.abs(u - v) < 1e-3 end
+	if isvector(u) or isangle(u) then return nearValue(u, v) end
+	if isbool(u) or isbool(v) then return u == v end
+	if istable(u) and istable(v) and u.p == nil and u.a == nil then return util.TableToJSON(u) == util.TableToJSON(v) end
+	return nearValue(u.p, v.p) and nearValue(u.a, v.a) and nearValue(u.s, v.s)
+end
+local function movingParts(tr)
+	local mc = tr.movingCache
+	if mc and mc.order == tr.order and mc.n == #tr.order and mc.stamp == tr.stamp then return mc.val end
+	-- every part some key names: the root, the bodies of a ragdoll, the moved bones; of a face
+	-- track (b0.2.6-misc.1) its sliders
+	local kind = tr.order[1] and tr.keys[tr.order[1]].st.kind
+	local cand = (kind == "prop") and { p0 = true } or ((kind == "face") and {} or nil)
+	if kind and SA.ATTRS[kind] then
+		cand = {}
+		for i = 1, #SA.ATTRS[kind] do cand["a" .. (i - 1)] = true end
+	end
+	for _, f in ipairs(cand and tr.order or {}) do
+		local st = tr.keys[f].st
+		if st.kind ~= kind then cand = nil break end
+		for i in pairs(st.phys or {}) do cand["p" .. i] = true end
+		for b in pairs(st.bones or {}) do cand["b" .. b] = true end
+		if kind == "face" then
+			for id in pairs(st.flex or {}) do cand["f" .. id] = true end
+			if st.eye then cand.e0 = true end
+		end
+		for part in pairs(st.only or {}) do cand[part] = true end
+	end
+	local val
+	if cand then
+		local first, moving = {}, {}
+		for _, f in ipairs(tr.order) do
+			local st = tr.keys[f].st
+			for part in pairs(cand) do
+				if not moving[part] and defines(st, part) then
+					local v = partValue(st, part)
+					if v then
+						if not first[part] then first[part] = v
+						elseif not sameValue(first[part], v) then moving[part] = true end
+					end
+				end
+			end
+		end
+		val = next(moving) and table.concat(table.GetKeys(moving), ",") or nil
+	end
+	tr.movingCache = { order = tr.order, n = #tr.order, stamp = tr.stamp, val = val }
+	return val
+end
+
 -- Table of contents for the client: key frames, easing and root position (the path line)
+-- (b0.2.7, TobyCat) the elements a key of an object changes: position and turn, scale, flexes, look,
+-- skin and bodygroups, eyes, physics bodies, attachment; a camera's lens, shake and effects; a light's
+-- colour and fields; an effect's moment. A key's mask has a bit per element (SA.EL_ORDER) set when the
+-- element differs from the key before it (or when the first key has it). Bone keys have their own rows.
+local function sigOf(v)
+	if v == nil then return "-" end
+	if isvector(v) then return string.format("%.3f,%.3f,%.3f", v.x, v.y, v.z) end
+	if isangle(v) then return string.format("%.3f,%.3f,%.3f", v.p, v.y, v.r) end
+	if istable(v) then
+		-- by hand: a key of a table may hold vectors and angles, which a JSON dump cannot write
+		local keys = {}
+		for k in pairs(v) do keys[#keys + 1] = k end
+		table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+		local out = {}
+		for _, k in ipairs(keys) do out[#out + 1] = tostring(k) .. "=" .. sigOf(v[k]) end
+		return "{" .. table.concat(out, ";") .. "}"
+	end
+	return tostring(v)
+end
+
+local function physSig(phys)
+	if not istable(phys) then return "-" end
+	local idx = {}
+	for i in pairs(phys) do idx[#idx + 1] = i end
+	table.sort(idx)
+	local out = {}
+	for _, i in ipairs(idx) do out[#out + 1] = i .. ":" .. sigOf(phys[i].p) .. sigOf(phys[i].a) end
+	return table.concat(out, ";")
+end
+
+local function elementSigs(st)
+	local out = {}
+	if not istable(st) or st.only then return out end
+	if st.kind == "prop" then
+		out.pos = sigOf(st.pos) .. sigOf(st.ang)
+		if istable(st.bones) and next(st.bones) then out.bones = sigOf(st.bones) end
+		if st.scale ~= nil then out.scale = sigOf(st.scale) end
+		if istable(st.flex) and next(st.flex) then out.flex = sigOf(st.flex) end
+		if st.mat ~= nil or st.col ~= nil or st.stretch ~= nil then
+			out.look = sigOf(st.mat) .. sigOf(st.sub) .. sigOf(st.tints) .. sigOf(st.stretch) .. sigOf(st.col)
+		end
+		if st.skin ~= nil or istable(st.bg) then out.body = sigOf(st.skin) .. sigOf(st.bg) end
+		if st.eye ~= nil then out.eye = sigOf(st.eye) end
+		if istable(st.phys) then out.phys = physSig(st.phys) end
+		if istable(st.att) then out.att = sigOf(st.att.uid) .. sigOf(st.att.code) .. sigOf(st.att.lp) .. sigOf(st.att.la) end
+	elseif st.kind == "camera" then
+		out.pos = sigOf(st.pos) .. sigOf(st.ang)
+		out.lens = sigOf(st.fov)
+		out.shake = sigOf(st.shake) .. sigOf(st.shakerot) .. sigOf(st.shakefreq)
+		if st.fx ~= nil then out.fx = sigOf(st.fx) end
+	elseif st.kind == "light" then
+		out.pos = sigOf(st.pos) .. sigOf(st.ang)
+		out.color = sigOf(st.col)
+		out.light = sigOf(st.bri) .. sigOf(st.radius) .. sigOf(st.fov) .. sigOf(st.on) .. sigOf(st.f)
+	elseif st.kind == "effect" then
+		out.pos = sigOf(st.pos) .. sigOf(st.ang)
+		out.moment = sigOf(st.time) .. sigOf(st.scale) .. sigOf(st.length)
+	elseif st.kind == "face" then
+		out.flex = sigOf(st.flex)
+	end
+	return out
+end
+
+-- frame -> element mask of a track, worked out again when the track changes (its stamp)
+function SA.KeyElements(tr)
+	local stamp = tr.stamp or 0
+	if tr.elStamp == stamp and tr.elMasks and tr.elN == #tr.order then return tr.elMasks end
+	local masks, prev = {}, nil
+	for _, f in ipairs(tr.order) do
+		local cur = elementSigs(tr.keys[f].st)
+		local m = 0
+		for i, id in ipairs(SA.EL_ORDER) do
+			local s = cur[id]
+			if s ~= nil and (prev == nil or prev[id] ~= s) then m = m + 2 ^ (i - 1) end
+		end
+		masks[f] = m
+		prev = cur
+	end
+	tr.elMasks, tr.elStamp, tr.elN = masks, stamp, #tr.order
+	return masks
+end
+
 function SA.SendSummary(ply)
 	local a = anim(ply)
-	local tracks = {}
+	local tracks, moving = {}, {}
 	for uid, tr in pairs(a.tracks) do
 		local list = {}
+		local masks = SA.KeyElements(tr)
 		for i, f in ipairs(tr.order) do
 			local k = tr.keys[f]
 			local p = k.st.pos
@@ -892,13 +1388,14 @@ function SA.SendSummary(ply)
 				for part, e in pairs(k.pe) do t[#t + 1] = part .. "=" .. e end
 				pe = table.concat(t, ",")
 			end
-			list[i] = { f, k.e, math.Round(p.x, 1), math.Round(p.y, 1), math.Round(p.z, 1), only, skip, pe }
+			list[i] = { f, k.e, math.Round(p.x, 1), math.Round(p.y, 1), math.Round(p.z, 1), only, skip, pe, masks[f] or 0 }
 		end
 		tracks[tostring(uid)] = SA.ToPages(list)
+		moving[tostring(uid)] = movingParts(tr)
 	end
 	local proc = {}
 	for uid, pr in pairs(a.proc or {}) do proc[tostring(uid)] = pr end
-	SA.SendParts(ply, "Summary", { fps = a.fps, frames = a.frames, loop = a.loop, bounce = a.bounce, tracks = tracks, sounds = a.sounds or {}, proc = proc,
+	SA.SendParts(ply, "Summary", { fps = a.fps, frames = a.frames, loop = a.loop, bounce = a.bounce, tracks = tracks, moving = moving, sounds = a.sounds or {}, proc = proc,
 		cuts = a.cuts or {}, groups = a.groups or {}, marks = a.marks or {}, clips = a.clips or {} })
 end
 
@@ -944,6 +1441,14 @@ local function putPart(st, part, v)
 		st.phys[idx] = v
 	elseif kind == "b" then
 		st.bones[idx] = (v ~= ZERO_BONE) and v or nil
+	elseif kind == "f" then
+		st.flex = st.flex or {}
+		st.flex[idx] = (v ~= 0) and v or nil
+	elseif kind == "a" then
+		local field = (SA.ATTRS[st.kind] or {})[idx + 1]
+		if field then st[field] = istable(v) and table.Copy(v) or v end
+	elseif kind == "e" then
+		st.eye = Vector(v)
 	end
 	if st.only then
 		st.only[part] = true
@@ -960,6 +1465,8 @@ local function dropPart(st, part)
 		st.only[part] = nil
 		if kind == "p" and idx > 0 and st.phys then st.phys[idx] = nil end
 		if kind == "b" then st.bones[idx] = nil end
+		if kind == "f" and st.flex then st.flex[idx] = nil end
+		if kind == "e" then st.eye = nil end
 		return next(st.only) ~= nil
 	end
 	st.skip = st.skip or {}
@@ -967,14 +1474,32 @@ local function dropPart(st, part)
 	return true
 end
 
--- "p3,b17" -> { p3 = true, b17 = true } (only parts the object has); nil — none
-local function parseParts(ent, list)
-	if not IsValid(ent) or S.IsAux(ent) then return nil end
-	local out, nb = {}, ent:GetBoneCount()
+-- "p3,b17" -> { p3 = true, b17 = true } (only parts the object has); nil — none. face: the
+-- parts of its face track — its sliders, "f12" (b0.2.6-misc.1)
+local function auxKind(ent)
+	return S.IsCamera(ent) and "camera" or (S.IsLight(ent) and "light" or (S.IsEffect(ent) and "effect" or nil))
+end
+local function parseParts(ent, list, face)
+	if not IsValid(ent) then return nil end
+	if S.IsAux(ent) then
+		-- (b0.2.6-misc.1) a camera, light or effect: its attributes, "a2"
+		local attrs = SA.ATTRS[auxKind(ent) or ""]
+		if face or not attrs then return nil end
+		local out = {}
+		for idx in string.gmatch(list or "", "a(%d+)") do
+			if tonumber(idx) < #attrs then out["a" .. idx] = true end
+		end
+		return next(out) and out or nil
+	end
+	local out, nb, nf = {}, ent:GetBoneCount(), ent:GetFlexNum()
 	local np = S.IsRagdoll(ent) and ent:GetPhysicsObjectCount() or 1
-	for kind, idx in string.gmatch(list or "", "([pb])(%d+)") do
+	for kind, idx in string.gmatch(list or "", "([pbfe])(%d+)") do
 		idx = tonumber(idx)
-		if (kind == "p" and idx < np) or (kind == "b" and idx < nb) then out[kind .. idx] = true end
+		if face then
+			if (kind == "f" and idx < nf) or (kind == "e" and idx == 0) then out[kind .. idx] = true end
+		elseif (kind == "p" and idx < np) or (kind == "b" and idx < nb) then
+			out[kind .. idx] = true
+		end
 	end
 	return next(out) and out or nil
 end
@@ -986,7 +1511,8 @@ local function splitParts(str)
 end
 
 -- a bone key: an empty snapshot that names parts only (its place is kept for the path line)
-local function emptyPart(pos, ang)
+local function emptyPart(pos, ang, kind)
+	if kind == "face" then return { kind = "face", pos = pos, ang = ang, flex = {}, only = {} } end
 	return { kind = "prop", pos = pos, ang = ang, bones = {}, flex = {}, only = {} }
 end
 
@@ -1007,13 +1533,63 @@ local function setKey(ply, ent, frame, ease, face, parts, def, skip)
 	if not tr then
 		tr = { keys = {}, order = {} }
 		a.tracks[uid] = tr
+		-- (b0.2.6-misc.1) the first face key starts the face track, and from then on the body keys leave
+		-- the face alone: the face they animated is taken over as face keys at their frames, so
+		-- the animation looks as it did
+		if face then
+			local body = a.tracks[ent.SPeditor_UID]
+			local function differ(x, y)
+				for id, w in pairs(x) do if math.abs((y[id] or 0) - w) > 1e-3 then return true end end
+				for id, w in pairs(y) do if math.abs((x[id] or 0) - w) > 1e-3 then return true end end
+				return false
+			end
+			-- the face as it is now: the new key holds it. One body key with another face (a smile
+			-- at 0, the edit at 20) must be kept as well, or the new face would be on every frame
+			local nowSt = captureFace(ent)
+			local nowFlex = nowSt.flex
+			local seed, varies = {}, false
+			for _, f in ipairs(body and body.order or {}) do
+				local k = body.keys[f]
+				if k.st.kind == "prop" and not k.st.only then
+					local fl = k.st.flex or {}
+					if not varies and differ(fl, nowFlex) then varies = true end
+					local ke, ne = k.st.eye, nowSt.eye
+					if not varies and ((ke == nil) ~= (ne == nil) or (ke and ne and ke:DistToSqr(ne) > 0.01)) then varies = true end
+					seed[#seed + 1] = { f = f, e = k.e, bz = k.bz, st = { kind = "face", pos = k.st.pos, ang = k.st.ang, flex = table.Copy(fl),
+						eye = ke and Vector(ke) or nil } }
+				end
+			end
+			if varies then
+				for _, sk in ipairs(seed) do
+					if #tr.order >= SA.MAX_KEYS then break end
+					tr.keys[sk.f] = { e = sk.e, bz = sk.bz, st = sk.st }
+					tr.order[#tr.order + 1] = sk.f
+				end
+			end
+		end
 	end
 	if not tr.keys[frame] and #tr.order >= SA.MAX_KEYS then return false end
 	local old = tr.keys[frame]
 	local e = ease or (old and old.e) or def or "spline"
 	local st
-	if face then
+	if face and parts then
+		-- (b0.2.6-misc.1) a key of some face sliders only (the row of a slider)
+		local now = captureFace(ent)
+		st = (old and old.st.kind == "face") and table.Copy(old.st) or emptyPart(now.pos, now.ang, "face")
+		for part in pairs(parts) do putPart(st, part, partValue(now, part)) end
+	elseif face then
 		st = captureFace(ent)
+	elseif parts and S.IsAux(ent) then
+		-- (b0.2.6-misc.1) a key of some attributes of a camera / light / effect only. It holds the whole
+		-- snapshot (every field a key of its kind must have), but defines only these
+		local now = capture(ent)
+		if old and old.st.kind == now.kind then
+			st = table.Copy(old.st)
+		else
+			st = table.Copy(now)
+			st.only, st.skip = {}, nil
+		end
+		for part in pairs(parts) do putPart(st, part, partValue(now, part)) end
 	elseif parts and not S.IsAux(ent) then
 		local now = capture(ent)
 		st = (old and old.st.kind == "prop") and table.Copy(old.st) or emptyPart(now.pos, now.ang)
@@ -1131,6 +1707,19 @@ end
 -- object's face track
 local function motionApply(st, now, base, w, noFlex)
 	if w <= 0 then return end
+	local attrs = SA.ATTRS[st.kind]
+	if attrs then
+		-- (b0.2.6-misc.1) a camera, light or effect: a key of some attributes only (auto key) takes the
+		-- edit in those; the fields it does not hold are not read from it
+		local function has(field)
+			local i = SA.AttrIndex(st.kind, field)
+			return i and defines(st, "a" .. i)
+		end
+		if st.pos and now.pos and base.pos and has("pos") then st.pos = st.pos + (now.pos - base.pos) * w end
+		if st.ang and now.ang and base.ang and has("ang") then st.ang = turnBy(st.ang, now.ang, base.ang, w) end
+		motionOther(st, now, base, w)
+		return
+	end
 	if st.pos and now.pos and base.pos and defines(st, "p0") and st.kind ~= "face" then
 		st.pos = st.pos + (now.pos - base.pos) * w
 		st.ang = turnBy(st.ang, now.ang, base.ang, w)
@@ -1264,94 +1853,156 @@ local FACE_VALUE = { zero = 0, half = 0.5, one = 1 }
 
 -- extra: stagger — the object's place in the selection (0, 1, …); paste / playhead — the frame
 -- whose values are taken
+-- One pass of a preset over the keys order (their frames; orig: frame -> snapshot). put(f, st)
+-- takes the changed snapshot of a key. True when something changed.
+local function presetPass(order, orig, preset, sel, strength, seed, extra, put)
+	local firstF
+	for _, f in ipairs(order) do
+		if f >= sel[1] and f <= sel[4] then firstF = f break end
+	end
+	if not firstF then return false end
+	local changed = false
+	local inV, outV = presetValueAt(order, orig, sel[1]), presetValueAt(order, orig, sel[4])
+	local refV = (preset == "paste" or preset == "playhead") and presetValueAt(order, orig, extra or 0) or nil
+	for i, f in ipairs(order) do
+		local w = SA.TimeSelWeight(f, sel) * strength
+		if w > 0 then
+			local prev = orig[order[i - 1] or -1]
+			local nxt = orig[order[i + 1] or -1]
+			local fn, first = nil, orig[firstF]
+			local toward = function(v, _, _, c) return v + (c - v) * w end
+			if preset == "smooth" or preset == "sharp" or preset == "steady" then
+				-- at full strength a key goes half way to the middle of its neighbours (or as far away)
+				local sign = preset == "sharp" and -0.5 or 0.5
+				fn = function(v, a, b) return v + ((a + b) / 2 - v) * w * sign end
+			elseif preset == "hold" then
+				fn = toward
+			elseif preset == "in" or preset == "out" then
+				first = preset == "in" and inV or outV
+				fn = toward
+			elseif TARGET_CURVES[preset] then
+				local u = math.Clamp((f - sel[1]) / math.max(sel[4] - sel[1], 1), 0, 1)
+				first = lerpState(inV, outV, TARGET_CURVES[preset](u))
+				fn = toward
+			elseif preset == "paste" or preset == "playhead" then
+				first = refV
+				fn = toward
+			elseif preset == "stagger" then
+				-- each next object of the selection runs the same motion later (2 frames per
+				-- object at full strength)
+				local d = (extra or 0) * 2 * strength
+				if d > 0 then
+					first = presetValueAt(order, orig, f - d)
+					local ws = SA.TimeSelWeight(f, sel)
+					fn = function(v, _, _, c) return v + (c - v) * ws end
+				end
+			elseif FACE_VALUE[preset] then
+				local x = FACE_VALUE[preset]
+				fn = function(v, _, _, _, _, section)
+					if section == "flex" then return v + (x - v) * w end
+					return v
+				end
+			elseif preset == "round" then
+				fn = function(v, _, _, _, key, section)
+					-- face sliders to off / on, turns to whole degrees, places to whole units
+					if section == "flex" then return v + (math.Round(v) - v) * w end
+					if section == "bones" and key == "s" then return v end
+					return v + (math.Round(v) - v) * w
+				end
+			elseif preset == "default" then
+				fn = function(v, _, _, _, key, section)
+					-- bone offsets and turns go to zero, sizes to one; faces to zero; the place of
+					-- the object and a ragdoll's bodies stay
+					if section == "flex" then return v - v * w end
+					if section ~= "bones" then return v end
+					if key == "s" then return v + (1 - v) * w end
+					if key == "p" or key == "a" then return v - v * w end
+					return v
+				end
+			elseif preset == "jitter" then
+				fn = function(v, _, _, _, key, section, comp)
+					local amp = section == "flex" and JITTER.flex or (JITTER[key] or 0)
+					-- a ragdoll's bodies keep their distances: only their turns shake
+					if section == "phys" and key == "p" then amp = 0 end
+					if section == "bones" and key == "s" then amp = 0 end
+					if amp == 0 then return v end
+					local r = util.SharedRandom("gmfm_jitter", -1, 1, seed + f * 7 + (comp or 0) * 131 + #tostring(key) * 17)
+					return v + r * amp * w
+				end
+			end
+			if fn and first then
+				put(f, presetValue(orig[f], prev, nxt, first, fn))
+				changed = true
+			end
+		end
+	end
+	return changed
+end
+
+-- (b0.2.6-misc.1) one part of a snapshot alone, in the place it has in a snapshot (so the presets treat
+-- it as they treat the whole: bones, phys, flex…), and back
+local function partAlone(st, part)
+	local kind, idx = partIndex(part)
+	local v = partValue(st, part)
+	if kind == "p" and idx == 0 then return { kind = st.kind, pos = st.pos, ang = st.ang } end
+	if kind == "p" then return { kind = st.kind, phys = { [idx] = v } } end
+	if kind == "b" then return { kind = st.kind, bones = { [idx] = v } } end
+	if kind == "f" then return { kind = st.kind, flex = { [idx] = v } } end
+	if kind == "e" then return { kind = st.kind, eye = v } end
+	local field = kind == "a" and (SA.ATTRS[st.kind] or {})[idx + 1]
+	return { kind = st.kind, [field or "none"] = v }
+end
+local function partBack(pst, part, st)
+	local kind, idx = partIndex(part)
+	local v
+	if kind == "p" and idx == 0 then v = { p = pst.pos, a = pst.ang }
+	elseif kind == "p" then v = pst.phys and pst.phys[idx]
+	elseif kind == "b" then v = pst.bones and pst.bones[idx]
+	elseif kind == "f" then v = pst.flex and pst.flex[idx]
+	elseif kind == "e" then v = pst.eye
+	elseif kind == "a" then
+		local field = (SA.ATTRS[st.kind] or {})[idx + 1]
+		v = field and pst[field]
+	end
+	putPart(st, part, v)
+end
+
 local function presetTrack(tr, preset, sel, strength, seed, extra)
 	if not tr or #tr.order == 0 then return false end
 	-- steady: the smoothing several times over
 	local passes = preset == "steady" and 4 or 1
 	local changed = false
+	local function putWhole(f, st)
+		local k = tr.keys[f]
+		tr.keys[f] = { e = k.e, bz = k.bz, pe = k.pe, st = st }
+	end
 	for _ = 1, passes do
-		local orig, firstF = {}, nil
-		for _, f in ipairs(tr.order) do
-			orig[f] = tr.keys[f].st
-			if not firstF and f >= sel[1] and f <= sel[4] then firstF = f end
-		end
-		if not firstF then return changed end
-		local order = table.Copy(tr.order)
-		local inV, outV = presetValueAt(order, orig, sel[1]), presetValueAt(order, orig, sel[4])
-		local refV = (preset == "paste" or preset == "playhead") and presetValueAt(order, orig, extra or 0) or nil
-		for i, f in ipairs(order) do
-			local w = SA.TimeSelWeight(f, sel) * strength
-			if w > 0 then
-				local k = tr.keys[f]
-				local prev = orig[order[i - 1] or -1]
-				local nxt = orig[order[i + 1] or -1]
-				local fn, first = nil, orig[firstF]
-				local toward = function(v, _, _, c) return v + (c - v) * w end
-				if preset == "smooth" or preset == "sharp" or preset == "steady" then
-					-- at full strength a key goes half way to the middle of its neighbours (or as far away)
-					local sign = preset == "sharp" and -0.5 or 0.5
-					fn = function(v, a, b) return v + ((a + b) / 2 - v) * w * sign end
-				elseif preset == "hold" then
-					fn = toward
-				elseif preset == "in" or preset == "out" then
-					first = preset == "in" and inV or outV
-					fn = toward
-				elseif TARGET_CURVES[preset] then
-					local u = math.Clamp((f - sel[1]) / math.max(sel[4] - sel[1], 1), 0, 1)
-					first = lerpState(inV, outV, TARGET_CURVES[preset](u))
-					fn = toward
-				elseif preset == "paste" or preset == "playhead" then
-					first = refV
-					fn = toward
-				elseif preset == "stagger" then
-					-- each next object of the selection runs the same motion later (2 frames per
-					-- object at full strength)
-					local d = (extra or 0) * 2 * strength
-					if d > 0 then
-						first = presetValueAt(order, orig, f - d)
-						local ws = SA.TimeSelWeight(f, sel)
-						fn = function(v, _, _, c) return v + (c - v) * ws end
-					end
-				elseif FACE_VALUE[preset] then
-					local x = FACE_VALUE[preset]
-					fn = function(v, _, _, _, _, section)
-						if section == "flex" then return v + (x - v) * w end
-						return v
-					end
-				elseif preset == "round" then
-					fn = function(v, _, _, _, key, section)
-						-- face sliders to off / on, turns to whole degrees, places to whole units
-						if section == "flex" then return v + (math.Round(v) - v) * w end
-						if section == "bones" and key == "s" then return v end
-						return v + (math.Round(v) - v) * w
-					end
-				elseif preset == "default" then
-					fn = function(v, _, _, _, key, section)
-						-- bone offsets and turns go to zero, sizes to one; faces to zero; the place of
-						-- the object and a ragdoll's bodies stay
-						if section == "flex" then return v - v * w end
-						if section ~= "bones" then return v end
-						if key == "s" then return v + (1 - v) * w end
-						if key == "p" or key == "a" then return v - v * w end
-						return v
-					end
-				elseif preset == "jitter" then
-					fn = function(v, _, _, _, key, section, comp)
-						local amp = section == "flex" and JITTER.flex or (JITTER[key] or 0)
-						-- a ragdoll's bodies keep their distances: only their turns shake
-						if section == "phys" and key == "p" then amp = 0 end
-						if section == "bones" and key == "s" then amp = 0 end
-						if amp == 0 then return v end
-						local r = util.SharedRandom("gmfm_jitter", -1, 1, seed + f * 7 + (comp or 0) * 131 + #tostring(key) * 17)
-						return v + r * amp * w
-					end
-				end
-				if fn and first then
-					tr.keys[f] = { e = k.e, bz = k.bz, pe = k.pe, st = presetValue(k.st, prev, nxt, first, fn) }
-					changed = true
-				end
+		local c = cacheOf(tr)
+		local orig = {}
+		for _, f in ipairs(tr.order) do orig[f] = tr.keys[f].st end
+		local any
+		if not c.has then
+			any = presetPass(table.Copy(tr.order), orig, preset, sel, strength, seed, extra, putWhole)
+		else
+			-- (b0.2.6-misc.1) keys of some parts only (bone keys, auto key): the full keys among themselves,
+			-- then every part between the keys that hold it — the neighbours of a bone's key are the
+			-- keys of that bone, not keys of other bones that lack it
+			any = presetPass(table.Copy(c.full), orig, preset, sel, strength, seed, extra, putWhole)
+			for part, list in pairs(c.parts) do
+				local po = {}
+				for _, f in ipairs(list) do po[f] = partAlone(orig[f], part) end
+				any = presetPass(table.Copy(list), po, preset, sel, strength, seed, extra, function(f, pst)
+					local k = tr.keys[f]
+					local st = table.Copy(k.st)
+					partBack(pst, part, st)
+					tr.keys[f] = { e = k.e, bz = k.bz, pe = k.pe, st = st }
+				end) or any
 			end
 		end
+		if not any then break end
+		changed = true
+		-- the next pass (steady) works on what this one made
+		tr.stamp = (tr.stamp or 0) + 1
 	end
 	if changed then
 		tr.stamp = (tr.stamp or 0) + 1
@@ -1851,8 +2502,9 @@ COMP:NetReceive("Key", function(ply)
 	-- "parts:p3,b17|…": the operation is about these parts of the keys only (bone keys)
 	local partList
 	partList, str = splitParts(str)
-	local owner = not SA.IsFaceTrack(uid) and S.FindUID(ply, uid) or nil
-	local parts = partList and parseParts(owner, partList)
+	local isFace = SA.IsFaceTrack(uid)
+	local owner = S.FindUID(ply, isFace and (uid - SA.FACE) or uid)
+	local parts = partList and parseParts(owner, partList, isFace)
 	if partList and not parts then
 		opAfter(ply, op, uid)
 		return
@@ -1890,7 +2542,7 @@ COMP:NetReceive("Key", function(ply)
 			local moving = {}
 			for _, f in ipairs(frames) do
 				local k = tr.keys[f]
-				if k and k.st.kind == "prop" then
+				if k and (k.st.kind == "prop" or k.st.kind == "face" or SA.ATTRS[k.st.kind]) then
 					local vals = {}
 					for part in pairs(parts) do
 						if defines(k.st, part) then vals[part] = partValue(k.st, part) end
@@ -1910,7 +2562,16 @@ COMP:NetReceive("Key", function(ply)
 					local to = m.f + arg
 					if to >= 0 and to <= a.frames then
 						local dest = tr.keys[to]
-						local st = (dest and dest.st.kind == "prop") and table.Copy(dest.st) or emptyPart(m.k.st.pos, m.k.st.ang)
+						local kind = m.k.st.kind
+						local st
+						if dest and dest.st.kind == kind then
+							st = table.Copy(dest.st)
+						elseif SA.ATTRS[kind] then
+							st = table.Copy(m.k.st)
+							st.only, st.skip = {}, nil
+						else
+							st = emptyPart(m.k.st.pos, m.k.st.ang, kind)
+						end
 						local pe = dest and dest.pe and table.Copy(dest.pe) or nil
 						for part, v in pairs(m.vals) do
 							putPart(st, part, v)
@@ -1990,6 +2651,19 @@ COMP:NetReceive("Key", function(ply)
 			end
 			tr = a.tracks[uid]
 		end
+	elseif action == OP.TWEEN then
+		-- (b0.2.7, the tween machine) one step for the object at this frame: str — the kind (prev, next,
+		-- relax, push, pull); arg — its strength, percent. The pose is written as a key at the frame.
+		local ent = S.FindUID(ply, uid)
+		if IsValid(ent) and tr and #tr.order > 0 and not SA.IsFaceTrack(uid) then
+			local pose = SA.TweenPose(ent, tr, frame, str, math.Clamp(arg, 1, 200) / 100)
+			if pose then
+				applyProp(ent, pose, pose, 0)
+				if not setKey(ply, ent, frame, nil) then S.Notice(ply, "#sa_keys_limit", 1) end
+			else
+				S.Notice(ply, "#sa_tw_none", 1)
+			end
+		end
 	elseif action == OP.PRESET then
 		-- "preset|a0,a1,b0,b1,shape[|extra]": arg — the strength, percent; extra — the object's
 		-- place (stagger) or the frame whose values are taken (paste, playhead)
@@ -2014,7 +2688,7 @@ COMP:NetReceive("Key", function(ply)
 			if k and parts then
 				-- (b0.2.5) the motion of some parts only (picked on a bone's row): the other bones
 				-- keyed at the same frame keep theirs
-				if table.HasValue(SA.EASES, str) and str ~= "bezier" and k.st.kind == "prop" then
+				if table.HasValue(SA.EASES, str) and str ~= "bezier" and (k.st.kind == "prop" or k.st.kind == "face" or SA.ATTRS[k.st.kind]) then
 					local pe = k.pe and table.Copy(k.pe) or {}
 					for part in pairs(parts) do
 						if defines(k.st, part) then pe[part] = (str ~= k.e) and str or nil end
@@ -2281,6 +2955,22 @@ end)
 ---------------------------------------------------------------------
 -- Playback
 ---------------------------------------------------------------------
+-- (b0.2.6-misc.1) the profiler's report head (sh_prof.lua): how big the animation is
+SPeditor.Prof.Context["sv animation"] = function()
+	local nt, nk, nb = 0, 0, 0
+	for _, a in pairs(A) do
+		for _, tr in pairs(a.tracks or {}) do
+			nt = nt + 1
+			nk = nk + #tr.order
+			for _, f in ipairs(tr.order) do
+				local st = tr.keys[f] and tr.keys[f].st
+				if st and st.bones then for _ in pairs(st.bones) do nb = nb + 1 end end
+			end
+		end
+	end
+	return string.format("%d tracks, %d keys, %d bone offsets stored in them; tick %.1f ms", nt, nk, nb, engine.TickInterval() * 1000)
+end
+
 COMP:Hook("Think", function()
 	for ply, a in pairs(A) do
 		if not IsValid(ply) then
@@ -2420,7 +3110,7 @@ local function validState(st)
 			if st[field] ~= nil then
 				local set = {}
 				for part, on in pairs(istable(st[field]) and st[field] or {}) do
-					if on == true and isstring(part) and string.match(part, "^[pb]%d+$") then set[part] = true end
+					if on == true and isstring(part) and string.match(part, "^[pbfae]%d+$") then set[part] = true end
 				end
 				st[field] = next(set) and set or nil
 			end
@@ -2579,7 +3269,7 @@ end, function(ply, data, ctx)
 							local e = (k.e == "bezier" and not bz) and "ease" or (SA.ValidEase(k.e) and k.e or "ease")
 							local pe
 							for part, pv in pairs(istable(k.pe) and k.pe or {}) do
-								if isstring(part) and string.match(part, "^[pb]%d+$") and SA.ValidEase(pv) and pv ~= "bezier" then
+								if isstring(part) and string.match(part, "^[pbfae]%d+$") and SA.ValidEase(pv) and pv ~= "bezier" then
 									pe = pe or {}
 									pe[part] = pv
 								end
@@ -2988,6 +3678,9 @@ end)
 --   of a ragdoll is its place and turn relative to the ragdoll's root, any other bone — its offset.
 ---------------------------------------------------------------------
 local CH_XYZ = { "x", "y", "z", "pitch", "yaw", "roll" }
+-- (b0.2.6-misc.1) the attribute (SA.ATTRS) a channel of a camera, light or effect shows
+local CH_ATTR = { x = "pos", y = "pos", z = "pos", pitch = "ang", yaw = "ang", roll = "ang",
+	fov = "fov", bri = "bri", radius = "radius", lfov = "fov", time = "time", fxscale = "scale" }
 
 local function partOf(ent, part)
 	if part < 0 then return "root" end
@@ -3072,16 +3765,49 @@ local function sendCurve(ply, uid, part)
 	local out = { uid = uid, part = part, keys = {} }
 	if tr and IsValid(ent) and #tr.order > 0 then
 		local kind, idx = partOf(ent, part)
-		-- bone keys: only the keys that hold this part are its keys
+		-- bone keys: only the keys that hold this part are its keys. (b0.2.6-misc.1) A camera, light or
+		-- effect: each channel is the attribute it shows (x y z — "pos"…), and a key of some
+		-- attributes only (auto key) is a key of those channels only: d = "1101…" says which
 		local pid = (kind == "root") and "p0" or ((kind == "phys") and ("p" .. idx) or ("b" .. idx))
+		local ak = kind == "root" and auxKind(ent)
+		local function partFor(ch)
+			local i = ak and CH_ATTR[ch] and SA.AttrIndex(ak, CH_ATTR[ch])
+			return i and ("a" .. i) or pid
+		end
 		for _, f in ipairs(tr.order) do
 			local k = tr.keys[f]
-			if defines(k.st, pid) then
-				out.chans = out.chans or channels(k.st, kind)
-				local vals = {}
-				for c, ch in ipairs(out.chans) do vals[c] = chanGet(k.st, kind, idx, ch) or 0 end
-				out.keys[#out.keys + 1] = { f = f, e = k.e, bz = k.bz, v = vals }
+			local chans = out.chans or channels(k.st, kind)
+			local mask, ce, any = {}, {}, false
+			for c, ch in ipairs(chans) do
+				local p = partFor(ch)
+				local on = defines(k.st, p)
+				mask[c], any = on and "1" or "0", any or on
+				-- the part's own motion from this key (a row's "Motion to the next key")
+				if on and k.pe and k.pe[p] then ce[#ce + 1] = c .. "=" .. k.pe[p] end
 			end
+			if any then
+				out.chans = chans
+				local vals = {}
+				for c, ch in ipairs(chans) do vals[c] = chanGet(k.st, kind, idx, ch) or 0 end
+				out.keys[#out.keys + 1] = { f = f, e = k.e, bz = k.bz, v = vals, d = table.concat(mask), ce = table.concat(ce, ",") }
+			end
+		end
+	end
+	-- (b0.2.6-misc.1) the part each channel is (a bone's or a body's curves: that bone; a camera's x y z:
+	-- "a0"…), so that deleting or moving a key in the Graph Editor takes that part only, as on the
+	-- bone's row of the timeline. Not for an object's own curves: its row's key is the whole key.
+	if out.chans and tr and IsValid(ent) then
+		local kind, idx = partOf(ent, part)
+		local ak = kind == "root" and auxKind(ent)
+		if kind ~= "root" or ak then
+			-- (an object's root has no index: pid only for a bone or a body)
+			local pid = kind ~= "root" and ((kind == "phys") and ("p" .. idx) or ("b" .. idx)) or nil
+			local cp = {}
+			for c, ch in ipairs(out.chans) do
+				local i = ak and CH_ATTR[ch] and SA.AttrIndex(ak, CH_ATTR[ch])
+				cp[c] = i and ("a" .. i) or pid or ""
+			end
+			out.cp = table.concat(cp, ",")
 		end
 	end
 	out.keys = SA.ToPages(out.keys)
@@ -3103,7 +3829,8 @@ COMP:NetReceive("Curve", function(ply)
 			local st = chanSet(k.st, kind, idx, ch, v)
 			if st then
 				local op = opBefore(ply, id, uid)
-				tr.keys[frame] = { e = k.e, bz = k.bz, st = st }
+				tr.keys[frame] = { e = k.e, bz = k.bz, pe = k.pe, st = st }
+				tr.stamp = (tr.stamp or 0) + 1
 				opAfter(ply, op, uid)
 				SA.ApplyAll(ply, a.cur)
 				SA.SendSummary(ply)
@@ -3233,6 +3960,24 @@ local function numKeys(t)
 	return out
 end
 
+-- (b0.2.7) the flex weights of an SMH save: by number, or by the flex's name (kept as a string and
+-- found on the model when the key is applied; flexKeyId)
+local function flexKeys(t)
+	local out = {}
+	for k, v in pairs(istable(t) and t or {}) do
+		local n = tonumber(k)
+		if n then out[n] = v elseif isstring(k) and k ~= "" then out[k] = v end
+	end
+	return out
+end
+
+local function flexKeyId(ent, key)
+	if isnumber(key) then return key end
+	for i = 0, ent:GetFlexNum() - 1 do
+		if string.lower(ent:GetFlexName(i) or "") == string.lower(key) then return i end
+	end
+end
+
 -- opts = { start = first frame, fps = SMH frames a second (0 — frame numbers as they are),
 --          world = keep the places of the save (false — move it to where the object stands) }
 local function smhImport(ply, id, src, entName, ent, opts)
@@ -3254,7 +3999,7 @@ local function smhImport(ply, id, src, entName, ent, opts)
 				mods[name] = mods[name] or {}
 				local dd = d
 				if name == "physbones" or name == "bones" then dd = numKeys(d) end
-				if name == "flex" and istable(d) then dd = { Weights = numKeys(d.Weights), Scale = d.Scale } end
+				if name == "flex" and istable(d) then dd = { Weights = flexKeys(d.Weights), Scale = d.Scale } end
 				if name == "bodygroup" then dd = numKeys(d) end
 				table.insert(mods[name], { pos = pos, data = dd, inn = num(fr.EaseIn) or 0, out = num(fr.EaseOut) or 0 })
 			end
@@ -3355,7 +4100,8 @@ local function smhImport(ply, id, src, entName, ent, opts)
 			st.flex = {}
 			for f, w in pairs(fx.Weights) do
 				w = num(w)
-				if w and math.abs(w) > 0.001 and f < ent:GetFlexNum() then st.flex[f] = w end
+				local id = flexKeyId(ent, f)
+				if id and w and math.abs(w) > 0.001 and id < ent:GetFlexNum() then st.flex[id] = w end
 			end
 		end
 		local sk = num(get("skin"))

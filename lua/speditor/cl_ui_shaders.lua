@@ -117,6 +117,8 @@ local function buildAddonsPage(page)
 		-- the effect's native settings panel (as in Q menu → Post Process)
 		local ok, err = pcall(function()
 			local cp = vgui.Create("ControlPanel", right)
+			-- (b0.2.7) the game may not have the panel class at all: say so, not a nil error
+			if not IsValid(cp) then error(L("shaders_no_panel")) end
 			cp:Dock(TOP)
 			cp:DockMargin(4, 4, 4, 8)
 			cp:SetLabel(entry.name)

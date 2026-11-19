@@ -3,12 +3,14 @@
 SPeditor = SPeditor or {}
 SPeditor.Name     = "GM:FM"
 SPeditor.FullName = "Garry's Mod Filmmaker"
-SPeditor.Version = "b0.2.6"
+SPeditor.Version = "b0.3"
 SPeditor.VersionBase = "b0.2"   -- the release the patch builds on: About lists its news under the patch's
-SPeditor.VersionPrev = "b0.2.5" -- the patch before this one
+SPeditor.VersionPrev = "b0.2.7" -- the patch before this one
 -- every update since b0.1, newest first: version, release date, prefix of its news in the
 -- language files (About → What's new, b0.2.4)
 SPeditor.History = {
+	{ "b0.3", "2026-11-19", "about_b03_" },
+	{ "b0.2.7", "2026-11-05", "about_z" },
 	{ "b0.2.6", "2026-10-31", "about_y" },
 	{ "b0.2.5", "2026-10-28", "about_x" },
 	{ "b0.2.4", "2026-10-24", "about_w" },
@@ -71,6 +73,7 @@ SPeditor.Net = {
 	AdoptList     = "SPeditor_AdoptList",
 	AdoptListData = "SPeditor_AdoptListData",
 	Adopt         = "SPeditor_Adopt",
+	ImportDupe    = "SPeditor_ImportDupe",   -- (b0.2.7) a duplicator file from data/duplicator/ (sv_adopt.lua)
 	PAC           = "SPeditor_PAC",        -- PAC3 outfits of scene objects (sv_pac.lua, cl_pac.lua)
 	PACSync       = "SPeditor_PACSync",
 	Env           = "GMFM_Env",            -- the lighting of the whole map (sv_env.lua, cl_env.lua)

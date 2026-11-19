@@ -55,8 +55,13 @@ local NEVER = {
 	vtrace_scanner = true,   -- a helper of Soft Lamps
 }
 
+-- (b0.2.7, asked on the Workshop) an NPC of the map can be taken: it becomes a ragdoll of the scene
+local function takableNPC(ent)
+	return IsValid(ent) and ent:IsNPC() and not ent:IsNextBot() and ent:Health() > 0 and ent:GetModel() ~= nil
+end
+
 local function bad(ent)
-	if not IsValid(ent) or ent:IsPlayer() or ent:IsWeapon() or ent:IsNPC() or ent:IsNextBot() or ent:IsVehicle() then return true end
+	if not IsValid(ent) or ent:IsPlayer() or ent:IsWeapon() or (ent:IsNPC() and not takableNPC(ent)) or ent:IsNextBot() or ent:IsVehicle() then return true end
 	local c = ent:GetClass()
 	if NEVER[c] or string.StartWith(c, "phys_") or string.StartWith(c, "speditor_") or string.StartWith(c, "env_")
 		or string.StartWith(c, "info_") or string.StartWith(c, "func_") or string.StartWith(c, "light_") or string.StartWith(c, "point_") or string.StartWith(c, "trigger_") then
@@ -72,6 +77,7 @@ end
 -- the kind shown in the list: ragdoll / prop / light / other
 local function kindOf(ent)
 	local c = ent:GetClass()
+	if ent:IsNPC() then return "npc" end
 	if c == "prop_ragdoll" then return "ragdoll" end
 	if PROP[c] then return "prop" end
 	if isLightClass(c) then return "light" end
@@ -118,7 +124,9 @@ end
 function S.AdoptCandidates(ply)
 	local out = {}
 	for _, ent in ipairs(ents.GetAll()) do
-		if not bad(ent) and not tracked(ent) and not ent:CreatedByMap() and not IsValid(ent:GetParent())
+		if takableNPC(ent) and mayTake(ply, ent) then
+			out[#out + 1] = { ent = ent, kind = "npc", extras = 0 }
+		elseif not bad(ent) and not tracked(ent) and not ent:CreatedByMap() and not IsValid(ent:GetParent())
 			and ent:GetModel() and mayTake(ply, ent) then
 			local c = ent:GetClass()
 			if PROP[c] or dupable(ent) then
@@ -289,6 +297,15 @@ end
 -- Taking
 ---------------------------------------------------------------------
 function S.Adopt(ply, ent)
+	if takableNPC(ent) and mayTake(ply, ent) then
+		-- (b0.2.7) the NPC becomes a ragdoll of the scene in its place (the posing copy of the model)
+		if S.AtLimit(ply, "prop") then return nil, "#err_limit_prop" end
+		local pos, ang, model, skin = ent:GetPos(), ent:GetAngles(), ent:GetModel(), ent:GetSkin()
+		local rag, err = S.SpawnWithState(ply, model, pos, ang, skin, nil, nil, nil, nil)
+		if not rag then return nil, err end
+		ent:Remove()
+		return rag
+	end
 	if not IsValid(ent) or bad(ent) or tracked(ent) or IsValid(ent:GetParent()) or not mayTake(ply, ent) then return nil end
 	if S.AtLimit(ply, "prop") then return nil, "#err_limit_prop" end
 	local c = ent:GetClass()
@@ -324,6 +341,100 @@ S.Receive("AdoptList", function(ply)
 		net.WriteString(PROP[it.ent:GetClass()] and "" or friendlyName(it.ent))
 	end
 	net.Send(ply)
+end)
+
+---------------------------------------------------------------------
+-- Import a duplicator file (b0.2.7, asked by jef and bob on the Workshop): the entities of a dupe
+-- made with the game's duplicator (data/duplicator/…) appear where the player looks and become
+-- scene objects, as the entities taken from the map do. Vectors in the file are plain tables.
+---------------------------------------------------------------------
+local DUPE_DIR = "duplicator/"
+
+-- a file of the duplicator folder only, with no way out of it
+function S.DupeFileOk(p)
+	return isstring(p) and #p < 260 and string.sub(p, 1, #DUPE_DIR) == DUPE_DIR and string.sub(p, -4) == ".txt"
+		and not string.find(p, "..", 1, true) and file.Exists(p, "DATA")
+end
+
+local function toVec(v)
+	if isvector(v) then return Vector(v) end
+	if istable(v) and tonumber(v.x) and tonumber(v.y) and tonumber(v.z) then return Vector(v.x, v.y, v.z) end
+end
+
+local function toAng(a)
+	if isangle(a) then return Angle(a) end
+	if istable(a) and tonumber(a.p) and tonumber(a.y) and tonumber(a.r) then return Angle(a.p, a.y, a.r) end
+end
+
+function S.ImportDupe(ply, p)
+	if not IsValid(ply) or not S.DupeFileOk(p) then return "#dupe_bad" end
+	local data = util.JSONToTable(file.Read(p, "DATA") or "")
+	if not istable(data) or not istable(data.Entities) then return "#dupe_bad" end
+
+	-- the dupe's origin goes where the player looks
+	local origin = toVec(data.HitPos)
+	if not origin then
+		local sum, n = Vector(0, 0, 0), 0
+		for _, t in pairs(data.Entities) do
+			local v = istable(t) and toVec(t.Pos)
+			if v then sum, n = sum + v, n + 1 end
+		end
+		origin = n > 0 and sum / n or Vector(0, 0, 0)
+	end
+	local aim = ply:GetEyeTrace().HitPos + Vector(0, 0, 8)
+	local shift = aim - origin
+
+	local made, map = {}, {}
+	for idx, t in pairs(data.Entities) do
+		if istable(t) and isstring(t.Class) and not S.AtLimit(ply, "prop") then
+			t.Pos, t.Angle = (toVec(t.Pos) or origin) + shift, toAng(t.Angle) or Angle(0, 0, 0)
+			if istable(t.PhysicsObjects) then
+				for _, po in pairs(t.PhysicsObjects) do
+					if istable(po) then
+						po.Pos = toVec(po.Pos) and (toVec(po.Pos) + shift) or po.Pos
+						po.Angle = toAng(po.Angle) or po.Angle
+					end
+				end
+			end
+			local ent
+			ProtectedCall(function() ent = duplicator.CreateEntityFromTable(ply, t) end)
+			if IsValid(ent) then
+				if ent.RestoreNetworkVars and t.DT then ent:RestoreNetworkVars(t.DT) end
+				if ent.OnDuplicated then ProtectedCall(function() ent:OnDuplicated(t) end) end
+				ent.BoneMods = table.Copy(t.BoneMods)
+				ent.EntityMods = table.Copy(t.EntityMods)
+				ent.PhysicsObjects = table.Copy(t.PhysicsObjects)
+				map[tonumber(idx) or idx] = ent
+				made[#made + 1] = { ent = ent, c = t.Class }
+			end
+		end
+	end
+	for _, m in ipairs(made) do
+		ProtectedCall(function()
+			duplicator.ApplyEntityModifiers(ply, m.ent)
+			duplicator.ApplyBoneModifiers(ply, m.ent)
+			if m.ent.PostEntityPaste then m.ent:PostEntityPaste(ply, m.ent, map) end
+		end)
+	end
+	for _, con in ipairs(istable(data.Constraints) and data.Constraints or {}) do
+		ProtectedCall(function() duplicator.CreateConstraintFromTable(table.Copy(con), map, ply) end)
+	end
+	for _, m in ipairs(made) do
+		local ent = m.ent
+		if not PROP[m.c] then markForeign(ent) end
+		S.Freeze(ent)
+		if S.IsRagdoll(ent) then S.StoreInit(ent) end
+		S.Track(ply, ent)
+	end
+	if #made == 0 then return "#dupe_none" end
+	return nil, #made
+end
+
+S.Receive("ImportDupe", function(ply)
+	local p = net.ReadString()
+	local err, n = S.ImportDupe(ply, p)
+	if err then S.Notice(ply, err, 1) return end
+	S.Notice(ply, "#dupe_done|" .. n, 2)
 end)
 
 S.Receive("Adopt", function(ply)

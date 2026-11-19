@@ -3,7 +3,7 @@ SPeditor — Help → Report a problem (a0.8). Reports like "the mouse pointer i
 acted on: nothing said what the game, the settings or the error were. The window builds one text
 — what the player says happened, the errors the editor caught this session (both realms, see
 sh_errors.lua), the game and editor settings that matter, the mounted addons — copies it and
-opens the Bug Report discussion of the Workshop page to paste it there. Nothing is sent anywhere
+opens a new issue on GMFM-Misc's GitHub page to paste it there. Nothing is sent anywhere
 by the editor itself.
 
   SPeditor.BuildReport(what)   the text of the report
@@ -178,7 +178,7 @@ function UI.OpenReport()
 		SPeditor.Notify("#rep_copied", 2)
 	end)
 	footBtn(L("rep_open"), "icon16/world_go.png", LEFT, 190, function()
-		gui.OpenURL(SPeditor.BugsURL or "https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435")
+		gui.OpenURL(SPeditor.BugsURL or "https://steamcommunity.com/workshop/filedetails/discussion/3817852435/567048683131023614/")
 	end)
 	footBtn(L("about_close"), nil, RIGHT, 100, function() win:Remove() end)
 	footBtn(L("rep_clear"), "icon16/bin.png", RIGHT, 130, function()

@@ -420,7 +420,8 @@ function Env.Serialize()
 		sun = { on = c.sun.on, mapDir = c.sun.mapDir, pitch = c.sun.pitch, yaw = c.sun.yaw, color = colorOut(c.sun.color),
 			bright = c.sun.bright, soft = c.sun.soft, cascades = c.sun.cascades, reach = c.sun.reach, staticSun = c.sun.staticSun },
 		ambient = c.ambient,
-		mapSounds = c.mapSounds == false and false or nil,
+		-- (b0.2.6-misc.1) "== false and false or nil" was always nil: a scene never kept the map's sounds muted
+		mapSounds = c.mapSounds ~= false,
 		sky = { name = c.sky.name, paint = paint },
 		fog = { on = c.fog.on, start = c.fog.start, finish = c.fog.finish, color = colorOut(c.fog.color), density = c.fog.density, sky = c.fog.sky },
 	}

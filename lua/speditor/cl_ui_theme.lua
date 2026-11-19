@@ -662,10 +662,19 @@ function CTRL:Setup(o)
 	return self
 end
 
+-- (b0.2.6-misc.1) A final value (the slider let go, a value typed, a reset) ends the edit at once: the
+-- series of quick edits it belongs to goes into the history now, not 0.6 s later — auto key keys it
+-- right away (C.BurstEdit / C.FlushBursts, cl_history.lua)
+local function endEdit()
+	local C = SPeditor.Client
+	if C and C.FlushBursts then C.FlushBursts() end
+end
+
 function CTRL:SetValue(v, fire, final)
 	v = fit(self, tonumber(v) or self.default)
 	self.value = v
 	if fire and self.onChange then self.onChange(v, final and true or false) end
+	if fire and final then endEdit() end
 end
 
 function CTRL:GetValue() return self.value end
@@ -769,7 +778,10 @@ function CTRL:OnMouseWheeled(delta)
 	self.lastEdit = RealTime()
 	local id = "SPeditorControlWheel" .. tostring(self)
 	timer.Create(id, 0.4, 1, function()
-		if IsValid(self) and self.onChange then self.onChange(self.value, true) end
+		if IsValid(self) and self.onChange then
+			self.onChange(self.value, true)
+			endEdit()
+		end
 	end)
 	return true
 end
@@ -779,6 +791,7 @@ function CTRL:OnMouseReleased(code)
 	self.drag = nil
 	self:MouseCapture(false)
 	if self.onChange then self.onChange(self.value, true) end
+	endEdit()
 	self.lastEdit = RealTime()
 end
 

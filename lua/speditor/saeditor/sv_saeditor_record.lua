@@ -1434,6 +1434,13 @@ end
 function SA.PrepareTake(ply, t)
 	if not IsValid(ply) or not istable(t) then return end
 	if not ply:Alive() then ply:Spawn() end
+	-- (b0.2.7) the player's model for the take: a model path the server has, nothing else
+	if isstring(t.model) and #t.model < 200 and string.StartWith(t.model, "models/") and string.EndsWith(t.model, ".mdl")
+		and not string.find(t.model, "..", 1, true) and util.IsValidModel(t.model) then
+		ply:SetModel(t.model)
+	end
+	-- (b0.2.7) its skin (after the model: a new model comes with skin 0)
+	if isnumber(t.skin) then ply:SetSkin(math.Clamp(math.floor(t.skin), 0, math.max(ply:SkinCount() - 1, 0))) end
 	local given = {}
 	if istable(t.weapons) then
 		if t.strip then ply:StripWeapons() end

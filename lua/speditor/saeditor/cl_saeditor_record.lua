@@ -30,6 +30,10 @@ local cvPhys    = CreateClientConVar("gmfm_rec_phys", "0", true, false,
 local cvView    = CreateClientConVar("gmfm_rec_view", "1", true, false,
 	"Recorder: 0 third person (no camera of the player), 1 first person (a camera in the player's eyes)", 0, 1)
 local cvCorpses = CreateClientConVar("gmfm_rec_corpses", "1", true, false, "Recorder: killed NPCs fall as ragdolls (server corpses for the take)", 0, 1)
+-- (b0.2.7, Workshop) the player model of a gameplay take; empty — the own model
+local cvModel   = CreateClientConVar("gmfm_rec_model", "", true, false, "Recorder: the player model of a gameplay take (empty: the own one)")
+-- (b0.2.7, Nicdavel002) the skin of that player model in a gameplay take (empty: the model's own skin)
+local cvSkin    = CreateClientConVar("gmfm_rec_skin", "", true, false, "Recorder: the skin of the player model of a gameplay take (empty: its own)")
 
 -- the take (b0.2.1): the countdown, a time limit, getting ready (weapons, health, god mode)
 local cvCount   = CreateClientConVar("gmfm_rec_countdown", "3", true, false, "Recorder: seconds of the countdown before the take", 1, 10)
@@ -471,6 +475,8 @@ function SA.StartRecording()
 	local npcs, npcCleanup, npcWait = SA.RecNPCsForTake()
 	send(6, { weapons = SA.RecAsksWeapons() and SA.RecWeaponList() or nil, strip = cvStrip:GetBool(),
 		ammo = cvAmmo:GetInt(), heal = cvHeal:GetBool(), armor = cvHeal:GetBool() and 100 or 0, god = cvGod:GetBool(),
+		model = cvModel:GetString() ~= "" and cvModel:GetString() or nil,
+		skin = tonumber(cvSkin:GetString()) and math.max(0, math.floor(tonumber(cvSkin:GetString()))) or nil,
 		npcs = #npcs > 0 and npcs or nil, npcCleanup = npcCleanup, npcWait = npcWait })
 	local phys = cvPhys:GetInt()
 	-- the NPCs of the marks are always in the take: the radius reaches the farthest of them
@@ -797,6 +803,42 @@ function SA.OpenRecord()
 	UI.Check(body, L("sa_rec_effects"), cvEffects:GetBool(), function(v) RunConsoleCommand("gmfm_rec_effects", v and "1" or "0") end)
 	-- the camera of the take (a0.9): third person — the scene is filmed by your own cameras, the
 	-- player is an actor like the others; first person — a camera strictly in the player's eyes
+	-- (b0.2.7) the player's model in a gameplay take
+	local mr = vgui.Create("DPanel", body)
+	mr:Dock(TOP)
+	mr:DockMargin(8, 4, 8, 0)
+	mr:SetTall(UI.S(22))
+	mr.Paint = function() end
+	local ml = vgui.Create("DLabel", mr)
+	ml:Dock(LEFT)
+	ml:SetWide(UI.S(170))
+	ml:SetFont("SPeditor.Small")
+	ml:SetTextColor(COL.TEXT)
+	ml:SetText(L("sa_rec_model"))
+	local me = vgui.Create("DTextEntry", mr)
+	me:Dock(FILL)
+	me:SetValue(cvModel:GetString())
+	me:SetTooltip(L("sa_rec_model_tip"))
+	me.OnChange = function(s) RunConsoleCommand("gmfm_rec_model", s:GetValue()) end
+
+	-- (b0.2.7) the skin of that model (a number; empty: its own)
+	local sr = vgui.Create("DPanel", body)
+	sr:Dock(TOP)
+	sr:DockMargin(8, 4, 8, 0)
+	sr:SetTall(UI.S(22))
+	sr.Paint = function() end
+	local sl = vgui.Create("DLabel", sr)
+	sl:Dock(LEFT)
+	sl:SetWide(UI.S(170))
+	sl:SetFont("SPeditor.Small")
+	sl:SetTextColor(COL.TEXT)
+	sl:SetText(L("sa_rec_skin"))
+	local se = vgui.Create("DTextEntry", sr)
+	se:Dock(FILL)
+	se:SetValue(cvSkin:GetString())
+	se:SetTooltip(L("sa_rec_skin_tip"))
+	se.OnChange = function(s) RunConsoleCommand("gmfm_rec_skin", s:GetValue()) end
+
 	local vr = vgui.Create("DPanel", body)
 	vr:Dock(TOP)
 	vr:DockMargin(8, 4, 8, 0)

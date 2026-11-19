@@ -39,6 +39,10 @@ function C.EditFlex(ent, id, weight)
 	if not IsValid(ent) then return end
 	C.SendFlex(ent, id, weight)
 	local ref = C.Ref(ent)
+	-- (b0.2.6-misc.1) the sliders edited since the last auto key: it keys only them (SAeditor)
+	C.editedFlex = C.editedFlex or {}
+	C.editedFlex[ent] = C.editedFlex[ent] or {}
+	C.editedFlex[ent][id] = true
 
 	C.BurstEdit("fx" .. ent:EntIndex() .. "_" .. id, "flex",
 		function() return SPeditor.FlexGet(ent, id) end,

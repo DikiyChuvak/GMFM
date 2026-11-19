@@ -297,7 +297,12 @@ local ACTIONS = {
 		C.SetStretch(not C.gizmo.stretch)
 		SPeditor.Notify(C.gizmo.stretch and L("stretch_hint") or L("stretch_off"), 0)
 	end,
-	delete = function() if IsValid(C.selected) then C.DeleteSelection() end end,
+	delete = function()
+		-- (b0.2.6-misc.1) the mouse over the timeline with keys selected there: Delete removes those keys
+		-- (as X does), not the object
+		if C.DeleteKeysHere and C.DeleteKeysHere() then return end
+		if IsValid(C.selected) then C.DeleteSelection() end
+	end,
 	list_select_all = function() C.SelectAll() end,
 	select_all = function() C.SelectAll() end,
 	list_copy = function() C.CopyObjects() end,

@@ -4,9 +4,10 @@ the timeline), the "Import model animation" and "Render animation" windows, menu
 
 Timeline: names of animated objects on the left, the frame ruler and keys on the right;
 below the objects — the sounds: one row per file and source, a bar for every time it plays.
-  LMB on the ruler or empty space — move the playhead (can be dragged);
+  LMB on the ruler — move the playhead (can be dragged), on empty space — go to that frame;
   LMB on a key — select it, drag — move it (with Ctrl — copy it); Ctrl+click — add a key to the
-  selection or take it out; Shift+drag over empty space — select the keys in a box; the selected
+  selection or take it out; drag over empty space — select the keys in a box (Ctrl / Shift: add to
+  the selection; a click without a drag goes to that frame); the selected
   keys move, copy, change their motion and are deleted together;
   RMB on a key — the key menu, RMB on a row — set or paste a key;
   LMB on a sound bar — drag the sound along the timeline, on its edge — trim it, RMB — the sound menu;
@@ -37,6 +38,8 @@ local function round(v) return math.floor(v + 0.5) end
 -- a key picked on the row of a bone (bone keys): it stands for that bone's part of the key
 SA.selKeys = SA.selKeys or {}
 local function isSel(uid, f, parts) return SA.selKeys[uid .. ":" .. f .. ":" .. (parts or "")] ~= nil end
+-- (b0.2.7, TobyCat) the objects whose element tracks are open: a double click on the object's name
+SA.elOpen = SA.elOpen or {}
 local function setSel(uid, f, on, parts)
 	SA.selKeys[uid .. ":" .. f .. ":" .. (parts or "")] = on and { uid = uid, f = f, parts = parts } or nil
 end
@@ -359,7 +362,6 @@ local function buildTimeline(page)
 		if SA.HasKey(uid, f) then SA.DeleteKey(uid, f) end
 	end)
 	UI.IconButton(bar, "icon16/bullet_red.png", L("sa_autokey"), function() SA.autokey = not SA.autokey end, function() return SA.autokey end)
-	UI.IconButton(bar, "icon16/arrow_branch.png", L("sa_bone_keys"), function() SA.ToggleBoneKeys() end, function() return SA.BoneKeysOn() end)
 	UI.IconButton(bar, "icon16/user_gray.png", L("sa_ghosts"), function() SA.ToggleGhosts() end, function() return SA.GhostsOn() end)
 	UI.IconButton(bar, "icon16/time.png", L("sa_tsel_tip"), function() SA.TimeSelMenu(round(SA.frame)) end, function() return SA.timeSel ~= nil end)
 	sep()
@@ -389,6 +391,15 @@ local function buildTimeline(page)
 	local tl = vgui.Create("DPanel", page)
 	tl:Dock(FILL)
 	tl:SetMouseInputEnabled(true)
+	-- Delete (cl_speditor.lua) over the rows with keys selected: those keys go, not the object
+	C.DeleteKeysHere = function()
+		if not (IsValid(tl) and tl:IsVisible() and tl:IsHovered()) or SA.rendering then return false end
+		local list = selList()
+		if #list == 0 then return false end
+		SA.DeleteKeys(list)
+		clearSel()
+		return true
+	end
 	-- the Graph Editor takes the place of the rows (made the first time it is asked for)
 	local graphHost = vgui.Create("DPanel", page)
 	graphHost:Dock(FILL)
@@ -413,63 +424,207 @@ local function buildTimeline(page)
 	timer.Simple(0, function() if IsValid(tl) then applyMode() end end)
 	local rows, rowsAt = {}, 0
 	local scroll = 0
+	local nameClick = { uid = 0, t = 0 }   -- the last click on an object's name (double click, b0.2.7)
 	local drag            -- { kind = "scrub" } | { kind = "keys", from, to, lo, hi, … } | { kind = "box", x0, y0, x1, y1 } | sound
 
-	-- the row of a bone, under its object (bone keys): the keys that hold that bone
-	local function boneRow(ent, uid, bone, keyedOnly)
-		local parts = SA.BoneParts(ent, bone)
-		if not parts then return end
+	-- the keys of a track that hold any of the parts "p3,b14"
+	local function partKeys(uid, parts)
 		local keys = {}
 		for _, k in ipairs(SA.tracks[uid] or {}) do
 			if SA.KeyHasParts(k, parts) then
 				-- the bone's own motion at that key, if it was given one (b0.2.5)
 				local e
-				for part in string.gmatch(parts, "[pb]%d+") do e = e or (k.pe and k.pe[part]) end
+				for part in string.gmatch(parts, "[pbfae]%d+") do e = e or (k.pe and k.pe[part]) end
 				keys[#keys + 1] = e and setmetatable({ e = e }, { __index = k }) or k
 			end
 		end
-		-- shown when the mode is on, or when the track has bone keys at all
-		local any = SA.BoneKeysOn()
-		for _, k in ipairs(SA.tracks[uid] or {}) do
-			if any then break end
-			any = k.only ~= nil or k.skip ~= nil
+		return keys
+	end
+	local function boneName(ent, bone)
+		return (string.gsub(ent:GetBoneName(bone) or "", "^ValveBiped%.Bip01_", ""))
+	end
+	-- a row of parts under its object; once per object and list of parts
+	local function partRow(ent, uid, parts, name, boneIdx, slider, depth)
+		for i = #rows, 1, -1 do
+			local r = rows[i]
+			if r.uid ~= uid then break end
+			if r.parts == parts and not r.group then return end
 		end
-		if not any then return end
-		if keyedOnly then
-			-- a bone that is not selected shows only when it has keys of its own
-			local own = false
-			for _, k in ipairs(keys) do
-				if k.only then own = true break end
-			end
-			if not own then return end
-		end
-		local name = string.gsub(ent:GetBoneName(bone) or "", "^ValveBiped%.Bip01_", "")
-		rows[#rows + 1] = { uid = uid, ent = ent, parts = parts, bone = true, name = name, keys = keys }
+		rows[#rows + 1] = { uid = uid, ent = ent, parts = parts, bone = true, boneIdx = boneIdx, name = name, keys = partKeys(uid, parts),
+			face = slider or nil, slider = slider or nil, depth = depth }
 	end
 
-	-- (b0.2.5) the selected object shows a row for every bone with keys of its own, not only for
-	-- the selected bone: the bone channels can be seen and edited side by side, as in SFM
-	local function boneRows(ent, uid)
-		if ent ~= C.selected then return end
-		local own = SA.OwnParts(uid)
-		local bones, seen = {}, {}
-		if C.selBone >= 0 then
-			bones[1] = C.selBone
-			seen[C.selBone] = true
-		end
-		for kind, idx in string.gmatch(own or "", "([pb])(%d+)") do
-			local b = tonumber(idx)
-			if kind == "p" then b = ent:TranslatePhysBoneToBone(b) end
-			if b and b >= 0 and not seen[b] then
-				seen[b] = true
-				bones[#bones + 1] = b
+	-- (b0.2.6-misc.1) the Face row opened out: a row for every face slider that changes between the face
+	-- keys or has keys of its own; a key dragged there takes only that slider along
+	local function sliderRows(ent, fid)
+		local str = SA.moving and SA.moving[fid]
+		local own = SA.OwnParts(fid)
+		if own then str = str and (str .. "," .. own) or own end
+		local ids, seen = {}, {}
+		for idx in string.gmatch(str or "", "f(%d+)") do
+			local i = tonumber(idx)
+			if i < ent:GetFlexNum() and not seen[i] then
+				seen[i] = true
+				ids[#ids + 1] = i
 			end
 		end
-		if #bones > 1 then table.sort(bones, function(x, y)
-			if x == y then return false end
-			return x == C.selBone or (y ~= C.selBone and x < y)
-		end) end
-		for _, b in ipairs(bones) do boneRow(ent, uid, b, b ~= C.selBone) end
+		table.sort(ids, function(x, y) return (ent:GetFlexName(x) or "") < (ent:GetFlexName(y) or "") end)
+		-- (b0.2.6-misc.1) where the eyes look: a row of its own at the top
+		if string.find(str or "", "e0", 1, true) then partRow(ent, fid, "e0", L("sa_eyes_row"), nil, true) end
+		for _, i in ipairs(ids) do partRow(ent, fid, "f" .. i, ent:GetFlexName(i) or ("#" .. i), nil, true) end
+	end
+
+	-- The order of the bones of a model as its skeleton goes (depth first, a parent before its
+	-- children), as Blender's dope sheet lists them: a bone row stays with its siblings (b0.2.6-misc.1;
+	-- the selected bone used to jump to the top, the arm above the head)
+	local hierCache = setmetatable({}, { __mode = "k" })
+	local function boneOrder(ent)
+		local mdl = ent:GetModel() or ""
+		local c = hierCache[ent]
+		if c and c.mdl == mdl then return c.order end
+		local n = ent:GetBoneCount()
+		local kids, roots = {}, {}
+		for b = 0, n - 1 do
+			local par = ent:GetBoneParent(b)
+			if par and par >= 0 and par < n and par ~= b then
+				kids[par] = kids[par] or {}
+				table.insert(kids[par], b)
+			else
+				roots[#roots + 1] = b
+			end
+		end
+		local order, i, seen = {}, 0, {}
+		local function walk(b)
+			if seen[b] then return end
+			seen[b] = true
+			i = i + 1
+			order[b] = i
+			for _, k in ipairs(kids[b] or {}) do walk(k) end
+		end
+		for _, r in ipairs(roots) do walk(r) end
+		for b = 0, n - 1 do if not order[b] then i = i + 1 order[b] = i end end
+		hierCache[ent] = { mdl = mdl, order = order }
+		return order
+	end
+
+	-- the selected bones of the selected model
+	local function selectedBones()
+		local sel = C.SelectedBones and C.SelectedBones() or {}
+		if #sel == 0 and C.selBone >= 0 then sel = { C.selBone } end
+		return sel
+	end
+	-- groups folded by hand while a bone in them is selected: they stay folded until the selection changes
+	local folded = {}
+
+	-- The bone rows of a model, in the order of its skeleton:
+	--  * opened out (a double click on its name): Position, then every bone that moves between the
+	--    keys (SA.moving, from the server) or has keys of its own. A key dragged on one of these
+	--    rows takes only that bone along (sv_saeditor.lua, the parts of OP.SHIFT);
+	--  * selected (b0.2.5): the selected bones and the bones with keys of their own, as SFM shows
+	--    the bone channels side by side (b0.2.6-misc.1: always, the Bone keys mode is gone — a bone's row
+	--    is where a key of that bone alone is set).
+	local function modelRows(ent, uid, expanded)
+		local want, pos = {}, false
+		local own = SA.OwnParts(uid)
+		if expanded then
+			local str = SA.moving and SA.moving[uid]
+			if own then str = str and (str .. "," .. own) or own end
+			for kind, idx in string.gmatch(str or "", "([pb])(%d+)") do
+				local i = tonumber(idx)
+				if kind == "p" and i == 0 then
+					pos = true
+				else
+					local b = (kind == "p") and ent:TranslatePhysBoneToBone(i) or i
+					if b and b >= 0 and b < ent:GetBoneCount() and not want[b] then
+						-- the root body's bone: Position is its body, here only its offset (SA.BoneParts
+						-- of the root names every body — the whole pose)
+						want[b] = (C.PhysIndexOfBone(ent, b) == 0) and ("b" .. b) or SA.BoneParts(ent, b)
+					end
+				end
+			end
+		end
+		if ent == C.selected then
+			do
+				for _, b in ipairs(selectedBones()) do
+					if b >= 0 and not want[b] then want[b] = SA.BoneParts(ent, b) end
+				end
+				for kind, idx in string.gmatch(own or "", "([pb])(%d+)") do
+					local b = tonumber(idx)
+					if kind == "p" then b = ent:TranslatePhysBoneToBone(b) end
+					if b and b >= 0 and b < ent:GetBoneCount() and not want[b] then want[b] = SA.BoneParts(ent, b) end
+				end
+			end
+		end
+		if pos then partRow(ent, uid, "p0", L("sa_row_position"), -1) end
+		if not next(want) then return end
+		-- (b0.2.6-misc.1) the bones in groups by body part (cl_saeditor_groups.lua): Body, Left arm,
+		-- Left hand (a group per finger)… A group's row holds the keys of all its bones and a key dragged
+		-- there takes them all along. A group opens with its arrow or a double click; one holding a
+		-- selected bone is open while that bone is selected (unless folded by hand since).
+		local G = SA.BoneGroups(ent)
+		local order = boneOrder(ent)
+		local function byOrder(x, y) return (order[x] or x) < (order[y] or y) end
+		local byNode, direct = {}, {}
+		for b in pairs(want) do
+			local id = G.of[b]
+			if id and G.nodes[id] then
+				byNode[id] = byNode[id] or {}
+				table.insert(byNode[id], b)
+			else
+				direct[#direct + 1] = b
+			end
+		end
+		for _, list in pairs(byNode) do table.sort(list, byOrder) end
+		table.sort(direct, byOrder)
+		local sel = {}
+		if ent == C.selected then
+			for _, b in ipairs(selectedBones()) do sel[b] = true end
+		end
+		local function collect(nd, out)
+			for _, b in ipairs(byNode[nd.id] or {}) do out[#out + 1] = b end
+			for _, k in ipairs(nd.kids) do collect(k, out) end
+			return out
+		end
+		local function emit(nd, depth)
+			local all = collect(nd, {})
+			if #all == 0 then return end
+			local key = uid .. "|" .. nd.id
+			local open = SA.expanded[key] == true
+			if not open and not folded[key] then
+				for _, b in ipairs(all) do
+					if sel[b] then open = true break end
+				end
+			end
+			local seenPart, list = {}, {}
+			for _, b in ipairs(all) do
+				for part in string.gmatch(want[b], "[pb]%d+") do
+					if not seenPart[part] then seenPart[part] = true list[#list + 1] = part end
+				end
+			end
+			local parts = table.concat(list, ",")
+			rows[#rows + 1] = { uid = uid, ent = ent, parts = parts, bone = true, group = true, node = nd, depth = depth,
+				name = nd.name, keys = partKeys(uid, parts), canExpand = true, expanded = open, openKey = key }
+			if not open then return end
+			for _, b in ipairs(byNode[nd.id] or {}) do partRow(ent, uid, want[b], boneName(ent, b), b, nil, depth + 1) end
+			for _, k in ipairs(nd.kids) do emit(k, depth + 1) end
+		end
+		for _, b in ipairs(direct) do partRow(ent, uid, want[b], boneName(ent, b), b) end
+		for _, nd in ipairs(G.top) do emit(nd, 1) end
+	end
+
+	-- (b0.2.6-misc.1) a camera, light or effect opened out: a row per attribute that changes (SA.ATTRS)
+	local function attrRows(ent, uid)
+		local str = SA.moving and SA.moving[uid]
+		local own = SA.OwnParts(uid)
+		if own then str = str and (str .. "," .. own) or own end
+		local kind = C.IsCamera(ent) and "camera" or (C.IsLight(ent) and "light" or (C.IsEffect(ent) and "effect" or nil))
+		local attrs, ids, seen = SA.ATTRS[kind or ""] or {}, {}, {}
+		for idx in string.gmatch(str or "", "a(%d+)") do
+			local i = tonumber(idx)
+			if attrs[i + 1] and not seen[i] then seen[i] = true ids[#ids + 1] = i end
+		end
+		table.sort(ids)
+		for _, i in ipairs(ids) do partRow(ent, uid, "a" .. i, L("sa_attr_" .. attrs[i + 1]), nil) end
 	end
 
 	local function buildRows()
@@ -493,18 +648,64 @@ local function buildTimeline(page)
 		end
 		-- the rows of one object: its track, the selected bone, its face; always = a row even
 		-- without keys (an object of a track, a selected object: a key can be set there)
+		-- (b0.2.7, TobyCat) the element tracks of an object that is open: one row per element its keys
+		-- change (SA.EL_ORDER); a row shows those keys. A key is one whole pose, so the keys are edited on
+		-- the object's row; here a click only moves the playhead
+		local function elementRows(ent, uid, indent)
+			if not SA.elOpen[uid] then return end
+			local list = SA.tracks[uid] or {}
+			-- the keys of each element are sorted out once for a track: the summary makes a new list
+			-- when the track changes, and the rows are rebuilt twice a second while it plays
+			local c = SA.elCache and SA.elCache[uid]
+			if not c or c.src ~= list then
+				c = { src = list, byEl = {} }
+				SA.elCache = SA.elCache or {}
+				SA.elCache[uid] = c
+				for i in ipairs(SA.EL_ORDER) do
+					local bit = 2 ^ (i - 1)
+					local keys = {}
+					for _, k in ipairs(list) do
+						if k.el and math.floor(k.el / bit) % 2 == 1 then keys[#keys + 1] = k end
+					end
+					c.byEl[i] = keys
+				end
+			end
+			for i, id in ipairs(SA.EL_ORDER) do
+				local keys = c.byEl[i]
+				if #keys > 0 then
+					rows[#rows + 1] = { elRow = true, el = id, uid = uid, ent = ent, name = L("sa_el_" .. id), keys = keys, indent = indent }
+				end
+			end
+		end
+
 		local function objectRows(ent, name, always, indent)
 			local uid = SA.UID(ent)
 			if uid == 0 or seen[uid] then return end
 			local fid = SA.FaceTrack(uid)
 			if not (always or SA.tracks[uid] or SA.tracks[fid]) then return end
 			seen[uid] = true
-			rows[#rows + 1] = { uid = uid, ent = ent, name = name, keys = SA.tracks[uid] or {}, indent = indent }
-			boneRows(ent, uid)
+			-- canExpand: a model whose keys move some part — the arrow / a double click opens it out
+			local canExpand = ((SA.moving and SA.moving[uid]) or SA.OwnParts(uid)) ~= nil
+			local expanded = canExpand and SA.IsExpanded(uid)
+			local first = #rows + 1
+			rows[first] = { uid = uid, ent = ent, name = name, keys = SA.tracks[uid] or {}, indent = indent,
+				canExpand = canExpand, expanded = expanded }
+			-- (b0.2.7, TobyCat) the element rows stay right under the object
+			elementRows(ent, uid, indent)
+			if C.IsAux(ent) then
+				if expanded then attrRows(ent, uid) end
+			else
+				modelRows(ent, uid, expanded)
+			end
 			-- the face track goes right under its object
 			if SA.tracks[fid] then
-				rows[#rows + 1] = { uid = fid, owner = uid, face = true, ent = ent, name = L("sa_face_row"), keys = SA.tracks[fid], indent = indent }
+				local fCan = ((SA.moving and SA.moving[fid]) or SA.OwnParts(fid)) ~= nil
+				local fOpen = fCan and SA.IsExpanded(fid)
+				rows[#rows + 1] = { uid = fid, owner = uid, face = true, ent = ent, name = L("sa_face_row"), keys = SA.tracks[fid], indent = indent,
+					canExpand = fCan, expanded = fOpen }
+				if fOpen then sliderRows(ent, fid) end
 			end
+			for i = first + 1, #rows do rows[i].indent = indent end
 		end
 		local objs = C.BuildEntityList()
 		local nameOf = {}
@@ -554,8 +755,34 @@ local function buildTimeline(page)
 		rowsAt = RealTime()
 	end
 	COMP:Hook("SAeditor_Changed", function() rowsAt = 0 end, "ui")
-	COMP:Hook("SPeditor_Selected", function() rowsAt = 0 end, "ui")
-	COMP:Hook("SPeditor_MultiChanged", function() rowsAt = 0 end, "ui")
+	-- open out / fold a track (its bone rows) or a group of bones; all: everything below it too
+	-- (Shift + click on the arrow). Only the rows are built again.
+	local function setOpen(key, on)
+		SA.expanded[key] = on or nil
+		folded[key] = (not on) or nil
+	end
+	local function canOpenAll(row)
+		if row.node then return #row.node.kids > 0 end
+		return row.canExpand and not row.face and IsValid(row.ent) and not C.IsAux(row.ent)
+	end
+	local function toggleOpen(row, all)
+		local on = not row.expanded
+		setOpen(row.openKey or row.uid, on)
+		if all and row.node then
+			local function walk(nd)
+				for _, k in ipairs(nd.kids) do
+					setOpen(row.uid .. "|" .. k.id, on)
+					walk(k)
+				end
+			end
+			walk(row.node)
+		elseif all and canOpenAll(row) then
+			for id in pairs(SA.BoneGroups(row.ent).nodes) do setOpen(row.uid .. "|" .. id, on) end
+		end
+		rowsAt = 0
+	end
+	COMP:Hook("SPeditor_Selected", function() rowsAt = 0 folded = {} end, "ui")
+	COMP:Hook("SPeditor_MultiChanged", function() rowsAt = 0 folded = {} end, "ui")
 
 	-- the visible part of the time: frames v0 … v0 + vlen (Ctrl + wheel zooms, Shift + wheel or the middle
 	-- button scrolls); vlen = nil — the whole animation. Since a0.9 the view is endless, as in SFM:
@@ -605,6 +832,23 @@ local function buildTimeline(page)
 	SA.TimelineHome = function()
 		v0, vlen = 0, nil
 		SA.Seek(0)
+	end
+	-- the tree line of a bone row: a face slider one step in, a bone in a group a step per group
+	local DEPTH_STEP = 14
+	local function branchX(row)
+		local ind = row.indent and UI.S(14) or 0
+		if row.slider then return ind + 32 end
+		return ind + 12 + ((row.depth or 1) - 1) * DEPTH_STEP
+	end
+	-- the arrow that opens / folds a row: from x0 to x1
+	local function arrowSpan(row)
+		local is = UI.IconSize(ROW_H + 2)
+		if row.group then
+			local lx = branchX(row)
+			return lx + 4, lx + 6 + is + 3
+		end
+		local ax = (row.indent and UI.S(14) or 0) + (row.face and 20 or 0)
+		return ax, ax + is + 3
 	end
 	-- (b0.2.6) rows have heights of their own (the film strip of the Clip Editor is taller)
 	local function rowAt(my)
@@ -751,11 +995,22 @@ local function buildTimeline(page)
 			nextY = nextY + RH
 			surface.SetDrawColor(((i + scroll) % 2 == 0) and COL.ROW_A or COL.ROW_B)
 			surface.DrawRect(0, y, w, RH)
-			if row.uid == selUID or (row.face and row.owner == selUID) then
+			-- (b0.2.6-misc.1) a bone's row lights up when that bone is selected, not every bone row of the
+			-- selected object; the object's row when it is selected
+			local lit
+			if row.bone and row.boneIdx then
+				lit = row.ent == C.selected and row.boneIdx >= 0
+					and (C.selBone == row.boneIdx or (C.boneSet and C.boneSet[row.boneIdx]))
+			elseif row.bone then
+				lit = false
+			else
+				lit = row.uid == selUID or (row.face and row.owner == selUID)
+			end
+			if lit then
 				surface.SetDrawColor(COL.SEL)
 				surface.DrawRect(0, y, NAME_W, RH)
 			end
-			if row.face then
+			if row.face and not row.slider then
 				surface.SetDrawColor(255, 255, 255, 255)
 				surface.SetMaterial(matFace)
 				local is = UI.IconSize(RH + 2)
@@ -961,12 +1216,28 @@ local function buildTimeline(page)
 					end
 				end
 				clip(false)
-			elseif row.bone then
-				-- a bone of the object above
+			elseif row.elRow then
+				-- an element track of the object above (b0.2.7): the keys that change this element
 				surface.SetDrawColor(COL.DIM)
-				surface.DrawRect(12, y + 2, 1, RH / 2 - 2)
-				surface.DrawRect(12, y + RH / 2, 8, 1)
-				draw.SimpleText(row.name, "SPeditor.Small", 24, y + RH / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				surface.DrawRect(20, y + 2, 1, RH / 2 - 2)
+				surface.DrawRect(20, y + RH / 2, 8, 1)
+				draw.SimpleText(row.name, "SPeditor.Small", 32, y + RH / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+			elseif row.bone then
+				-- a bone of the object above (a face slider: of the Face row above, one step further in;
+				-- a bone in a group: a step further in per group)
+				local lx = branchX(row)
+				surface.SetDrawColor(COL.DIM)
+				surface.DrawRect(lx, y + 2, 1, RH / 2 - 2)
+				surface.DrawRect(lx, y + RH / 2, 8, 1)
+				local tx = lx + 12
+				if row.group then
+					local is = UI.IconSize(RH + 2)
+					surface.SetDrawColor(255, 255, 255, 255)
+					surface.SetMaterial(row.expanded and matOpen or matShut)
+					surface.DrawTexturedRect(lx + 6, y + math.floor((RH - is) / 2), is, is)
+					tx = lx + 6 + is + 2
+				end
+				draw.SimpleText(row.name, "SPeditor.Small", tx, y + RH / 2, COL.TEXT, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 			else
 				local ind = row.indent and UI.S(14) or 0
 				if ind > 0 then
@@ -974,7 +1245,17 @@ local function buildTimeline(page)
 					surface.SetDrawColor(COL.BORDER)
 					surface.DrawRect(8, y, 1, RH)
 				end
-				draw.SimpleText(row.name, "SPeditor.Small", (row.face and 28 or 8) + ind, y + RH / 2, #row.keys > 0 and COL.TEXT or COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				local tx = (row.face and 28 or 8) + ind
+				if row.canExpand then
+					-- opened out: a row per moving part below (a double click on the name, or the arrow)
+					local is = UI.IconSize(RH + 2)
+					local ax = ind + (row.face and 20 or 0)
+					surface.SetDrawColor(255, 255, 255, 255)
+					surface.SetMaterial(row.expanded and matOpen or matShut)
+					surface.DrawTexturedRect(ax + 1, y + math.floor((RH - is) / 2), is, is)
+					tx = ax + is + 3
+				end
+				draw.SimpleText(row.name, "SPeditor.Small", tx, y + RH / 2, #row.keys > 0 and COL.TEXT or COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 			end
 			-- segments between keys and the keys themselves. A baked animation has a key
 			-- every frame or two — hundreds per row: neighbouring segments of one kind are
@@ -1100,7 +1381,7 @@ local function buildTimeline(page)
 		end
 		clip(false)
 
-		-- the box of a Shift+drag selection
+		-- the box of a drag selection over empty space
 		if drag and drag.kind == "box" then
 			local x, y = math.min(drag.x0, drag.x1), math.min(drag.y0, drag.y1)
 			local bw, bh = math.abs(drag.x1 - drag.x0), math.abs(drag.y1 - drag.y0)
@@ -1115,6 +1396,22 @@ local function buildTimeline(page)
 			local job = SA.rendering
 			draw.SimpleTextOutlined(string.format(L("sa_rnd_progress"), SA.RenderProgress(job)), "SPeditor.Bold",
 				w - 10, h - 12, COL.ORANGE, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER, 1, color_black)
+		end
+	end
+	-- (b0.2.6-misc.1) the profiler (sh_prof.lua, gmfm_prof): the timeline's drawing and its rows
+	do
+		local P = SPeditor.Prof
+		tl.Paint = P.Wrap("cl timeline: paint (rows rebuilt inside)", tl.Paint)
+		local inner = buildRows
+		buildRows = function(...)
+			if not P.on then return inner(...) end
+			local t = SysTime()
+			inner(...)
+			P.Add("cl timeline: rebuild rows", SysTime() - t)
+			local nk = 0
+			for _, r in ipairs(rows) do nk = nk + #(r.keys or {}) end
+			P.Gauge("cl timeline rows", #rows)
+			P.Gauge("cl timeline keys on its rows", nk)
 		end
 	end
 
@@ -1134,7 +1431,7 @@ local function buildTimeline(page)
 		end
 		m:AddOption(L(many and "sa_copy_keys" or "sa_copy_key"), function() SA.keyClip = list end):SetIcon("icon16/page_copy.png")
 		m:AddSpacer()
-		m:AddOption(L(row.bone and "sa_bone_key_delete" or (many and "sa_keys_delete" or "sa_key_delete")), function()
+		m:AddOption(L(row.group and "sa_grp_key_delete" or (row.bone and "sa_bone_key_delete" or (many and "sa_keys_delete" or "sa_key_delete"))), function()
 			SA.DeleteKeys(list)
 			clearSel()
 		end):SetIcon("icon16/key_delete.png")
@@ -1205,13 +1502,27 @@ local function buildTimeline(page)
 
 	local function rowMenu(row, frame)
 		local m = UI.Menu()
-		m:AddOption(L(row.bone and "sa_bone_key_here" or "sa_key_here") .. "  (" .. frame .. ")", function()
+		m:AddOption(L(row.group and "sa_grp_key_here" or (row.bone and "sa_bone_key_here" or "sa_key_here")) .. "  (" .. frame .. ")", function()
 			if not IsValid(row.ent) then return end
-			if row.face then SA.SetFaceKey({ row.ent }, frame) else SA.SetKey({ row.ent }, frame, nil, row.parts) end
+			if row.face then SA.SetFaceKey({ row.ent }, frame, nil, row.parts) else SA.SetKey({ row.ent }, frame, nil, row.parts) end
 		end):SetIcon("icon16/key_add.png")
 		-- the face of a body row: its own keys
 		if not row.face and not row.bone and IsValid(row.ent) and not C.IsAux(row.ent) and row.ent:GetFlexNum() > 0 and not SA.HasFaceTrack(row.ent) then
 			m:AddOption(L("sa_face_start") .. "  (" .. frame .. ")", function() SA.SetFaceKey({ row.ent }, frame) end):SetIcon("icon16/emoticon_smile.png")
+		end
+		-- (b0.2.7, the tween machine) a step toward or away from the keys around this frame, for the
+		-- selected objects (or this row's object when nothing is selected)
+		if not row.face and not row.bone and not row.elRow and IsValid(row.ent) and not C.IsAux(row.ent) then
+			local tw = m:AddSubMenu(L("sa_tw_menu"))
+			for _, kind in ipairs({ "prev", "next", "relax", "push", "pull" }) do
+				local sub = tw:AddSubMenu(L("sa_tw_" .. kind))
+				for _, pct in ipairs({ 25, 50, 100 }) do
+					sub:AddOption(pct .. " %", function()
+						local list = C.SelectionList()
+						SA.Tween(kind, pct, #list > 0 and list or { row.ent }, frame)
+					end)
+				end
+			end
 		end
 		-- copied keys go back onto their own tracks, the first of them at this frame
 		local clip = {}
@@ -1227,7 +1538,7 @@ local function buildTimeline(page)
 		end
 		if #row.keys > 0 and row.bone then
 			m:AddSpacer()
-			m:AddOption(L("sa_bone_clear"), function()
+			m:AddOption(L(row.group and "sa_grp_clear" or "sa_bone_clear"), function()
 				local list = {}
 				for _, k in ipairs(row.keys) do list[#list + 1] = { uid = row.uid, f = k.f, parts = row.parts } end
 				SA.DeleteKeys(list)
@@ -1235,6 +1546,15 @@ local function buildTimeline(page)
 		elseif #row.keys > 0 then
 			m:AddSpacer()
 			m:AddOption(L(row.face and "sa_face_clear" or "sa_clear_track"), function() SA.ClearTrack(row.uid) end):SetIcon("icon16/cross.png")
+		end
+		if row.canExpand then
+			m:AddSpacer()
+			m:AddOption(L(row.expanded and "sa_track_fold" or "sa_track_open"), function() toggleOpen(row) end)
+				:SetIcon("icon16/application_view_list.png")
+			if canOpenAll(row) then
+				m:AddOption(L("sa_track_open_all"), function() row.expanded = false toggleOpen(row, true) end)
+				m:AddOption(L("sa_track_fold_all"), function() row.expanded = true toggleOpen(row, true) end)
+			end
 		end
 		if not row.face and not row.bone and IsValid(row.ent) then trackMenu(m, row.ent) end
 		m:Open()
@@ -1477,6 +1797,12 @@ local function buildTimeline(page)
 				drag = { kind = "tselnew", from = round(inAnim(frameAt(mx, w))) }
 				s:MouseCapture(true)
 				return
+			elseif code == MOUSE_LEFT then
+				-- the frame numbers: press and drag the playhead (the key selection stays)
+				drag = { kind = "scrub" }
+				SA.Seek(round(frameAt(mx, w)))
+				s:MouseCapture(true)
+				return
 			end
 		end
 		local row = rowAt(my)
@@ -1576,8 +1902,46 @@ local function buildTimeline(page)
 		end
 		if mx < NAME_W then
 			if row and IsValid(row.ent) then
-				C.Select(row.ent, -1)
+				-- a track that can open out: the arrow, or a double click on the name, opens / folds it
+				if code == MOUSE_LEFT and row.canExpand then
+					local x0, x1 = arrowSpan(row)
+					local onArrow = mx >= x0 and mx < x1
+					local id = row.openKey or row.uid
+					local double = s.SPLastRow == id and RealTime() - (s.SPLastRowT or 0) < 0.35
+					s.SPLastRow, s.SPLastRowT = id, RealTime()
+					if onArrow or double then
+						s.SPLastRow = nil
+						-- Shift: everything below opens / folds too
+						toggleOpen(row, input.IsKeyDown(KEY_LSHIFT) or input.IsKeyDown(KEY_RSHIFT))
+						if onArrow then return end
+					end
+				end
+				-- a bone's row selects that bone (Position, and the rows of an object: the object); a
+				-- group's row only the object, keeping the selected bones (and so the groups they open)
+				if not row.group then
+					C.Select(row.ent, row.boneIdx or -1)
+				elseif C.selected ~= row.ent then
+					C.Select(row.ent, -1)
+				end
 				if code == MOUSE_RIGHT then rowMenu(row, round(SA.frame)) end
+				-- (b0.2.7, TobyCat) a double click on an object's name opens or closes its element tracks
+				if code == MOUSE_LEFT and row.uid > 0 and not row.face and not row.bone and not row.elRow then
+					if nameClick.uid == row.uid and RealTime() - nameClick.t < 0.4 then
+						SA.elOpen[row.uid] = (not SA.elOpen[row.uid]) or nil
+						nameClick = { uid = 0, t = 0 }
+						rowsAt = 0
+					else
+						nameClick = { uid = row.uid, t = RealTime() }
+					end
+				end
+			end
+			return
+		end
+		-- (b0.2.7, TobyCat) an element track: a click moves the playhead to its key, nothing is edited here
+		if row and row.elRow then
+			if code == MOUSE_LEFT and mx >= NAME_W and not SA.rendering then
+				local ek = keyAt(row, mx, w)
+				SA.Seek(ek and ek.f or round(frameAt(mx, w)))
 			end
 			return
 		end
@@ -1600,12 +1964,16 @@ local function buildTimeline(page)
 			local lo, hi = SA.frames, 0
 			for _, sk in ipairs(selList()) do lo, hi = math.min(lo, sk.f), math.max(hi, sk.f) end
 			drag = { kind = "keys", uid = row.uid, parts = row.parts, key = k.f, from = k.f, to = k.f, lo = lo, hi = hi, was = was, ctrl = ctrl }
-		elseif shift then
-			drag = { kind = "box", x0 = mx, y0 = my, x1 = mx, y1 = my, add = ctrl }
 		else
-			clearSel()
-			drag = { kind = "scrub" }
-			SA.Seek(round(frameAt(mx, w)))
+			-- a drag over empty space selects the keys in a box (Shift is not needed any more; the
+			-- playhead is dragged on the frame numbers); a click without a drag goes to that frame,
+			-- as before. With Ctrl or Shift the box adds to the selection.
+			local add = ctrl or shift
+			if not add then
+				clearSel()
+				SA.Seek(round(frameAt(mx, w)))
+			end
+			drag = { kind = "box", x0 = mx, y0 = my, x1 = mx, y1 = my, add = add }
 		end
 		s:MouseCapture(true)
 	end
@@ -2475,7 +2843,6 @@ COMP:AddMenu("edit", function(m)
 	sub:AddOption(L("sa_key") , function() SA.SetKey() end):SetIcon("icon16/key_add.png")
 	sub:AddOption(L("sa_key_all"), function() SA.SetKey(C.Objects()) end):SetIcon("icon16/key_go.png")
 	sub:AddOption(L("sa_autokey"), function() SA.autokey = not SA.autokey end):SetChecked(SA.autokey)
-	sub:AddOption(L("sa_bone_keys"), function() SA.ToggleBoneKeys() end):SetChecked(SA.BoneKeysOn())
 	sub:AddOption(L("sa_ghosts"), function() SA.ToggleGhosts() end):SetChecked(SA.GhostsOn())
 	-- a0.8: how new keys move, and the whole animation made continuous at once
 	local em, eo = sub:AddSubMenu(L("sa_new_ease"))

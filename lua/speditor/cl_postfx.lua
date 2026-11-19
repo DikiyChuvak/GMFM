@@ -428,8 +428,12 @@ define({ id = "bloom", cat = "shaders", params = {
 -- viewport and scaled with the frame, so the preview, the viewport and the render match.
 local matSfmBloom
 local function sfmBloomMat()
-	matSfmBloom = matSfmBloom or CreateMaterial("gmfm_sfmbloom2b", "screenspace_general", {
-		["$pixshader"] = "gmfm_sfmbloom2b_ps20b",
+	if matSfmBloom then return matSfmBloom end
+	-- (b0.2.6-misc.1) under the name that works this session (R.ShaderName, cl_render.lua); nil until known
+	local ps = SPeditor.Render.ShaderName("gmfm_sfmbloom2b")
+	if not ps then return nil end
+	matSfmBloom = CreateMaterial("gmfm_m_" .. ps, "screenspace_general", {
+		["$pixshader"] = ps,
 		["$basetexture"] = "vgui/white", ["$texture1"] = "vgui/white",
 		["$ignorez"] = "1", ["$vertextransform"] = "1", ["$copyalpha"] = "0",
 		["$linearread_basetexture"] = "1", ["$linearread_texture1"] = "1", ["$linearwrite"] = "1",
@@ -444,6 +448,7 @@ define({ id = "sfmbloom", cat = "sfm", params = {
 		apply = function(ctx, p)
 			if p.scale <= 0 then return end
 			local m = sfmBloomMat()
+			if not m then return end
 			local tex = render.GetBloomTex0()
 			local tw, th = tex:Width(), tex:Height()
 			m:SetTexture("$basetexture", ctx.cur)

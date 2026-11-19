@@ -27,6 +27,9 @@ local COL_VIEWRING = Color(235, 235, 235)
 local COL_BALL     = Color(255, 255, 255, 60)
 
 C.gizmo = C.gizmo or {}
+-- (b0.2.6-misc.1) world by default, as the gizmo already behaved: nil drew the World button off, so its
+-- first press seemed to do nothing
+C.gizmo.space = C.gizmo.space or "world"
 -- IK is on from the start (a0.7: people took a limb that would not bend as a bug) and the
 -- choice is remembered
 local cvIK = CreateClientConVar("gmfm_ik", "1", true, false)
@@ -348,14 +351,7 @@ local function buildManipIKItems(tgt, root, mid)
 end
 
 -- the manip angle that turns a bone to the world angle want, its parent being at parentNew
-local function manipFor(it, want, parentNew)
-	local _, cur = WorldToLocal(vector_origin, it.a0, vector_origin, it.parentAng)     -- rest * m0
-	local _, inv = WorldToLocal(vector_origin, angle_zero, vector_origin, it.m0ang)     -- m0^-1
-	local _, rest = LocalToWorld(vector_origin, inv, vector_origin, cur)                 -- rest
-	local _, loc = WorldToLocal(vector_origin, want, vector_origin, parentNew)           -- wanted local
-	local _, m = WorldToLocal(vector_origin, loc, vector_origin, rest)                   -- rest^-1 * local
-	return m
-end
+local function manipFor(it, want, parentNew) return SPeditor.IK.ManipFor(it, want, parentNew) end
 
 local function applyManipIK(d, off)
 	local r, m, e = d.items[1], d.items[2], d.items[3]
@@ -537,14 +533,25 @@ prepareLocks = function(d, tgt)
 		if C.gizmo.ikFeet and isFoot(name) then return true end
 		return C.gizmo.ikHands and isHand(name)
 	end
-	if C.gizmo.ik and (C.gizmo.ikFeet or C.gizmo.ikHands) and not d.ik then
+	-- (b0.2.6-misc.1) an Auto pose drag plants them itself (cl_autopose.lua)
+	if C.gizmo.ik and (C.gizmo.ikFeet or C.gizmo.ikHands) and not d.ik and not d.auto then
 		for b = 0, ent:GetBoneCount() - 1 do
 			if b ~= tgt.bone and not locks[b] and planted(ent:GetBoneName(b)) and C.PhysIndexOfBone(ent, b) then
 				local mid = nextPhysAncestor(ent, b)
 				local root = mid and nextPhysAncestor(ent, mid)
 				if root and mid ~= tgt.bone and root ~= tgt.bone and moving[C.PhysIndexOfBone(ent, root)]
 					and isDescendant(ent, root, tgt.bone) then
-					post[#post + 1] = { foot = true, chain = items({ root, mid, b }), tail = items(physDescendants(ent, b)) }
+					local c = { foot = true, chain = items({ root, mid, b }), tail = items(physDescendants(ent, b)) }
+					-- (b0.2.6-misc.1) the knee keeps bending the way it did at the start, in the world: carried
+					-- along with the hips it flipped behind the hip-foot line when they pitched
+					-- (auto pose does the same). A straight leg gives no side: the carried one is used.
+					if #c.chain == 3 then
+						local r, m, e = c.chain[1], c.chain[2], c.chain[3]
+						local line = (e.p0 - r.p0):GetNormalized()
+						local off = (m.p0 - r.p0) - line * (m.p0 - r.p0):Dot(line)
+						if off:Length() > 0.02 * r.p0:Distance(m.p0) then c.pole = off end
+					end
+					post[#post + 1] = c
 				end
 			end
 		end
@@ -585,11 +592,14 @@ local function carryTail(tail, p, a, np, na)
 	end
 end
 
--- the end of a three-bone chain to (endPos, endAng); the two upper bones bend (IK)
-local function solveChain(chain, tail, endPos, endAng)
+-- the end of a three-bone chain to (endPos, endAng); the two upper bones bend (IK). pole: the
+-- side the middle bends to (nil: its own side now)
+local function solveChain(chain, tail, endPos, endAng, pole)
 	local r, m, e = chain[1], chain[2], chain[3]
 	local IK = SPeditor.IK
-	local midNew, endNew = IK.Solve(r.p1, m.p1, e.p1, endPos)
+	local midNew, endNew
+	if pole then midNew, endNew = IK.SolveToward(r.p1, r.p0:Distance(m.p0), m.p0:Distance(e.p0), endPos, pole) end
+	if not midNew then midNew, endNew = IK.Solve(r.p1, m.p1, e.p1, endPos) end
 	r.a1 = IK.RotateAngle(r.a1, m.p1 - r.p1, midNew - r.p1)
 	m.a1 = IK.RotateAngle(m.a1, e.p1 - m.p1, endNew - midNew)
 	m.p1 = midNew
@@ -604,7 +614,7 @@ postSolve = function(d)
 	for _, c in ipairs(d.post or {}) do
 		if c.foot then
 			local e = c.chain[3]
-			if #c.chain == 3 and moved(c.chain[1]) then solveChain(c.chain, c.tail, e.p0, e.a0) end
+			if #c.chain == 3 and moved(c.chain[1]) then solveChain(c.chain, c.tail, e.p0, e.a0, c.pole) end
 		elseif moved(c.target) then
 			local wp, wa = LocalToWorld(c.lp, c.la, c.target.p1, c.target.a1)
 			if #c.chain == 3 then
@@ -690,11 +700,33 @@ local function startDrag(tgt, hit)
 		end
 	end
 	if hit.mode == "move" and not d.pole then root, mid = ikChain(tgt) end
+	-- (b0.2.6-misc.1) Auto pose: a hand pulled past the arm's reach takes the body along (cl_autopose.lua)
+	-- (a foot too, on a biped)
+	if root and C.AutoPoseOn() and SPeditor.AutoPose.Wants(tgt.ent, tgt.bone) then
+		local st = SPeditor.AutoPose.Begin(tgt.ent, tgt.bone, root, mid)
+		if st then
+			d.auto, d.items = st, st.items
+			root = nil
+		end
+	end
+	-- (b0.2.6-misc.1) Auto pose: the hips, chest, neck or head of a biped moved or turned (not by the trackball)
+	if not d.auto and not d.pole and not root and tgt.kind == "phys" and not d.ball
+		and (hit.mode == "move" or hit.mode == "rotate") and C.AutoPoseActive() then
+		local st = SPeditor.AutoPose.BeginBody(tgt.ent, tgt.bone)
+		if st then d.auto, d.items = st, st.items end
+	end
 	if root then
 		d.items = buildIKItems(tgt, root, mid)
 		d.ik = d.items ~= nil
-	elseif hit.mode == "move" then
-		root, mid = manipIKChain(tgt)
+	elseif hit.mode == "move" and not d.auto then
+		-- (b0.2.6-misc.1) the middle / last joint of a finger bends the finger (cl_fingers.lua); an own IK
+		-- chain set on the bone (the bone menu) wins
+		local own = tgt.kind == "manip" and SPeditor.Rig.Custom(tgt.ent:GetModel())[tgt.ent:GetBoneName(tgt.bone) or ""]
+		if tgt.kind == "manip" and not own and not C.gizmo.stretch and (C.gizmo.ik or C.RigOn() or C.AutoPoseOn()) and SPeditor.Fingers then
+			local st = SPeditor.Fingers.BeginIK(tgt.ent, tgt.bone, C.SelectedBones())
+			if st then d.fik, d.items = st, st.items end
+		end
+		if not d.fik then root, mid = manipIKChain(tgt) end
 		if root then
 			d.items = buildManipIKItems(tgt, root, mid)
 			d.mik = d.items ~= nil
@@ -746,9 +778,15 @@ local function applyPole(d, off)
 end
 
 local function applyMove(d, off)
+	if d.auto then
+		SPeditor.AutoPose.Solve(d.auto, d.auto.E.p0 + off)
+		sendItems(d)
+		return
+	end
 	if d.pole then applyPole(d, off) return end
 	if d.ik then applyIK(d, off) return end
 	if d.mik then applyManipIK(d, off) return end
+	if d.fik then SPeditor.Fingers.SolveIK(d.fik, off) return end
 	if d.kind == "manip" then
 		for _, it in ipairs(d.items) do
 			it.m1pos = it.m0pos + WorldToLocal(off, angle_zero, vector_origin, it.parentAng)
@@ -790,6 +828,11 @@ local function applyTurn(d, M)
 end
 
 local function applyRotate(d, total)
+	if d.auto then
+		SPeditor.AutoPose.SolveTurn(d.auto, d.axis, total)
+		sendItems(d)
+		return
+	end
 	if d.viewRing then
 		applyTurn(d, axisMatrix(d.axis, total))
 		return
@@ -990,8 +1033,11 @@ local function endDrag()
 	if d.kind == "phys" then
 		local root = false
 		for _, it in ipairs(d.items) do
-			if it.physIdx then parts[#parts + 1] = "p" .. it.physIdx end
-			root = root or it.physIdx == 0
+			-- (b0.2.6-misc.1) Auto pose sends every body: only those it moved are keyed
+			if it.physIdx and (not d.auto or (it.p1 and moved(it))) then
+				parts[#parts + 1] = "p" .. it.physIdx
+				root = root or it.physIdx == 0
+			end
 		end
 		-- the other bodies are kept relative to the root body: when it moves alone, all of
 		-- them changed in that sense, and the key holds the whole pose
@@ -1011,6 +1057,23 @@ local function endDrag()
 		end
 	end
 	C.lastEditParts = { ent = d.ent, parts = table.concat(parts, ","), t = RealTime() }
+	-- (b0.2.6-misc.1) a camera, light or effect dragged: which of its attributes changed — "a0" the place,
+	-- "a1" the turn (SA.ATTRS). Auto key keys only those: turning a camera set a key of its place too
+	if d.kind == "entity" and d.mode ~= "scale" then
+		local aux = {}
+		for _, it in ipairs(d.items) do
+			local e = it.ent or d.ent
+			if IsValid(e) and C.IsAux(e) and it.p0 and it.p1 then
+				local list = {}
+				if it.p0:DistToSqr(it.p1) > 1e-4 then list[#list + 1] = "a0" end
+				if it.a0 and it.a1 and (math.abs(math.AngleDifference(it.a0.p, it.a1.p)) > 0.01
+					or math.abs(math.AngleDifference(it.a0.y, it.a1.y)) > 0.01
+					or math.abs(math.AngleDifference(it.a0.r, it.a1.r)) > 0.01) then list[#list + 1] = "a1" end
+				if #list > 0 then aux[e] = table.concat(list, ",") end
+			end
+		end
+		C.lastEditAux = next(aux) and { map = aux, t = RealTime() } or nil
+	end
 	C.PushHistory(d.mode,
 		function() restore(false) end,
 	function() restore(true) end)
