@@ -17,3 +17,5 @@ PAC3/
 SSAO/
 .cache/
 __pycache__/
+# local AI assistant sessions (must not get into the GMA either: addon.json ignores them)
+.claude/

@@ -32,7 +32,7 @@ local ROOT = "themes/"
 
 -- folders whose themes are already bundled with the addon (lua/speditor/skins)
 local BUILTIN = {
-	darkui = true, ecoui = true, gmod98 = true, lamdaui = true, oneshotui = true, steamderma2004 = true,
+	darkui = true, ecoui = true, gmod98 = true, lambdaui = true, oneshotui = true, steamderma2004 = true,
 	vanillaui = true, gmodxp = true,
 	-- a0.9: ported as hl2mp (the Lambda UI skin with its texture), gmodclassic and aeroblur
 	hl2mediaplayer = true, gmodclassic = true, aeroblur = true,

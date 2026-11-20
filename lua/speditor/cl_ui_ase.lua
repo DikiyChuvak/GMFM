@@ -1339,9 +1339,10 @@ function UI.BuildASE(body)
 				end)
 			end):SetIcon("icon16/application_cascade.png")
 			-- physics off / on (a0.9, cl_saeditor_extra.lua): limbs can be pulled apart, the whole model scaled
-			local SA = SPeditor.Component("saeditor").SA
+			local comp = SPeditor.Component("saeditor")
+			local SA = comp and comp.SA
 			-- a crate, a melon, a barrel falls apart at the playhead (b0.2.4)
-			if SA.BreakProp and ent:GetClass() == "prop_physics" then
+			if SA and SA.BreakProp and ent:GetClass() == "prop_physics" then
 				local info = util.GetModelInfo(ent:GetModel() or "")
 				if info and isstring(info.KeyValues) and string.find(info.KeyValues, '"break"', 1, true) then
 					local b = um:AddOption(L("brk_menu"), function() SA.BreakProp(ent) end)
@@ -1349,7 +1350,7 @@ function UI.BuildASE(body)
 					b:SetTooltip(L("brk_tip"))
 				end
 			end
-			if SA.TogglePhysics and (ent:GetBoneCount() or 0) > 1 then
+			if SA and SA.TogglePhysics and (ent:GetBoneCount() or 0) > 1 then
 				if obj.kind == "ragdoll" then
 					m:AddOption(L("phys_off"), function() SA.TogglePhysics(ent) end):SetIcon("icon16/link_break.png")
 				elseif ent:GetClass() == "prop_dynamic" and util.IsValidRagdoll(ent:GetModel() or "") then

@@ -25,9 +25,7 @@ local COMP = SPeditor.Component("saeditor")
 local SA   = COMP.SA
 local L    = SPeditor.L
 
-local HAND = { "hand", "wrist", "paw" }
-local FOOT = { "foot", "ankle", "hoof" }
-local SKIP = { "weapon", "attach", "twist", "prop" }
+local HAND, FOOT, SKIP = SPeditor.LimbNames.HAND, SPeditor.LimbNames.FOOT, SPeditor.LimbNames.SKIP
 
 local function has(n, list)
 	for _, p in ipairs(list) do

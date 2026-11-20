@@ -9,11 +9,6 @@
 		"*.psd",
 		"*.vcproj",
 		"*.svn*",
-		"themes/*",
-		"sounds/*",
-		"addons_ref/*",
-		"CSM_editor/*",
-		"GmodLight/*",
 		"IMG_*",
 		"shaders/readme.txt",
 		"shaders_src/*",
@@ -21,11 +16,9 @@
 		"tools/*",
 		"*.md",
 		".git*",
-		".github/*",
+		".claude/*",
 		"LICENSE",
 		"README*",
-		"SSAO/*",
-		".cache/*",
-		"PAC3/*"
+		".cache/*"
 	]
 }

@@ -120,7 +120,7 @@ SPeditor.Hook("PostRender", "SPeditor.RenderPreview", function()
 			dof = { aperture = math.Clamp(GetConVar("gmfm_dof_aperture"):GetFloat(), 0.05, 20),
 				samples = math.min(math.Clamp(GetConVar("gmfm_dof_samples"):GetInt(), 2, 128), PREVIEW_SAMPLES), focus = SPeditor.Export.FocusDistance(src) }
 		end
-		local own = not anim and SPeditor.Export.TrackFocus(src, FX.DOF(fx))
+		local own = not anim and FX.DOF(fx)
 		if own then dof = { aperture = own.aperture, samples = math.min(own.samples, PREVIEW_SAMPLES), focus = own.focus } end
 		return dof
 	end
@@ -184,7 +184,7 @@ SPeditor.Hook("PostRender", "SPeditor.RenderPreview", function()
 				focus = SPeditor.Export.FocusDistance(src) }
 		end
 		-- a camera with its own depth of field (camera effects) uses it instead
-		local own = not anim and SPeditor.Export.TrackFocus(src, FX.DOF(fx))
+		local own = not anim and FX.DOF(fx)
 		if own then
 			pv.samples = math.min(own.samples, PREVIEW_SAMPLES)
 			opts.dof = { aperture = own.aperture, samples = pv.samples, focus = own.focus }

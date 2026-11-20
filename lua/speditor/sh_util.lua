@@ -291,6 +291,22 @@ function SPeditor.WriteVecF(v)
 	net.WriteFloat(v.z)
 end
 
+-- One place for the bone-name patterns used by the finger poser, auto pose, IK and the
+-- gizmo. They used to be copied into four files and drifted apart ("toe" was an IK effector
+-- but never a planted foot).
+SPeditor.LimbNames = {
+	HAND = { "hand", "wrist", "paw" },
+	FOOT = { "foot", "ankle", "hoof", "toe" },
+	SKIP = { "weapon", "attach", "twist", "prop" },
+}
+function SPeditor.BoneNameMatches(name, patterns)
+	local n = string.lower(name or "")
+	for _, p in ipairs(patterns) do
+		if string.find(n, p, 1, true) then return true end
+	end
+	return false
+end
+
 function SPeditor.ReadVecF()
 	local x = net.ReadFloat()
 	local y = net.ReadFloat()

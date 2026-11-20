@@ -100,9 +100,7 @@ end
 
 -- By the bone tree: a bone named hand / wrist / paw with a side, and the chains of bones under it
 -- (or under a palm bone or two below it)
-local HAND = { "hand", "wrist", "paw" }
-local FOOT = { "foot", "ankle", "hoof" }
-local SKIP = { "weapon", "attach", "twist", "prop" }
+local HAND, FOOT, SKIP = SPeditor.LimbNames.HAND, SPeditor.LimbNames.FOOT, SPeditor.LimbNames.SKIP
 local KEYS = { { "thumb" }, { "index", "point" }, { "middle", "mid" }, { "ring" }, { "pinky", "little", "small" } }
 local function has(n, list)
 	for _, p in ipairs(list) do

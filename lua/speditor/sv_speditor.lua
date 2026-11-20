@@ -25,9 +25,9 @@ end
 
 local LIMITS = {
 	prop   = function() return Cfg.MaxProps end,
-light  = function() return Cfg.MaxLights end,
-camera = function() return Cfg.MaxCameras or 16 end,
-	effect = function() return Cfg.MaxEffects or 64 end,
+	light  = function() return Cfg.MaxLights end,
+	camera = function() return Cfg.MaxCameras end,
+	effect = function() return Cfg.MaxEffects end,
 }
 
 ---------------------------------------------------------------------
@@ -1584,7 +1584,9 @@ cvars.AddChangeCallback("gmfm_access", function()
 	for _, p in ipairs(player.GetAll()) do p:SetNW2Bool("SPeditor_Denied", false) end
 end, "SPeditor.Denied")
 
-net.Receive(Net.Toggle, function(_, ply)
+-- Through the protected receiver (sv_net.lua): rate limit and a single access check.
+-- noActive = true: the message is what turns editor mode on, so it must work while it is off.
+S.Receive("Toggle", function(ply)
 	if not SPeditor.CanUse(ply) then
 		-- (b0.2.6) the client knows it and stops asking: in the GM:FM gamemode on a server the
 		-- guests' clients asked every second and 'no permission' kept popping up
@@ -2095,7 +2097,7 @@ SPeditor.Hook("SetupPlayerVisibility", "SPeditor.EditorPVS", function(ply)
 	if ply.SPeditor_ViewPos then AddOriginToPVS(ply.SPeditor_ViewPos) end
 	local n = 0
 	for _, e in ipairs(S.Owned[ply] or {}) do
-		if IsValid(e) and e:GetClass() == "speditor_camera" and n < 8 then
+		if IsValid(e) and e:GetClass() == "speditor_camera" and n < Cfg.MaxCameras then
 			AddOriginToPVS(e:GetPos())
 			n = n + 1
 		end

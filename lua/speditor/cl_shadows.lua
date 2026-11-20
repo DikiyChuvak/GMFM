@@ -112,12 +112,14 @@ local function rescan()
 			local d = e:GetPos():DistToSqr(origin)
 			-- (b0.2.5) the set does not jump while the camera moves: a light that has shadows keeps
 			-- them until another one is clearly nearer, and the selected light comes first
-			if before[e] then d = d * 0.5 end
-			if C and C.selected == e then d = 0 end
+			-- The hysteresis belongs to the SORT key only: d is a squared distance, so scaling it
+			-- before sqrt() gave sqrt(d)/sqrt(2) instead of the intended half of the distance.
+			local dist = C and C.selected == e and 0 or math.sqrt(d)
 			-- the distance is measured to the lit area: a light may stand far away and shine nearby
-			local reach = math.max(math.sqrt(d) - e:GetLightRadius(), 0)
+			local reach = math.max(dist - e:GetLightRadius(), 0)
 			if limit <= 0 or reach <= limit then
-				list[#list + 1] = { ent = e, d = d, cost = e:GetLightType() == 0 and 6 or 1 }
+				list[#list + 1] = { ent = e, d = before[e] and dist * 0.5 or dist,
+					cost = e:GetLightType() == 0 and 6 or 1 }
 			else
 				skipped = skipped + 1
 			end

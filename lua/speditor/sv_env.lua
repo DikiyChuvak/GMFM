@@ -188,7 +188,8 @@ S.Receive("Env", function(ply)
 		S.Notice(ply, "#env_not_allowed", 1)
 		return
 	end
-	local d = SPeditor.ReadTable and SPeditor.ReadTable() or net.ReadTable()
+	-- sh_util.lua is loaded before this file; the fallback for its absence was never used
+	local d = SPeditor.ReadTable()
 	S.EnvApply(d)
 end)
 

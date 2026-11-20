@@ -59,7 +59,7 @@ function P.Start()
 	local n = math.Clamp(cvSamples:GetInt(), 4, 512)
 	local FX = SPeditor.FX
 	local fx = FX and FX.For(src.ent) or nil
-	local dof = FX and SPeditor.Export.TrackFocus(src, FX.DOF(fx))
+	local dof = FX and FX.DOF(fx)
 	if not dof and GetConVar("gmfm_dof"):GetBool() then
 		dof = { aperture = math.Clamp(GetConVar("gmfm_dof_aperture"):GetFloat(), 0.05, 20), focus = SPeditor.Export.FocusDistance(src) }
 	end

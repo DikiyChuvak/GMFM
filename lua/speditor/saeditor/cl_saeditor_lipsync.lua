@@ -115,6 +115,7 @@ end
 
 -- MP3, OGG, compressed WAV: played silently and measured as it plays (BASS measures the
 -- level before the volume, verified in game)
+local listenSerial = 0
 local function envelopeListen(path, t0, t1, done)
 	sound.PlayFile(path, "noplay noblock", function(ch)
 		if not IsValid(ch) then done(nil) return end
@@ -122,7 +123,10 @@ local function envelopeListen(path, t0, t1, done)
 		ch:SetVolume(0)
 		ch:SetTime(t0)
 		ch:Play()
-		local id = "SAeditor.LipListen" .. path
+		-- a unique id: the same file analysed twice must not overwrite the hook of the
+		-- first channel (which would then keep playing with nobody to stop it)
+		listenSerial = listenSerial + 1
+		local id = "SAeditor.LipListen" .. listenSerial
 		SPeditor.Hook("Think", id, function()
 			if not IsValid(ch) then hook.Remove("Think", id) done(nil) return end
 			local t = ch:GetTime()

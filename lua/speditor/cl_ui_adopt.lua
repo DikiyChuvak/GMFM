@@ -149,7 +149,12 @@ function UI.OpenAdopt()
 		end
 		state.outline = out
 	end
-	win.OnRemove = function() state.outline = {} state.onList = nil end
+	local baseRemove = win.OnRemove
+	win.OnRemove = function(s)
+		if baseRemove then baseRemove(s) end
+		Dock.pages.adopt = nil
+		state.outline = {} state.onList = nil
+	end
 	local close = win.Close
 	win.Close = function(...)
 		state.outline = {}

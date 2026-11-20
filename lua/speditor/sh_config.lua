@@ -3,12 +3,13 @@
 SPeditor = SPeditor or {}
 SPeditor.Name     = "GM:FM"
 SPeditor.FullName = "Garry's Mod Filmmaker"
-SPeditor.Version = "b0.3"
+SPeditor.Version = "r1.0"
 SPeditor.VersionBase = "b0.2"   -- the release the patch builds on: About lists its news under the patch's
 SPeditor.VersionPrev = "b0.2.7" -- the patch before this one
 -- every update since b0.1, newest first: version, release date, prefix of its news in the
 -- language files (About → What's new, b0.2.4)
 SPeditor.History = {
+	{ "r1.0", "2026-11-20", "about_r10_" },
 	{ "b0.3", "2026-11-19", "about_b03_" },
 	{ "b0.2.7", "2026-11-05", "about_z" },
 	{ "b0.2.6", "2026-10-31", "about_y" },

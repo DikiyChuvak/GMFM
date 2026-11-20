@@ -9,7 +9,7 @@ util.AddNetworkString(SPeditor.Net.ChangeMap)
 -- the map is changed by the host of the game (single player, a listen server's host) or an admin
 net.Receive(SPeditor.Net.ChangeMap, function(_, ply)
 	if not SPeditor.FilmMode() then return end
-	local map = string.lower(net.ReadString() or "")
+	local map = string.lower(net.ReadString())
 	if not IsValid(ply) or not (game.SinglePlayer() or ply:IsListenServerHost() or ply:IsAdmin()) then
 		S.Notice(ply, "#mode_map_denied", 1)
 		return

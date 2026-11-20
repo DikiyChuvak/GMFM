@@ -187,14 +187,22 @@ SA.ReceiveParts("Summary", function(t)
 end)
 
 local seekWaiters = {}
+-- A render stopped or timed out never gets its Frame answer; without a timeout the callback
+-- (and its captured job) would stay in this table for the rest of the session.
+COMP:Hook("Think", function()
+	local now = RealTime()
+	for serial, w in pairs(seekWaiters) do
+		if now > w.at + 30 then seekWaiters[serial] = nil end
+	end
+end)
 COMP:NetReceive("Frame", function()
 	local frame   = net.ReadFloat()
 	local playing = net.ReadBool()
 	local serial  = net.ReadUInt(16)
 	if serial ~= 0 then
-		local cb = seekWaiters[serial]
+		local w = seekWaiters[serial]
 		seekWaiters[serial] = nil
-		if cb then cb(frame) end
+		if w then w.cb(frame) end
 		return
 	end
 	SA.playing = playing
@@ -233,7 +241,7 @@ function SA.Seek(frame, onDone)
 	if onDone then
 		seekSerial = seekSerial % 65000 + 1
 		serial = seekSerial
-		seekWaiters[serial] = onDone
+		seekWaiters[serial] = { cb = onDone, at = RealTime() }
 	end
 	local function send()
 		COMP:NetStart("Seek")
@@ -1227,7 +1235,7 @@ local function importOnProp(ent, seq, opts)
 	end
 	csm:ResetSequence(seq)
 	csm:SetPlaybackRate(0)
-	if csm:GetPoseParameter("move_x") ~= nil then csm:SetPoseParameter("move_x", 1) end
+	if csm:LookupPoseParameter("move_x") >= 0 then csm:SetPoseParameter("move_x", 1) end
 	for name, value in pairs(opts.params or {}) do csm:SetPoseParameter(name, value) end
 	rest:ResetSequence(ent:GetSequence())
 	rest:SetCycle(ent:GetCycle())
@@ -1333,7 +1341,7 @@ function SA.ImportSequence(ent, seq, opts)
 	csm:ResetSequence(seq)
 	csm:SetPlaybackRate(0)
 	-- walk and run animations are blended from nine directions; without this parameter you get a "stance"
-	if csm:GetPoseParameter("move_x") ~= nil then csm:SetPoseParameter("move_x", 1) end
+	if csm:LookupPoseParameter("move_x") >= 0 then csm:SetPoseParameter("move_x", 1) end
 	for name, value in pairs(opts.params or {}) do csm:SetPoseParameter(name, value) end
 
 	local dur    = (csm:SequenceDuration(seq) or 1) * (c1 - c0) / speed

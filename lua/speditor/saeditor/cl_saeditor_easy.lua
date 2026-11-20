@@ -72,7 +72,7 @@ local function cycleLength(seq)
 	local d = 1
 	if id and id >= 0 then
 		m:ResetSequence(id)
-		if m:GetPoseParameter("move_x") ~= nil then m:SetPoseParameter("move_x", 1) end
+		if m:LookupPoseParameter("move_x") >= 0 then m:SetPoseParameter("move_x", 1) end
 		d = m:SequenceDuration(id) or 1
 	end
 	m:Remove()

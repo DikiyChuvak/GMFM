@@ -157,19 +157,24 @@ local function foreign()
 	local info = debug.getinfo(3, "S")
 	return not (info and info.short_src and string.find(info.short_src, "speditor", 1, true))
 end
-SA.RealPlayFile = SA.RealPlayFile or sound.PlayFile
-SA.RealCreateSound = SA.RealCreateSound or CreateSound
-sound.PlayFile = function(path, flags, cb, ...)
-	if not foreign() or not isstring(path) then return SA.RealPlayFile(path, flags, cb, ...) end
-	return SA.RealPlayFile(path, flags, function(ch, ...)
-		if IsValid(ch) then streams[ch] = string.lower(string.gsub(path, "\\", "/")) end
-		if cb then return cb(ch, ...) end
-	end, ...)
-end
-CreateSound = function(ent, path, ...)
-	local p = SA.RealCreateSound(ent, path, ...)
-	if p and isstring(path) and foreign() then patches[p] = { path = path, ent = ent } end
-	return p
+-- These are global patches, and an autorefresh of this file would wrap the wrappers again
+-- (SA survives the refresh). Install them once and restore the originals on shutdown.
+if not SA.recSoundWrapped then
+	SA.RealPlayFile = sound.PlayFile
+	SA.RealCreateSound = CreateSound
+	sound.PlayFile = function(path, flags, cb, ...)
+		if not foreign() or not isstring(path) then return SA.RealPlayFile(path, flags, cb, ...) end
+		return SA.RealPlayFile(path, flags, function(ch, ...)
+			if IsValid(ch) then streams[ch] = string.lower(string.gsub(path, "\\", "/")) end
+			if cb then return cb(ch, ...) end
+		end, ...)
+	end
+	CreateSound = function(ent, path, ...)
+		local p = SA.RealCreateSound(ent, path, ...)
+		if p and isstring(path) and foreign() then patches[p] = { path = path, ent = ent } end
+		return p
+	end
+	SA.recSoundWrapped = true
 end
 function SA.OwnChannel(ch) streams[ch] = nil end
 

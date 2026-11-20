@@ -98,7 +98,7 @@ function PAC.Remove(ent, i) if IsValid(ent) then sendOp(ent, 1, function() net.W
 function PAC.Clear(ent) if IsValid(ent) then sendOp(ent, 2) end end
 
 net.Receive(SPeditor.Net.PACSync, function()
-	local idx = net.ReadUInt(13)
+	local idx = net.ReadUInt(16)
 	local op = net.ReadUInt(2)
 	if op == 0 then
 		local n = net.ReadUInt(4)

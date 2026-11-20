@@ -328,7 +328,8 @@ function SA.ShotList()
 	local fps = math.max(SA.fps, 1)
 	local shots = {}
 	if #SA.cuts == 0 then
-		shots[1] = { f0 = 0, f1 = SA.frames, cam = nil }
+		-- no cuts: the whole scene is shot through the work camera, which has no object UID
+		shots[1] = { f0 = 0, f1 = SA.frames, name = SPeditor.L("sa_rnd_workcam") }
 	else
 		for i, c in ipairs(SA.cuts) do
 			local f0 = i == 1 and 0 or c.f
@@ -356,7 +357,7 @@ function SA.ShotList()
 	}
 	for i, s in ipairs(shots) do
 		local cam = s.uid and SA.EntByUID and SA.EntByUID(s.uid)
-		local name = IsValid(cam) and C.DisplayName(cam) or (s.uid and ("#" .. s.uid) or "—")
+		local name = s.name or (IsValid(cam) and C.DisplayName(cam) or (s.uid and ("#" .. s.uid) or "—"))
 		if (utf8.len(name) or #name) > 28 then name = utf8.sub and utf8.sub(name, 1, 28) or string.sub(name, 1, 28) end
 		lines[#lines + 1] = row({ i, name, s.f0, s.f1, s.f1 - s.f0, string.format("%.2f", (s.f1 - s.f0) / fps), UI.Timecode(s.f0 / fps), UI.Timecode(s.f1 / fps) })
 	end

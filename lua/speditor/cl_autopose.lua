@@ -73,8 +73,7 @@ local UPRIGHT, MAX_UPRIGHT = 0.6, 35
 -- (at most MAX_SPREAD degrees), the hips SPREAD_ROOT (at most MAX_SPREAD_ROOT)
 local SPREAD, MAX_SPREAD, SPREAD_ROOT, MAX_SPREAD_ROOT = 0.3, 30, 0.15, 20
 
-local FOOT = { "foot", "ankle", "hoof" }
-local HAND = { "hand", "wrist", "paw" }
+local FOOT, HAND = SPeditor.LimbNames.FOOT, SPeditor.LimbNames.HAND
 local function named(ent, bone, list)
 	local n = string.lower(ent:GetBoneName(bone) or "")
 	for _, p in ipairs(list) do

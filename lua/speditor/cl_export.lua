@@ -156,13 +156,6 @@ local function focusDistance(src)
 end
 SPeditor.Export.FocusDistance = focusDistance
 
--- A camera's own depth of field. (b0.2.6 round 8) The focus is the camera's focal distance only, as in
--- SFM: there is no "focus kept on an object" there — the focus is set by hand and keyed. A focus
--- object set earlier (NW2 SPeditor_FocusOn, still read from old scenes) no longer moves it.
-function SPeditor.Export.TrackFocus(src, dof)
-	return dof
-end
-
 -- "Engine frame": the engine itself shoots the scene (with all addon shaders), one game
 -- frame per attempt. The first frames are skipped: effects that accumulate the picture
 -- over time, and auto exposure, need a few frames to settle.
@@ -175,7 +168,7 @@ local ENGINE_TIMEOUT = 5
 local function engineDOF(job, src)
 	local dof
 	if job.dof then dof = { aperture = job.aperture, samples = job.samples, focus = focusDistance(src) } end
-	local own = (not job.nodof or job.camdof) and SPeditor.FX and SPeditor.Export.TrackFocus(src, SPeditor.FX.DOF(SPeditor.FX.For(src.ent)))
+	local own = (not job.nodof or job.camdof) and SPeditor.FX and SPeditor.FX.DOF(SPeditor.FX.For(src.ent))
 	if own then dof = own end
 	if not dof or (dof.aperture or 0) <= 0 then return nil end
 	local n = math.Clamp(math.floor(dof.samples or 32), 2, 256)
@@ -294,7 +287,7 @@ SPeditor.Hook("PostRender", "SPeditor.Export", function()
 			slice = job.accum and { job.accum.i, job.accum.n } or nil }
 		if job.dof then opts.dof = { aperture = job.aperture, samples = job.samples, focus = focusDistance(src) } end
 		-- a camera with its own depth of field (camera effects) uses it instead
-		local own = (not job.nodof or job.camdof) and SPeditor.FX and SPeditor.Export.TrackFocus(src, SPeditor.FX.DOF(SPeditor.FX.For(src.ent)))
+		local own = (not job.nodof or job.camdof) and SPeditor.FX and SPeditor.FX.DOF(SPeditor.FX.For(src.ent))
 		if own then
 			opts.dof = own
 			if job.camdof then opts.dofFull = true end

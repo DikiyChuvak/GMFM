@@ -4,6 +4,7 @@
 
 <p align="center">
 Scenes, animation and film inside Garry's Mod, close to a full port of Source Filmmaker. Called SPeditor until b0.1.<br>
+</p>
 
 <p align="center">
 <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435"><b>Steam Workshop</b></a> ·
@@ -20,10 +21,45 @@ are an enthusiast. Changes from other developers may get into the Workshop versi
 credited) — message me on Steam first so I can look at what you have changed. The Simplified
 Chinese translation is by [fugui9527121](https://github.com/fugui9527121) — thank you!*
 
-This repository is the **full source code** of GM:FM b0.3 — the addon as it is on the
-[Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435), its
-gamemode, shaders and tools. How to use the editor is explained inside the game: **Help → How
-to use** (illustrated guides with live demonstrations).
+This repository is the **full source code** of GM:FM — the addon, its gamemode, shaders and
+tools. The `b0.3` branch is the version on the
+[Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435);
+the `r1.0-test` branch is release **r1.0 in open testing** (not the default branch).
+How to use the editor is explained inside the game: **Help → How to use** (illustrated guides
+with live demonstrations).
+
+## Changes and fixes (r1.0, test)
+
+Release r1.0 collects three patches on top of b0.3. It is a release candidate: please report
+anything unexpected in [issues](https://github.com/DikiyChuvak/GMFM/issues).
+
+**Critical fixes**
+
+- The Environment window now updates after loading a scene, a reset or a sun texture change:
+  its hook used the panel as its identifier, so the callback received the panel instead of the
+  change path (gmod-wiki: an object hook id is inserted as the first argument).
+- The default GM:FM UI skin (`skins/sfm.lua`) is now sent to clients through `AddCSLuaFile`.
+- `gmfm_prof` without an argument toggles the profiler instead of always enabling it; the
+  profiler's global wrappers survive autorefresh and uninstall correctly.
+- Render targets are no longer created for every pixel of a freely resized viewport (the height
+  is stepped like the width), probe targets are reused, and light-mask names use a CRC so two
+  different texture paths cannot share a mask.
+- Shadow hysteresis is applied to the sort key, not to the squared distance; the gizmo's failed
+  axis-ray test no longer starts a drag from zero.
+- The Adopt and Model Browser windows call the base `OnRemove` again and clear their Dock pages.
+
+**Network, performance and reliability**
+
+- The Toggle message goes through the protected receiver (rate limit and access check); PAC
+  entity indices use 16 bits; the PVS camera limit follows `Cfg.MaxCameras`.
+- Long seeks in the animation editor sample the track instead of resolving every frame;
+  material signatures and camera effects are compared without serialising JSON each tick.
+- Sound-list decompression failures are reported instead of silently dropping the take;
+  seek callbacks time out and pose-request callbacks are queued instead of overwriting each other.
+- Hand/foot bone-name patterns live in one place (`sh_util.lua`) for IK, auto pose, fingers,
+  the gizmo and bone groups; `LookupPoseParameter` replaces a dead `GetPoseParameter ~= nil` check.
+- Removed a no-op `TrackFocus` wrapper, dead fallbacks, a one-element loop and a no-op call in
+  the WebAudio page; bundle ignore patterns for folders absent from this repository are gone.
 
 ### Run it from the source
 

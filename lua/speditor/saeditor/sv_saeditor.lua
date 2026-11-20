@@ -276,7 +276,13 @@ local function applyProp(ent, a, b, u, noFace)
 	-- neither, and the object keeps what it has)
 	if a.mat or a.stretch then
 		local look = ent.SPeditor_Look or {}
-		local sig = a.mat and (a.mat .. util.TableToJSON(a.sub or {}) .. util.TableToJSON(a.tints or {})) or nil
+		-- the key tables do not change between ticks: serialise them once, not on every evaluation
+		local sub, tints = a.sub or {}, a.tints or {}
+		if a.lookSigMat ~= a.mat or a.lookSigSub ~= sub or a.lookSigTints ~= tints then
+			a.lookSigMat, a.lookSigSub, a.lookSigTints = a.mat, sub, tints
+			a.lookSig = util.TableToJSON(sub) .. util.TableToJSON(tints)
+		end
+		local sig = a.mat and (a.mat .. a.lookSig) or nil
 		local sa, sb = a.stretch, b.stretch or a.stretch
 		local stv = sa and S.CanScale(ent) and lerpV(sa, sb, u) or nil
 		if sig and sig ~= ent.SA_LookSig then
@@ -333,6 +339,22 @@ end
 
 -- Camera effects between two keys: numbers are blended, switches and materials are taken
 -- from the key before. A key made before effects were keyed has none: the camera keeps its own.
+-- Compare the camera FX tables directly: serialising both to JSON every tick was pure overhead.
+local function sameFX(a, b)
+	if a == b then return true end
+	if type(a) ~= "table" or type(b) ~= "table" then return false end
+	for k, v in pairs(a) do
+		local w = b[k]
+		if type(v) == "table" then
+			if type(w) ~= "table" or not sameFX(v, w) then return false end
+		elseif v ~= w then
+			return false
+		end
+	end
+	for k in pairs(b) do if a[k] == nil then return false end end
+	return true
+end
+
 local function applyCameraFX(ent, fa, fb, u)
 	if not istable(fa) then return end
 	fb = istable(fb) and fb or fa
@@ -348,7 +370,7 @@ local function applyCameraFX(ent, fa, fb, u)
 		end
 	end
 	-- the effects travel as networked strings: they are sent only when they change
-	if util.TableToJSON(fx) == util.TableToJSON(ent.SPeditor_FX or {}) then return end
+	if sameFX(fx, ent.SPeditor_FX or {}) then return end
 	S.SetCameraFX(ent, fx)
 end
 
@@ -1026,6 +1048,18 @@ end
 -- (b0.2.7) the distance a vehicle's body has travelled along its own forward by the keys, from the first
 -- frame to this one (the poses between keys as playback takes them). Worked out frame by frame once per
 -- track (its stamp), so scrubbing back and forth adds nothing twice. S.RigPlace rolls the wheels by it.
+-- The forward advance over one frame (a non-prop state or missing pose contributes nothing).
+local function travelDelta(ent, tr, f)
+	local s0, s1 = resolveProp(ent, tr, f), resolveProp(ent, tr, f + 1)
+	if not (s0 and s1 and s0.kind == "prop" and s1.kind == "prop" and s1.pos and s1.ang) then return 0 end
+	return (s1.pos - s0.pos):Dot(s1.ang:Forward())
+end
+
+-- A far seek used to resolve the pose twice for EVERY frame from zero (a binary search and a
+-- pose blend each), so a render at frame 100000 froze the server. On a long jump the step is
+-- sampled at most 128 times and the advance is spread over the frames of each sampled step;
+-- normal scrubbing and playback keep the exact per-frame value.
+local TRAVEL_EXACT = 128
 function S.TravelAt(ent, tr, frame)
 	local c = tr.travel
 	if not c or c.stamp ~= (tr.stamp or 0) or c.n ~= #tr.order then
@@ -1033,15 +1067,21 @@ function S.TravelAt(ent, tr, frame)
 		tr.travel = c
 	end
 	frame = math.max(0, math.floor(frame + 0.5))
-	while c.last < frame do
-		local g = c.last
-		local s0, s1 = resolveProp(ent, tr, g), resolveProp(ent, tr, g + 1)
-		local d = 0
-		if s0 and s1 and s0.kind == "prop" and s1.kind == "prop" and s1.pos and s1.ang then
-			d = (s1.pos - s0.pos):Dot(s1.ang:Forward())
+	if frame - c.last > TRAVEL_EXACT then
+		local step = math.ceil((frame - c.last) / TRAVEL_EXACT)
+		while c.last < frame do
+			local f = c.last
+			local stop = math.min(f + step, frame)
+			local d = travelDelta(ent, tr, f) / (stop - f)
+			for g = f, stop - 1 do c.cum[g + 1] = c.cum[g] + d end
+			c.last = stop
 		end
-		c.cum[g + 1] = c.cum[g] + d
-		c.last = g + 1
+	else
+		while c.last < frame do
+			local g = c.last
+			c.cum[g + 1] = c.cum[g] + travelDelta(ent, tr, g)
+			c.last = g + 1
+		end
 	end
 	return c.cum[frame] or 0
 end
@@ -2147,7 +2187,11 @@ COMP:NetReceive("Sounds", function(ply)
 	soundParts[ply] = nil
 	local raw = util.Decompress(table.concat(buf.list), 16 * 1024 * 1024)
 	local list = raw and util.JSONToTable(raw)
-	if not istable(list) then return end
+	if not istable(list) then
+		-- a limit hit is a failure, not an empty take: the client would keep its old sounds
+		S.Notice(ply, "#err_sound_huge", 1)
+		return
+	end
 	anim(ply).sounds = cleanSounds(list)
 	SA.SendSummary(ply)
 end)
@@ -3983,16 +4027,16 @@ end
 local function smhImport(ply, id, src, entName, ent, opts)
 	local data = util.JSONToTable(file.Read(src.read, src.pathId) or "")
 	if not istable(data) or not istable(data.Entities) then return "#sa_smh_bad" end
-	local src
+	local found
 	for _, e in pairs(data.Entities) do
 		local name = istable(e) and (istable(e.Properties) and e.Properties.Name or e.Model)
-		if name == entName and istable(e.Frames) then src = e break end
+		if name == entName and istable(e.Frames) then found = e break end
 	end
-	if not src then return "#sa_smh_bad" end
+	if not found then return "#sa_smh_bad" end
 
 	-- the keys of every modifier, sorted
 	local mods, positions, seen = {}, {}, {}
-	for _, fr in pairs(src.Frames) do
+	for _, fr in pairs(found.Frames) do
 		local pos = num(fr.Position)
 		if pos and istable(fr.EntityData) then
 			for name, d in pairs(fr.EntityData) do

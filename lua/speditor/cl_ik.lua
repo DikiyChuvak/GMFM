@@ -121,11 +121,9 @@ function IK.ManipFor(it, want, parentNew)
 end
 
 -- End links for which IK switches on (by bone name)
-local END_PATTERNS = { "hand", "foot", "wrist", "ankle", "toe", "paw", "hoof" }
+local END_PATTERNS = {}
+for _, p in ipairs(SPeditor.LimbNames.HAND) do END_PATTERNS[#END_PATTERNS + 1] = p end
+for _, p in ipairs(SPeditor.LimbNames.FOOT) do END_PATTERNS[#END_PATTERNS + 1] = p end
 function IK.IsEndEffector(boneName)
-	local n = string.lower(boneName or "")
-	for _, p in ipairs(END_PATTERNS) do
-		if string.find(n, p, 1, true) then return true end
-	end
-	return false
+	return SPeditor.BoneNameMatches(boneName, END_PATTERNS)
 end

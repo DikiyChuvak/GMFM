@@ -433,8 +433,7 @@ end
 ---------------------------------------------------------------------
 -- Planted feet and bone locks: worked out after the dragged bones got their new places
 ---------------------------------------------------------------------
-local FOOT_PATTERNS = { "foot", "ankle", "hoof" }
-local HAND_PATTERNS = { "hand", "wrist", "paw" }
+local FOOT_PATTERNS, HAND_PATTERNS = SPeditor.LimbNames.FOOT, SPeditor.LimbNames.HAND
 local function matches(name, patterns)
 	local n = string.lower(name or "")
 	for _, p in ipairs(patterns) do
@@ -646,7 +645,8 @@ local function startDrag(tgt, hit)
 			d.free, d.mx0 = true, gui.MouseX()
 		else
 			d.scrAxis = screenAxisStart(tgt.pos, axis, d.size)
-			d.t0 = not d.scrAxis and axisParam(ro, rd, tgt.pos, axis) or 0
+			-- `or 0` made a failed axisParam (nil) look like a valid start of 0 and the drag jumped
+			d.t0 = d.scrAxis and 0 or axisParam(ro, rd, tgt.pos, axis)
 			if not d.t0 then return end
 		end
 	elseif hit.mode == "move" and plane then
@@ -662,7 +662,7 @@ local function startDrag(tgt, hit)
 		if not d.h0 then return end
 	elseif hit.mode == "move" then
 		d.scrAxis = screenAxisStart(tgt.pos, axis, gizmoSize(tgt.pos))
-		d.t0 = not d.scrAxis and axisParam(ro, rd, tgt.pos, axis) or 0
+		d.t0 = d.scrAxis and 0 or axisParam(ro, rd, tgt.pos, axis)
 		if not d.t0 then return end
 	elseif turnFree and hit.index == 4 then
 		local _, vang = C.GetView()

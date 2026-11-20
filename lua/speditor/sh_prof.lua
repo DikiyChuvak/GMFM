@@ -82,7 +82,10 @@ end
 ---------------------------------------------------------------------
 -- Net messages and the server's setters, wrapped only while it is on
 ---------------------------------------------------------------------
-local orig = {}
+-- Lives on SPeditor.Prof: an autorefresh of this file must not leave the old wrappers in place
+-- with a fresh (empty) `orig`, or turning the profiler off could never uninstall them.
+local orig = P.orig or {}
+P.orig = orig
 local outName
 
 local function netStat(key, bytes)
@@ -167,7 +170,8 @@ local function uninstall()
 	for _, m in ipairs(orig.meta or {}) do
 		if m[1][m[2]] == m[4] then m[1][m[2]] = m[3] end
 	end
-	orig = {}
+	-- clear in place: P.orig must stay the same table across autorefreshes
+	for k in pairs(orig) do orig[k] = nil end
 end
 
 ---------------------------------------------------------------------
@@ -268,7 +272,8 @@ end
 if CLIENT then
 	concommand.Add("gmfm_prof", function(_, _, args)
 		local v = tonumber(args[1])
-		local on = (v == nil) and not P.on or v ~= 0
+		-- no argument toggles; `nil ~= 0` in Lua is true, so the second branch needs the parentheses
+		local on = (v == nil and not P.on) or (v ~= 0)
 		P.Set(on, args[2])
 		-- the server's side (not defined on the client: the command goes to the server)
 		RunConsoleCommand("gmfm_prof_sv", on and "1" or "0", args[2] or "2")

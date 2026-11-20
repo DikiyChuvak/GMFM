@@ -881,7 +881,11 @@ local poseCallbacks = {}
 
 function C.RequestPose(ent, callback)
 	if not IsValid(ent) then return end
-	poseCallbacks[ent:EntIndex()] = callback
+	-- an entity may have more than one request in flight (SnapshotThen, auto key); a queue keeps
+	-- the first callback instead of overwriting it with the second
+	local q = poseCallbacks[ent:EntIndex()]
+	if not q then q = {} poseCallbacks[ent:EntIndex()] = q end
+	q[#q + 1] = callback
 	net.Start(Net.PoseGet)
 	net.WriteEntity(ent)
 	net.SendToServer()
@@ -955,10 +959,11 @@ end)
 net.Receive(Net.PoseData, function()
 	local idx  = net.ReadUInt(16)
 	local pose = SPeditor.ReadTable()
-	local cb = poseCallbacks[idx]
-	if cb then
-		poseCallbacks[idx] = nil
-		cb(pose)
+	local q = poseCallbacks[idx]
+	if q then
+		local cb = table.remove(q, 1)
+		if #q == 0 then poseCallbacks[idx] = nil end
+		if cb then cb(pose) end
 	end
 end)
 

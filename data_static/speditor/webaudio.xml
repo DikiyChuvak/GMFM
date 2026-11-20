@@ -185,7 +185,6 @@ function envelope(path, step, req) {
     });
 }
 
-window.onload = () => { if (window.gmfm && gmfm.ready) gmfm.ready(ctx.sampleRate); };
 </script>
 </body>
 </html>

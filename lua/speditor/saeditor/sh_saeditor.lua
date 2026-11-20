@@ -280,17 +280,14 @@ function SA.MouthMap(ent)
 		end
 		if next(map) then return map end
 	end
-	for _, set in ipairs({ LIP_VALVE }) do
-		for name, w in pairs(set) do
-			local id = byName[name]
-			if id then
-				map[id] = w
-				if (w[1] or 0) > 0 then open = true end
-			end
+	for name, w in pairs(LIP_VALVE) do
+		local id = byName[name]
+		if id then
+			map[id] = w
+			if (w[1] or 0) > 0 then open = true end
 		end
-		if open then return map end
-		map = {}
 	end
+	if open then return map end
 	map = {}
 	for _, ch in ipairs(LIP_NAMES) do
 		for _, name in ipairs(ch[2]) do

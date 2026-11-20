@@ -30,14 +30,14 @@ function S.PACSync(ent, ply)
 	end
 	send(function()
 		net.Start(SPeditor.Net.PACSync)
-		net.WriteUInt(ent:EntIndex(), 13)
+		net.WriteUInt(ent:EntIndex(), 16)
 		net.WriteUInt(0, 2)                -- 0: the list starts over
 		net.WriteUInt(#items, 4)
 	end)
 	for _, it in ipairs(items) do
 		send(function()
 			net.Start(SPeditor.Net.PACSync)
-			net.WriteUInt(ent:EntIndex(), 13)
+			net.WriteUInt(ent:EntIndex(), 16)
 			net.WriteUInt(1, 2)            -- 1: one more outfit
 			net.WriteString(it.name)
 			net.WriteUInt(#it.data, 16)
