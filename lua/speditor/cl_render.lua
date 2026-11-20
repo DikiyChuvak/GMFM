@@ -368,7 +368,9 @@ local function shootLook()
 	-- (b0.2.6) in steps of 64 pixels: the game never frees a render target, and every width the
 	-- viewport passed through while a splitter was dragged made a set of them for itself
 	local pw = math.Clamp(math.max(math.floor(math.min(req.iw, W) / 64) * 64, 64), 16, VP_W)
-	local ph = math.Clamp(math.floor(pw / aspect), 16, VP_H)
+	-- the height must be stepped too: a freely resized viewport changed it every pixel and made
+	-- a new set of render targets for each height (the game never frees them)
+	local ph = math.Clamp(math.max(math.floor((pw / aspect) / 64) * 64, 64), 16, VP_H)
 	local fx = FX and FX.For(src.ent) or nil
 	local now = RealTime()
 	local o, a = src.origin, src.angles
@@ -674,16 +676,21 @@ end
 -- it back? An 8-bit frame of a known colour is blended into it and copied out to 8 bits again.
 -- On Linux (the D3D -> OpenGL layer) float targets passed every step and came back black: the
 -- renders, their preview and the saved pictures were black (gmfm_rendertest, steps 3 and 4).
-local probeN = 0
+-- A probe target must be reused: a new name means a render target the game keeps forever.
+local probeTargets = {}
 function R.ProbeFormat(fmt, w, h)
 	w, h = w or 32, h or 16
-	probeN = probeN + 1
+	local key = tostring(fmt) .. "_" .. w .. "x" .. h
 	local src = getRT("probe_src_" .. w .. "x" .. h, w, h)
 	render.PushRenderTarget(src)
 	render.Clear(200, 100, 50, 255, true, true)
 	render.PopRenderTarget()
-	local rt = GetRenderTargetEx("gmfm_probe_" .. probeN .. "_" .. tostring(fmt), w, h, RT_SIZE_LITERAL,
-		MATERIAL_RT_DEPTH_NONE, 4 + 8, 0, fmt)
+	local rt = probeTargets[key]
+	if not rt then
+		rt = GetRenderTargetEx("gmfm_probe_" .. key, w, h, RT_SIZE_LITERAL,
+			MATERIAL_RT_DEPTH_NONE, 4 + 8, 0, fmt)
+		probeTargets[key] = rt
+	end
 	render.PushRenderTarget(rt)
 	render.Clear(0, 0, 0, 255)
 	matBlend:SetTexture("$basetexture", src)

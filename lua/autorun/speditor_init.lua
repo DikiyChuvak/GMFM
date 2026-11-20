@@ -14,7 +14,8 @@ local CLIENT_FILES = {
 }
 
 -- Derma skins of the interface themes: included on the client when a theme is chosen (cl_ui_themes.lua)
-local SKIN_FILES = { "gmod", "speditor", "darkui", "steam2004", "gmod98", "oneshot", "lambdaui", "ecoui", "gmodxp", "vanillaui" }
+-- "sfm" is the skin of the default GM:FM UI theme; it must be sent too (cl_ui_themes.lua includes it)
+local SKIN_FILES = { "sfm", "gmod", "speditor", "darkui", "steam2004", "gmod98", "oneshot", "lambdaui", "ecoui", "gmodxp", "vanillaui" }
 
 local function exists(path)
 	if file.Exists(path, "LUA") then return true end

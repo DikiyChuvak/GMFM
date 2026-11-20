@@ -230,11 +230,16 @@ local function build(body)
 		syncing = false
 	end
 	sync()
-	SPeditor.Hook("GMFM_EnvChanged", body, function(path)
+	-- A string id is required here: with an object id (the panel) hook.Add inserts the panel
+	-- as the FIRST callback argument, so `path` would never be "scene"/"reset"/"sun.mapDir".
+	SPeditor.Hook("GMFM_EnvChanged", "SPeditor.EnvWindow", function(path)
+		if not IsValid(body) then return end
 		-- a whole new state (a scene, a reset): every control reads it again
 		if path == "scene" or path == "reset" or path == "sun.mapDir" then sync() end
 	end)
-	SPeditor.Hook("GMFM_EnvInfo", body, sync)
+	SPeditor.Hook("GMFM_EnvInfo", "SPeditor.EnvWindowInfo", function()
+		if IsValid(body) then sync() end
+	end)
 	Env.RequestInfo()
 end
 

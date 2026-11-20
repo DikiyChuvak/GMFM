@@ -654,7 +654,12 @@ function UI.BuildBrowser()
 		end
 	end
 
-	win.OnRemove = function() UI.BrowserFrame = nil end
+	local baseRemove = win.OnRemove
+	win.OnRemove = function(s)
+		if baseRemove then baseRemove(s) end
+		SPeditor.Dock.pages.browser = nil
+		UI.BrowserFrame = nil
+	end
 end
 
 -- the skin picked in the browser's preview goes onto the model a click has just put in (b0.2.6)

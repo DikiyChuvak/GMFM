@@ -219,7 +219,9 @@ function Lt.Mask(tex, edge)
 	local key = tex .. "|" .. level
 	local m = masks[key]
 	if not m then
-		local name = "speditor_lmask_" .. string.gsub(tex, "[^%w]", "_") .. "_" .. level
+		-- a plain gsub collides: "a/b" and "a_b" (or "speditor_gen/x" and "speditor_gen_x")
+		-- would share one render target and the second mask would overwrite the first
+		local name = "speditor_lmask_" .. util.CRC(tex) .. "_" .. level
 		m = {
 			tex = tex, edge = level / LEVELS, gen = gen,
 			rt = GetRenderTargetEx(name, MASK_SIZE, MASK_SIZE, RT_SIZE_LITERAL, MATERIAL_RT_DEPTH_NONE, 4 + 8, 0, IMAGE_FORMAT_RGBA8888),

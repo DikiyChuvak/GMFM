@@ -4,6 +4,7 @@
 
 <p align="center">
 Scenes, animation and film inside Garry's Mod, close to a full port of Source Filmmaker. Called SPeditor until b0.1.<br>
+</p>
 
 <p align="center">
 <a href="https://steamcommunity.com/sharedfiles/filedetails/?id=3817852435"><b>Steam Workshop</b></a> ·
