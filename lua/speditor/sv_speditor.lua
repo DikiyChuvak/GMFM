@@ -1584,9 +1584,11 @@ cvars.AddChangeCallback("gmfm_access", function()
 	for _, p in ipairs(player.GetAll()) do p:SetNW2Bool("SPeditor_Denied", false) end
 end, "SPeditor.Denied")
 
--- Through the protected receiver (sv_net.lua): rate limit and a single access check.
--- noActive = true: the message is what turns editor mode on, so it must work while it is off.
-S.Receive("Toggle", function(ply)
+-- Not through S.Receive: it drops messages outside editor mode (this one turns it on) and
+-- returns silently on no access (the client must hear it, or it asks again every second).
+-- The rate limit is kept (S.Allow, sv_net.lua).
+net.Receive(Net.Toggle, function(_, ply)
+	if not IsValid(ply) or not S.Allow(ply) then return end
 	if not SPeditor.CanUse(ply) then
 		-- (b0.2.6) the client knows it and stops asking: in the GM:FM gamemode on a server the
 		-- guests' clients asked every second and 'no permission' kept popping up
