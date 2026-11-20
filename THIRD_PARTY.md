@@ -5,11 +5,6 @@ The parts below are bundled with GM:FM but **belong to their authors**: they are
 the MIT license and keep their own terms. If you fork GM:FM and publish it, check these
 parts first (keep them with their credits, or leave them out).
 
-[Лицензия MIT](LICENSE) распространяется на собственный код, тексты, картинки, звуки и шейдеры
-GM:FM. Перечисленные ниже части входят в GM:FM, но **принадлежат своим авторам**: они не
-под лицензией MIT и остаются на своих условиях. Если делаете форк и публикуете его, сначала
-проверьте эти части (оставьте их с указанием авторов или уберите).
-
 ## Interface skins
 
 Adapted copies of Workshop Derma skins (`lua/speditor/skins/*.lua`) and their textures
@@ -30,17 +25,12 @@ Adapted copies of Workshop Derma skins (`lua/speditor/skins/*.lua`) and their te
 | GMod Classic (`gmodclassic.png`) | [Garry's Mod Classic UI Spawnmenu](https://steamcommunity.com/sharedfiles/filedetails/?id=3379423670) | Bon Bon 3016 |
 | GMod (`gmod.lua`, `gmod.png`) | the game's stock Derma skin (`lua/skins/default.lua`) | Garry Newman / Facepunch Studios |
 
-## GM:FM UI — Source Filmmaker's pictures / картинки Source Filmmaker
+## GM:FM UI — Source Filmmaker's pictures
 
 The GM:FM UI theme (`lua/speditor/skins/sfm.lua`) is GM:FM's own code under MIT, but the
 pictures it draws — `materials/speditor/skins/sfm/base/` and `materials/speditor/skins/sfm/sfm/`
 — are copied from Source Filmmaker (`platform/tools/images`) and belong to **Valve
 Corporation**. GM:FM is not affiliated with Valve.
-
-Тема GM:FM UI (`lua/speditor/skins/sfm.lua`) — собственный код GM:FM под MIT, но картинки,
-которые она рисует, — `materials/speditor/skins/sfm/base/` и `materials/speditor/skins/sfm/sfm/`
-— взяты из Source Filmmaker (`platform/tools/images`) и принадлежат **Valve Corporation**.
-GM:FM с Valve не связан.
 
 The grey glyphs `materials/speditor/skins/sfm/glyph/` are made (`tools/make_glyphs.py`) from
 the [Silk icons](http://www.famfamfam.com/lab/icons/silk/) by Mark James that come with
