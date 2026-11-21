@@ -272,8 +272,10 @@ end
 if CLIENT then
 	concommand.Add("gmfm_prof", function(_, _, args)
 		local v = tonumber(args[1])
-		-- no argument toggles; `nil ~= 0` in Lua is true, so the second branch needs the parentheses
-		local on = (v == nil and not P.on) or (v ~= 0)
+		-- no argument toggles. Not an and/or chain: `nil ~= 0` is true, so with no argument the
+		-- `or` side always won and the profiler could not be switched off
+		local on
+		if v == nil then on = not P.on else on = v ~= 0 end
 		P.Set(on, args[2])
 		-- the server's side (not defined on the client: the command goes to the server)
 		RunConsoleCommand("gmfm_prof_sv", on and "1" or "0", args[2] or "2")
