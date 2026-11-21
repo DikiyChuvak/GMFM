@@ -22,6 +22,8 @@ local function allow(ply)
 	b.n = b.n + 1
 	return b.n <= MAX_RATE
 end
+-- (r1.0) also for receivers that cannot go through S.Receive (Toggle, sv_speditor.lua)
+S.Allow = allow
 
 -- Registering a receiver: checks access, editor mode and rate.
 -- noActive = true: the message is allowed outside editor mode (for example Toggle).
