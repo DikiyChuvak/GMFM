@@ -24,6 +24,12 @@ local R = SPeditor.Render
 local C = SPeditor.Client
 local L = SPeditor.L
 
+-- (r1.0) a transparent background for posters and renders: the clear of the render target
+-- has alpha 0 and PNG capture keeps it, so the picture can be composited in an editor
+local cvAlpha = CreateClientConVar("gmfm_render_alpha", "0", true, false,
+	"GM:FM renders: transparent background (PNG only)", 0, 1)
+function R.Transparent() return cvAlpha:GetBool() end
+
 -- The viewport frame is drawn into a texture as big as the screen (at least 1280 x 1024). A fixed
 -- 1280 x 1024 one was stretched over big viewports on 1440p / 4K screens, and small far objects
 -- came out blurry ("everything gets blurry a bit farther away").
@@ -239,7 +245,7 @@ local function renderScene(rt, src, rw, rh, pass, wrap2D, fullbright, aspect)
 	local oldPass, oldEnt = C.vpPass, C.renderViewEnt
 	C.vpPass, C.renderViewEnt = pass, src.ent
 	render.PushRenderTarget(rt)
-	render.Clear(16, 16, 16, 255, true, true)
+	render.Clear(16, 16, 16, R.Transparent() and 0 or 255, true, true)
 	if wrap2D then cam.Start2D() end
 	local exposure = R.CameraExposure(src.ent)
 	if exposure > 0 then render.ResetToneMappingScale(exposure) end

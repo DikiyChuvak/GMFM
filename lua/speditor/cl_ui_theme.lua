@@ -657,6 +657,7 @@ function CTRL:Setup(o)
 	self.step     = o.step
 	self.pow      = (o.pow and o.pow > 1) and o.pow or nil
 	self.wheel    = o.wheel
+	self.labelColor = o.labelColor   -- (sfm-faces) a right / left face slider: red / green
 	self.value    = fit(self, o.value or self.default)
 	self:SetTooltip(o.tooltip)
 	return self
@@ -717,7 +718,7 @@ function CTRL:Paint(w, h)
 		end
 	end
 
-	draw.SimpleText(self.label, "SPeditor.Small", w / 2, h / 2, COL.TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+	draw.SimpleText(self.label, "SPeditor.Small", w / 2, h / 2, self.labelColor or COL.TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 	-- a value past the ends (unlocked limits) is always shown, in the accent colour
 	local past = self.value < self.min - 1e-6 or self.value > self.max + 1e-6
 	if self.drag or self:IsHovered() or past then

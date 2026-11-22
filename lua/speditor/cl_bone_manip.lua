@@ -131,6 +131,116 @@ function C.LoadPose(ent, name)
 	C.SnapshotThen(ent, "load pose", function() C.SendPoseApply(ent, data.pose) end)
 end
 
+-- (r1.0) pose layers: blend two saved poses with a weight and apply the result as one pose.
+-- The poses of a model are plain tables (phys / bones / flex, values as {x,y,z} / {p,y,r}),
+-- so the layer is worked out entirely on the client and goes through the usual PoseApply.
+local function lerpVec(a, b, u)
+	local ax, ay, az = tonumber(a and a.x) or 0, tonumber(a and a.y) or 0, tonumber(a and a.z) or 0
+	local bx, by, bz = tonumber(b and b.x) or 0, tonumber(b and b.y) or 0, tonumber(b and b.z) or 0
+	return { x = ax + (bx - ax) * u, y = ay + (by - ay) * u, z = az + (bz - az) * u }
+end
+local function lerpAng(a, b, u)
+	local ap, ay, ar = tonumber(a and a.p) or 0, tonumber(a and a.y) or 0, tonumber(a and a.r) or 0
+	local bp, by, br = tonumber(b and b.p) or 0, tonumber(b and b.y) or 0, tonumber(b and b.r) or 0
+	local dif = math.AngleDifference
+	return { p = ap + dif(bp, ap) * u, y = ay + dif(by, ay) * u, r = ar + dif(br, ar) * u }
+end
+-- The window of the pose layer: two saved poses and the weight of the upper one
+function C.OpenPoseLayers(ent)
+	if not IsValid(ent) then SPeditor.Notify(L("pose_need_entity"), 1) return end
+	if IsValid(C.PoseLayerWin) then C.PoseLayerWin:Remove() end
+	local L = SPeditor.L
+	local UI = SPeditor.UI
+	local f = vgui.Create("DFrame")
+	C.PoseLayerWin = f
+	f:SetTitle(L("pose_layers"))
+	f:SetSize(520, 280)
+	f:Center()
+	f:MakePopup()
+	if f.GetTitleLabel and IsValid(f:GetTitleLabel()) then f:GetTitleLabel():SetFont("SPeditor.Bold") end
+	local names = C.ListPoseInfos()
+	local function combo(label, y)
+		local l = vgui.Create("DLabel", f)
+		l:SetPos(14, y)
+		l:SetSize(480, 22)
+		l:SetFont("SPeditor.Small")
+		l:SetText(label)
+		l:SetTextColor(UI.PAL and UI.PAL.TEXT or color_white)
+		local cb = vgui.Create("DComboBox", f)
+		cb:SetPos(14, y + 24)
+		cb:SetSize(492, 30)
+		cb:SetFont("SPeditor.Small")
+		for _, info in ipairs(names) do cb:AddChoice(info.name, info.name) end
+		return cb
+	end
+	local a = combo(L("pose_layer_a"), 40)
+	local b = combo(L("pose_layer_b"), 98)
+	-- UI.Slider docks TOP, so its SetPos is ignored and the label overlaps the combo above;
+	-- a plain DNumSlider keeps this window's fixed layout
+	local s = vgui.Create("DNumSlider", f)
+	s:SetPos(14, 158)
+	s:SetSize(492, 42)
+	s:SetText(L("pose_layer_weight"))
+	s:SetMin(0)
+	s:SetMax(1)
+	s:SetDecimals(2)
+	s:SetValue(0.5)
+	if IsValid(s.Label) then
+		s.Label:SetFont("SPeditor.Small")
+		s.Label:SetTextColor(UI.PAL and UI.PAL.TEXT or color_white)
+	end
+	if IsValid(s.TextArea) then
+		s.TextArea:SetFont("SPeditor.Small")
+		s.TextArea:SetTextColor(UI.PAL and UI.PAL.TEXT or color_white)
+	end
+	local btn = vgui.Create("DButton", f)
+	btn:SetPos(14, 214)
+	btn:SetSize(492, 36)
+	btn:SetFont("SPeditor.Bold")
+	btn:SetText(L("pose_layer_apply"))
+	btn.DoClick = function()
+		local _, na = a:GetSelected()
+		local _, nb = b:GetSelected()
+		if not na or not nb then SPeditor.Notify(L("pose_select_first"), 1) return end
+		local function load(name, cb)
+			local data = util.JSONToTable(file.Read(SPeditor.Config.SaveDir .. "/poses/" .. name .. ".json", "DATA") or "")
+			cb(type(data) == "table" and data.pose or nil)
+		end
+		load(na, function(pa)
+			load(nb, function(pb)
+				local blend = C.BlendPoses(pa, pb, s:GetValue())
+				if not blend then return end
+				C.SnapshotThen(ent, "pose layer", function() C.SendPoseApply(ent, blend) end)
+				f:Close()
+			end)
+		end)
+	end
+end
+
+function C.BlendPoses(a, b, w)
+	if type(a) ~= "table" or type(b) ~= "table" then return nil end
+	w = math.Clamp(tonumber(w) or 0, 0, 1)
+	local out = { phys = {}, bones = {}, flex = {}, model = a.model, names = a.names or {} }
+	for section, mix in pairs({ phys = true, bones = true }) do
+		local ta, tb = a[section] or {}, b[section] or {}
+		local keys = {}
+		for k in pairs(ta) do keys[k] = true end
+		for k in pairs(tb) do keys[k] = true end
+		for k in pairs(keys) do
+			local x, y = ta[k], tb[k]
+			out[section][k] = {
+				p = lerpVec(x and x.p, y and y.p, w),
+				a = lerpAng(x and x.a, y and y.a, w),
+				s = lerpVec(x and x.s or { x = 1, y = 1, z = 1 }, y and y.s or { x = 1, y = 1, z = 1 }, w),
+			}
+		end
+	end
+	local fa, fb = a.flex or {}, b.flex or {}
+	for k in pairs(fa) do out.flex[k] = (tonumber(fa[k]) or 0) * (1 - w) + (tonumber(fb[k]) or 0) * w end
+	for k in pairs(fb) do if out.flex[k] == nil then out.flex[k] = (tonumber(fb[k]) or 0) * w end end
+	return out
+end
+
 function C.DeletePose(name)
 	name = SPeditor.SafeName(name)
 	local path = POSE_DIR .. "/" .. name .. ".json"

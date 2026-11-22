@@ -319,7 +319,7 @@ end
 -- frame = 1 to copy them; they all move together, so a key never lands on one still to move
 -- MOTION (a0.7, the Motion Editor): the edit of the object at frame goes over a time selection,
 -- str = "a0,a1,b0,b1,shape" (full between a1 and b1… see SA.TimeSelWeight)
-SA.OP = { SET = 1, DELETE = 2, MOVE = 3, EASE = 4, CLEAR = 5, CLEAR_ALL = 6, COPY = 7, SHIFT = 8, MOTION = 9, TIME = 10, SPEED = 11, PRESET = 12, BAKE = 13, TWEEN = 14 }
+SA.OP = { SET = 1, DELETE = 2, MOVE = 3, EASE = 4, CLEAR = 5, CLEAR_ALL = 6, COPY = 7, SHIFT = 8, MOTION = 9, TIME = 10, SPEED = 11, PRESET = 12, BAKE = 13, TWEEN = 14, TWEEN_FACE = 15 }
 -- the Motion Editor's procedural presets (b0.2, after SFM): they change the keys inside the time selection
 SA.PRESETS = { "smooth", "sharp", "jitter", "hold", "default", "zero", "half", "one", "in", "out", "ramp",
 	"spline", "drop", "release", "round", "steady", "stagger", "paste", "playhead" }
@@ -794,9 +794,14 @@ COMP:Lang("en", {
 	sa_el_body = "Skin and bodygroups", sa_el_eye = "Eyes", sa_el_phys = "Physics bodies", sa_el_att = "Attachment",
 	sa_el_lens = "Lens", sa_el_shake = "Shake", sa_el_fx = "Camera effects", sa_el_color = "Colour", sa_el_light = "Light",
 	sa_el_moment = "Moment",
+	sa_el_key = "Key this element at the playhead", sa_el_key_none = "This element has no separately keyable channel yet",
 	sa_tw_menu = "Tween the selection here", sa_tw_prev = "Toward the previous key", sa_tw_next = "Toward the next key",
 	sa_tw_relax = "Relax (toward the middle of the two keys)", sa_tw_push = "Push (away from the middle)", sa_tw_pull = "Pull (toward the middle)",
 	sa_tw_done = "Tween keyed at frame %d", sa_tw_none = "No keys around this frame to tween from",
+	sa_tw_title = "Tween machine", sa_tw_open = "Tween… (strength slider)", sa_tw_strength = "Strength, %",
+	sa_tw_kind = "Step", sa_tw_face = "Tween the face of the selected objects", sa_tw_apply = "Tween",
+	sa_tw_hint = "Move the playhead between two keys, choose a step and a strength, then press Tween.",
+	sa_tl_mute = "Mute this track", sa_tl_solo = "Solo this track", sa_tl_lock = "Lock this track's keys",
 	sa_hk_delete_keys = "Delete the selected keys", sa_eyes_row = "Eyes",
 	sa_face_start = "Separate face keys: start here", sa_face_clear = "Remove the face keys (the body keys drive the face again)",
 	sa_face_key_set = "Face key set: frame %d", sa_need_face = "Select a model with a face (flexes)",
@@ -817,6 +822,7 @@ COMP:Lang("en", {
 	sa_clip_p_alpha = "Opacity", sa_clip_p_additive = "Added (glows)", sa_clip_align_0 = "Left", sa_clip_align_1 = "Centre", sa_clip_align_2 = "Right",
 	sa_presets = "Procedural presets (SFM)", sa_presets_all = "Procedural presets on the whole animation", sa_preset_smooth = "Smooth — remove bumps", sa_preset_sharp = "Sharp — stronger moves", sa_preset_jitter = "Jitter — a random shake", sa_preset_hold = "Hold — keep the first pose", sa_preset_default = "Default — bones and face to the model's pose", sa_preset_zero = "Zero — face sliders to 0", sa_preset_half = "Half — face sliders to 0.5", sa_preset_one = "One — face sliders to 1", sa_preset_in = "In — to the value entering the selection", sa_preset_out = "Out — to the value leaving the selection", sa_preset_ramp = "In/Out Ramp — straight from entering to leaving", sa_preset_spline = "Spline — smooth from entering to leaving", sa_preset_drop = "Drop — speeding up from entering to leaving", sa_preset_release = "Release — slowing down from entering to leaving", sa_preset_round = "Round — whole values, face on / off", sa_preset_steady = "Steady — remove a shake", sa_preset_stagger = "Stagger — each next object 2 frames later", sa_preset_paste = "Paste — to the copied frame", sa_preset_playhead = "Playhead — to the frame under the playhead", sa_preset_copy = "Copy the frame under the playhead (for Paste)", sa_preset_nocopy = "Copy a frame first (the time selection menu → Copy the frame…)", sa_presets_face = "Face", sa_presets_motion = "Motion", sa_presets_shape = "From edge to edge", sa_preset_none = "Select the objects whose keys the preset changes", sa_preset_nokeys = "The selected objects have no keys",
 	sa_spin_head = "Rotator (as in SFM): the object keeps turning round its own axis — a wheel, a fan, a propeller, a turntable (minus — the other way). Seen while playing and in the render.", sa_proc_spin = "Spin, °/s", sa_spin_x = "Axis: across (pitch)", sa_spin_y = "Axis: up (yaw)", sa_spin_z = "Axis: forward (roll)", sa_spin_bone = "Turn only this bone: %s", sa_spin_bone_hint = "Select a bone to turn only it: a wheel, a screw, a track link. Without one the whole object turns.",
+	sa_rot_key = "Keyable rotator (SFM control)", sa_rot_key_hint = "The angle comes from the slider, not from time: key it at different frames to turn a wheel by hand.", sa_rot_deg = "Angle, degrees",
 		sa_rec_phys_skipped = "%d selected object(s) have no physics to fall with (models without physics, attached objects) and are left out.",
 	sa_shots_export = "Export the shot list (text file + clipboard)", sa_shots_untitled = "untitled", sa_shots_title = "Shot list: %s (map %s, %s)", sa_shots_total = "%d shots, %d frames, %.2f s at %d fps", sa_shots_cam = "Camera", sa_shots_in = "In", sa_shots_out = "Out", sa_shots_frames = "Frames", sa_shots_sec = "Seconds", sa_shots_tcin = "TC in", sa_shots_tcout = "TC out", sa_shots_done = "Shot list (%d shots) copied and saved: %s",
 	sa_mark_tip = "Bookmark: mark the playhead's frame (again: remove). Right click — the list of bookmarks", sa_mark_title = "Bookmark %s", sa_mark_go = "Go to it", sa_mark_rename = "Rename the bookmark", sa_mark_delete = "Remove the bookmark", sa_mark_add = "Bookmark this frame", sa_mark_list = "Bookmarks", sa_mark_clear = "Remove all bookmarks",
@@ -1168,9 +1174,14 @@ COMP:Lang("ru", {
 	sa_el_body = "Скин и бодигруппы", sa_el_eye = "Глаза", sa_el_phys = "Физика", sa_el_att = "Прикрепление",
 	sa_el_lens = "Объектив", sa_el_shake = "Тряска", sa_el_fx = "Эффекты камеры", sa_el_color = "Цвет", sa_el_light = "Свет",
 	sa_el_moment = "Момент",
+	sa_el_key = "Поставить ключ этого элемента на курсоре", sa_el_key_none = "У этого элемента пока нет отдельного ключевого канала",
 	sa_tw_menu = "Твин выделенного здесь", sa_tw_prev = "К предыдущему ключу", sa_tw_next = "К следующему ключу",
 	sa_tw_relax = "Релакс (к середине между ключами)", sa_tw_push = "Push (от середины)", sa_tw_pull = "Pull (к середине)",
 	sa_tw_done = "Твин записан на кадре %d", sa_tw_none = "Рядом с кадром нет ключей для твина",
+	sa_tw_title = "Твин-машина", sa_tw_open = "Твин… (ползунок силы)", sa_tw_strength = "Сила, %",
+	sa_tw_kind = "Шаг", sa_tw_face = "Твинить лицо выделенных объектов", sa_tw_apply = "Твинить",
+	sa_tw_hint = "Переведите курсор между двумя ключами, выберите шаг и силу, затем нажмите «Твинить».",
+	sa_tl_mute = "Выключить эту дорожку", sa_tl_solo = "Соло: только эта дорожка", sa_tl_lock = "Закрепить ключи дорожки",
 	sa_hk_delete_keys = "Удалить выбранные ключи", sa_eyes_row = "Глаза",
 	sa_face_start = "Отдельные ключи лица: начать здесь", sa_face_clear = "Убрать ключи лица (лицом снова управляют ключи тела)",
 	sa_face_key_set = "Ключ лица поставлен: кадр %d", sa_need_face = "Выделите модель с лицом (флексами)",
@@ -1191,6 +1202,7 @@ COMP:Lang("ru", {
 	sa_clip_p_alpha = "Непрозрачность", sa_clip_p_additive = "Сложением (светится)", sa_clip_align_0 = "Слева", sa_clip_align_1 = "По центру", sa_clip_align_2 = "Справа",
 	sa_presets = "Процедурные пресеты (SFM)", sa_presets_all = "Процедурные пресеты на всю анимацию", sa_preset_smooth = "Smooth — убрать рывки", sa_preset_sharp = "Sharp — движения сильнее", sa_preset_jitter = "Jitter — случайная дрожь", sa_preset_hold = "Hold — держать первую позу", sa_preset_default = "Default — кости и лицо к позе модели", sa_preset_zero = "Zero — слайдеры лица в 0", sa_preset_half = "Half — слайдеры лица в 0.5", sa_preset_one = "One — слайдеры лица в 1", sa_preset_in = "In — к значению на входе в выделение", sa_preset_out = "Out — к значению на выходе из выделения", sa_preset_ramp = "In/Out Ramp — прямо от входа к выходу", sa_preset_spline = "Spline — плавно от входа к выходу", sa_preset_drop = "Drop — с разгоном от входа к выходу", sa_preset_release = "Release — с торможением от входа к выходу", sa_preset_round = "Round — целые значения, лицо вкл / выкл", sa_preset_steady = "Steady — убрать дрожь", sa_preset_stagger = "Stagger — каждый следующий объект на 2 кадра позже", sa_preset_paste = "Paste — к скопированному кадру", sa_preset_playhead = "Playhead — к кадру под курсором", sa_preset_copy = "Скопировать кадр под курсором (для Paste)", sa_preset_nocopy = "Сначала скопируйте кадр (меню выделения времени → Скопировать кадр…)", sa_presets_face = "Лицо", sa_presets_motion = "Движение", sa_presets_shape = "От края до края", sa_preset_none = "Выделите объекты, ключи которых меняет пресет", sa_preset_nokeys = "У выделенных объектов нет ключей",
 	sa_spin_head = "Ротатор (как в SFM): объект всё время вращается вокруг своей оси — колесо, вентилятор, пропеллер, поворотный стол (минус — в другую сторону). Видно при проигрывании и в рендере.", sa_proc_spin = "Вращение, °/с", sa_spin_x = "Ось: поперёк (наклон)", sa_spin_y = "Ось: вверх (рыскание)", sa_spin_z = "Ось: вперёд (крен)", sa_spin_bone = "Крутить только эту кость: %s", sa_spin_bone_hint = "Выберите кость — тогда крутится только она: колесо, винт, гусеница. Без кости крутится весь объект.",
+	sa_rot_key = "Управляемый ротатор (control как в SFM)", sa_rot_key_hint = "Угол берётся из ползунка, а не из времени: ставьте ключи на разных кадрах, чтобы поворачивать колесо вручную.", sa_rot_deg = "Угол, градусы",
 		sa_rec_phys_skipped = "Пропущено выбранных объектов без физики (модели без физики, привязанные объекты): %d.",
 	sa_shots_export = "Экспорт списка планов (текстовый файл + буфер обмена)", sa_shots_untitled = "без названия", sa_shots_title = "Список планов: %s (карта %s, %s)", sa_shots_total = "Планов: %d, кадров: %d, %.2f с при %d к/с", sa_shots_cam = "Камера", sa_shots_in = "Начало", sa_shots_out = "Конец", sa_shots_frames = "Кадров", sa_shots_sec = "Секунд", sa_shots_tcin = "TC начала", sa_shots_tcout = "TC конца", sa_shots_done = "Список планов (%d) скопирован и сохранён: %s",
 	sa_mark_tip = "Закладка: отметить кадр плейхеда (ещё раз — убрать). Правый клик — список закладок", sa_mark_title = "Закладка %s", sa_mark_go = "Перейти к ней", sa_mark_rename = "Переименовать закладку", sa_mark_delete = "Убрать закладку", sa_mark_add = "Закладка на этом кадре", sa_mark_list = "Закладки", sa_mark_clear = "Убрать все закладки",

@@ -662,7 +662,13 @@ function UI.Open()
 				net.SendToServer()
 			end)
 		end
+		-- (r1.0) Stop Motion Helper saves: take their keys onto an object, or write keys back
+		local smhSA = SPeditor.Component("saeditor").SA
+		if smhSA and smhSA.OpenSMH then
+			m:AddOption(L("sa_smh_title") .. "…", function() smhSA.OpenSMH() end):SetIcon("icon16/arrow_switch.png")
+		end
 		m:AddOption(L("act_render") .. "…", function() UI.OpenRenderDialog() end):SetIcon("icon16/picture_save.png")
+		m:AddOption(L("rq_title") .. "…", function() UI.OpenRenderQueue() end):SetIcon("icon16/film_go.png")
 		-- b0.2.6: SFM's Export Poster — a still refined pass by pass
 		m:AddOption(L("poster_title") .. "…", function() UI.OpenPoster() end):SetIcon("icon16/picture.png")
 		-- b0.2: SFM's Export Shot List
@@ -670,6 +676,12 @@ function UI.Open()
 		if SAc and SAc.ExportShotList then
 			m:AddOption(L("sa_shots_export"), function() SAc.ExportShotList() end):SetIcon("icon16/page_white_text.png")
 		end
+		m:AddOption(L("bvh_import"), function() UI.OpenBVH() end):SetIcon("icon16/page_white_put.png")
+		m:AddOption(L("gltf_export"), function()
+			Derma_StringRequest(L("gltf_export"), L("save_name"), C.sceneName or "gmfm_scene", function(name)
+				UI.ExportGltf(name)
+			end)
+		end):SetIcon("icon16/page_white_go.png")
 		m:AddOption(L("adopt_title") .. "…", function() UI.OpenAdopt() end):SetIcon("icon16/world_add.png")
 		m:AddOption(L("files_title") .. "…", function() UI.OpenFileLocations() end):SetIcon("icon16/folder_explore.png")
 		m:AddOption(L("autosave"), function()
@@ -752,6 +764,8 @@ function UI.Open()
 		m:AddOption(L("win_browser"), function() UI.ToggleBrowser() end)
 		m:AddOption(L("win_ref"), function() UI.OpenRef() end):SetIcon("icon16/film.png")
 		m:AddOption(L("render_title"), function() UI.OpenRenderDialog() end)
+		m:AddOption(L("mixer_title"), function() UI.OpenAudioMixer() end):SetIcon("icon16/sound.png")
+		m:AddOption(L("rig_title") .. "…", function() UI.OpenRigEditor() end):SetIcon("icon16/group_gear.png")
 		m:AddOption(L("shaders_title"), function() UI.OpenShaders() end):SetIcon("icon16/wand.png")
 		m:AddOption(L("env_title"), function() UI.OpenEnvironment() end):SetIcon("icon16/weather_sun.png")
 		-- component pages (COMP:AddPage)
@@ -867,6 +881,7 @@ function UI.Open()
 		m:AddOption(L("files_title") .. "…", function() UI.OpenFileLocations() end):SetIcon("icon16/folder_explore.png")
 		local nErr = #(SPeditor.Errors and SPeditor.Errors.list or {})
 		m:AddOption(L("rep_title") .. (nErr > 0 and (" (" .. nErr .. ")") or "") .. "…", function() UI.OpenReport() end):SetIcon("icon16/bug.png")
+		m:AddOption(L("diag_title") .. "…", function() UI.OpenDiagnostics() end):SetIcon("icon16/report_magnify.png")
 		m:AddOption(L("st_menu"), function() SPeditor.SelfTest.Run() end):SetIcon("icon16/tick.png")
 		-- the interface language: the editor is rebuilt in it at once
 		local lang, lo = m:AddSubMenu(L("qmenu_language"))

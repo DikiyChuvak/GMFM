@@ -576,6 +576,7 @@ function UI.BuildASE(body)
 		if ent:GetFlexNum() > 0 then presetRow(L("face_reset"), function() C.ResetFlexes(ent) end) end
 		presetRow(L("pose_copy"), function() C.CopyPose(ent) end)
 		presetRow(L("pose_paste"), function() C.PastePose(ent) end)
+		presetRow(L("pose_layers") .. "…", function() C.OpenPoseLayers(ent) end)
 		presetRow(L("pose_save") .. "…", function()
 			Derma_StringRequest(L("pose_save"), L("pose_name_prompt"), "", function(name) C.SavePose(ent, name) end)
 		end)
@@ -613,14 +614,44 @@ function UI.BuildASE(body)
 		end
 	end
 
+	-- (sfm-faces) a right / left set (C.FlexSets): a thin row with the shared name, then its
+	-- sliders indented under it, right (red) before left (green) before multi
+	local SIDE_COL = { right = COL.RED, left = COL.GREEN }
+	local function flexSetHeader(text)
+		local p = vgui.Create("DPanel", controls)
+		p:Dock(TOP)
+		p:DockMargin(0, 0, 0, 1)
+		p:SetTall(UI.S(14))
+		p.Paint = function(_, w, h)
+			surface.SetDrawColor(COL.BORDER)
+			surface.DrawRect(UI.S(4), h / 2, UI.S(4), 1)
+			draw.SimpleText(text, "SPeditor.Small", UI.S(11), h / 2, COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+		end
+	end
 	local function flexControls(ent, list)
-		for _, f in ipairs(list) do
-			ctrl({
+		local sets, setOf = C.FlexSets(list)
+		local done = {}
+		local function slider(f, side)
+			local c = ctrl({
 					label = f.name, min = f.min, max = f.max, value = f.weight,
-					default = math.Clamp(0, f.min, f.max),
+					default = math.Clamp(0, f.min, f.max), labelColor = side and SIDE_COL[side],
 					onChange = function(v) C.EditFlex(ent, f.id, v) end,
 			getter = function() return IsValid(ent) and SPeditor.FlexGet(ent, f.id) or nil end,
 			})
+			if side then c:DockMargin(UI.S(8), 0, 0, 1) end
+		end
+		for _, f in ipairs(list) do
+			local key = setOf[f.id]
+			if not key then
+				slider(f)
+			elseif not done[key] then
+				done[key] = true
+				local s = sets[key]
+				flexSetHeader(s.name)
+				for _, side in ipairs({ "right", "left", "multi" }) do
+					if s[side] then slider(s[side], side) end
+				end
+			end
 		end
 	end
 

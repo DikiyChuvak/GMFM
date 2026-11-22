@@ -938,6 +938,43 @@ function SA.TweenPose(ent, tr, frame, kind, s)
 	return nil
 end
 
+-- (r1.0) the tween machine for a face track: flexes and the eye point between two face keys.
+-- whole = true as in applyFlex: a flex missing from both keys goes back to zero
+local function blendFace(a, b, u)
+	local out = { kind = "face", pos = Vector(a.pos), ang = Angle(a.ang), flex = {} }
+	local fa, fb = a.flex or {}, b.flex or {}
+	for id, wa in pairs(fa) do out.flex[id] = SA.LerpNum(wa, fb[id] or 0, u) end
+	for id, wb in pairs(fb) do if fa[id] == nil then out.flex[id] = SA.LerpNum(0, wb, u) end end
+	out.eye = eyeBetween(a.eye, b.eye, u)
+	return out
+end
+
+-- The pose of a face track at a frame for one tween step. The face the model wears now is the
+-- current pose; the keys before and after the playhead give the two ends of the stretch.
+function SA.TweenFacePose(ent, tr, frame, kind, s)
+	if not IsValid(ent) or not tr or #tr.order == 0 then return nil end
+	local cur = captureFace(ent)
+	local prevF, nextF
+	for _, f in ipairs(tr.order) do
+		if f < frame then prevF = f end
+		if f > frame and not nextF then nextF = f end
+	end
+	local prevS = prevF and tr.keys[prevF] and tr.keys[prevF].st
+	local nextS = nextF and tr.keys[nextF] and tr.keys[nextF].st
+	if not prevS or prevS.kind ~= "face" then prevS = nil end
+	if not nextS or nextS.kind ~= "face" then nextS = nil end
+	if not prevS and not nextS then return nil end
+	prevS = prevS or nextS
+	nextS = nextS or prevS
+	local mid = blendFace(prevS, nextS, 0.5)
+	if kind == "prev" then return blendFace(cur, prevS, s) end
+	if kind == "next" then return blendFace(cur, nextS, s) end
+	if kind == "relax" then return blendFace(cur, mid, s) end
+	if kind == "push" then return blendFace(mid, cur, 1 + s) end
+	if kind == "pull" then return blendFace(mid, cur, 1 - s) end
+	return nil
+end
+
 -- Keyed attaching (see attState): does the track switch it at all (its keys disagree)?
 local function attSig(att)
 	if att == nil then return nil end
@@ -1222,23 +1259,30 @@ end
 
 function SA.ApplyTracks(a, map, frame)
 	local P = SPeditor.Prof
+	local flags = a.tlFlags
+	local anySolo = flags and next(flags.solo or {}) ~= nil
 	for id, tr in pairs(a.tracks) do
 		local face = SA.IsFaceTrack(id)
-		local ent = map[face and (id - SA.FACE) or id]
-		-- an object whose physics is being recorded (sv_saeditor_record.lua) moves by itself
-		if IsValid(ent) and not ent.SPeditor_PhysRec then
-			local t = P.on and SysTime()
-			local ok, err = pcall(applyTrack, ent, tr, frame, not face and a.tracks[SA.FaceTrack(id)] ~= nil)
-			if not ok then COMP:Print("apply: ", tostring(err)) end
-			-- (b0.2.6-misc.1) the profiler: the time of each kind of track, how many keys and parts it has
-			if t then
-				local kind = face and "face" or (S.IsAux(ent) and "camera/light/effect" or (S.IsRagdoll(ent) and "ragdoll" or "prop"))
-				P.Add("sv apply track: " .. kind, SysTime() - t)
-				P.Count("sv tracks applied", 1)
-				P.Count("sv keys in applied tracks", #tr.order)
-				local np = 0
-				for _ in pairs(cacheOf(tr).parts or {}) do np = np + 1 end
-				P.Count("sv keyed parts evaluated (per-part)", np)
+		local base = face and (id - SA.FACE) or id
+		-- (r1.0) mute wins; with any solo on, only the soloed objects are applied
+		local skip = flags and ((flags.mute and flags.mute[base]) or (anySolo and not flags.solo[base]))
+		if not skip then
+			local ent = map[base]
+			-- an object whose physics is being recorded (sv_saeditor_record.lua) moves by itself
+			if IsValid(ent) and not ent.SPeditor_PhysRec then
+				local t = P.on and SysTime()
+				local ok, err = pcall(applyTrack, ent, tr, frame, not face and a.tracks[SA.FaceTrack(id)] ~= nil)
+				if not ok then COMP:Print("apply: ", tostring(err)) end
+				-- (b0.2.6-misc.1) the profiler: the time of each kind of track, how many keys and parts it has
+				if t then
+					local kind = face and "face" or (S.IsAux(ent) and "camera/light/effect" or (S.IsRagdoll(ent) and "ragdoll" or "prop"))
+					P.Add("sv apply track: " .. kind, SysTime() - t)
+					P.Count("sv tracks applied", 1)
+					P.Count("sv keys in applied tracks", #tr.order)
+					local np = 0
+					for _ in pairs(cacheOf(tr).parts or {}) do np = np + 1 end
+					P.Count("sv keyed parts evaluated (per-part)", np)
+				end
 			end
 		end
 	end
@@ -1357,9 +1401,31 @@ local function physSig(phys)
 	return table.concat(out, ";")
 end
 
+local function elementOfPart(st, part)
+	local kind, idx = partIndex(part)
+	if kind == "p" and idx == 0 then return "pos" end
+	if kind == "p" then return "phys" end
+	if kind == "b" then return "bones" end
+	if kind == "f" then return "flex" end
+	if kind == "e" then return "eye" end
+	if kind == "a" then
+		local field = (SA.ATTRS[st.kind] or {})[idx + 1]
+		if st.kind == "camera" then
+			if field == "fov" then return "lens" end
+			if field == "shake" or field == "shakerot" or field == "shakefreq" then return "shake" end
+			if field == "fx" then return "fx" end
+		elseif st.kind == "light" then
+			if field == "col" then return "color" end
+			return "light"
+		elseif st.kind == "effect" then
+			return "moment"
+		end
+	end
+end
+
 local function elementSigs(st)
 	local out = {}
-	if not istable(st) or st.only then return out end
+	if not istable(st) then return out end
 	if st.kind == "prop" then
 		out.pos = sigOf(st.pos) .. sigOf(st.ang)
 		if istable(st.bones) and next(st.bones) then out.bones = sigOf(st.bones) end
@@ -1386,6 +1452,17 @@ local function elementSigs(st)
 		out.moment = sigOf(st.time) .. sigOf(st.scale) .. sigOf(st.length)
 	elseif st.kind == "face" then
 		out.flex = sigOf(st.flex)
+	end
+	-- (r1.0 fix) a partial key stores only the parts it holds; its element mask must still show
+	-- which element rows own it, or the per-element tracks stay empty for these keys
+	if st.only then
+		local keep, res = {}, {}
+		for part in pairs(st.only) do
+			local el = elementOfPart(st, part)
+			if el and out[el] ~= nil then keep[el] = true end
+		end
+		for el in pairs(keep) do res[el] = out[el] end
+		return res
 	end
 	return out
 end
@@ -2112,6 +2189,19 @@ COMP:NetReceive("Config", function(ply)
 	SA.SendSummary(ply)
 end)
 
+-- (r1.0) mute / solo of tracks. The client sends the whole map each time a flag changes;
+-- lock stays on the client (it only forbids editing a key there).
+COMP:NetReceive("TlFlags", function(ply)
+	local a = anim(ply)
+	local mute, solo = {}, {}
+	for i = 1, net.ReadUInt(10) do
+		local uid = net.ReadUInt(32)
+		if net.ReadBool() then mute[uid] = true end
+		if net.ReadBool() then solo[uid] = true end
+	end
+	a.tlFlags = { mute = mute, solo = solo }
+end)
+
 COMP:NetReceive("Seek", function(ply)
 	local frame  = net.ReadFloat()
 	local serial = net.ReadUInt(16)
@@ -2704,6 +2794,19 @@ COMP:NetReceive("Key", function(ply)
 			if pose then
 				applyProp(ent, pose, pose, 0)
 				if not setKey(ply, ent, frame, nil) then S.Notice(ply, "#sa_keys_limit", 1) end
+			else
+				S.Notice(ply, "#sa_tw_none", 1)
+			end
+		end
+	elseif action == OP.TWEEN_FACE then
+		-- (r1.0) the same step on a face track: str — the kind, arg — its strength, percent.
+		-- uid is the face track; the entity is the body behind it.
+		local ent = S.FindUID(ply, uid - SA.FACE)
+		if IsValid(ent) and tr and SA.IsFaceTrack(uid) then
+			local pose = SA.TweenFacePose(ent, tr, frame, str, math.Clamp(arg, 1, 200) / 100)
+			if pose then
+				applyState(ent, pose, pose, 0)
+				if not setKey(ply, ent, frame, nil, true) then S.Notice(ply, "#sa_keys_limit", 1) end
 			else
 				S.Notice(ply, "#sa_tw_none", 1)
 			end
@@ -3414,7 +3517,9 @@ end)
 local PROC_FIELDS = { breath = { 0, 1, 0 }, rate = { 4, 40, 14 }, blink = { 0, 1, 0 }, head = { 0, 1, 0 },
 	sway = { 0, 64, 0 }, freq = { 0.02, 4, 0.3 }, flicker = { 0, 1, 0 },
 	npos = { 0, 128, 0 }, nrot = { 0, 90, 0 }, nfreq = { 0.05, 8, 0.5 }, nseed = { 0, 999, 0 },
-	spin = { -1440, 1440, 0 }, spinax = { 1, 3, 2 } }
+	spin = { -1440, 1440, 0 }, spinax = { 1, 3, 2 },
+	-- (SFM rotator) rotMode = 1: the angle comes from rotDeg (a keyable control), not from time
+	rotMode = { 0, 1, 0 }, rotDeg = { -360, 360, 0 } }
 local NOISE_BONES_MAX = 16
 
 function SA.CleanProc(t)
@@ -3436,6 +3541,7 @@ function SA.CleanProc(t)
 	end
 	any = out.breath > 0 or out.blink > 0 or out.head > 0 or out.sway > 0 or out.flicker > 0
 		or out.npos > 0 or out.nrot > 0 or out.nbones ~= nil or out.spin ~= 0
+		or (out.rotMode > 0 and out.rotDeg ~= 0)
 	out.spinax = math.floor(out.spinax + 0.5)
 	-- the rotator turns one bone only when one is named (b0.2.6); nil — the whole object
 	out.spinbone = isstring(t.spinbone) and #t.spinbone > 0 and #t.spinbone < 128 and t.spinbone or nil
@@ -3649,8 +3755,11 @@ function SA.ProcApply(a, map, frame)
 			end
 			-- the rotator (b0.2): a turn round the object's own axis, growing with the time
 			local spin = pr.spin or 0
-			if spin ~= 0 and not ent.SPeditor_Attach then
-				local deg = (spin * t) % 360
+			local rotMode = (pr.rotMode or 0) > 0
+			if (spin ~= 0 or rotMode) and not ent.SPeditor_Attach then
+				-- a keyable rotator (SFM's control + channel) needs no time or per-frame trig:
+				-- the stored angle is applied directly, so it can be keyed and renders the same
+				local deg = rotMode and ((pr.rotDeg or 0) % 360) or ((spin * t) % 360)
 				local ax = pr.spinax or 2
 				local turn = Angle(ax == 1 and deg or 0, ax == 2 and deg or 0, ax == 3 and deg or 0)
 				local sb = pr.spinbone and not S.IsAux(ent) and ent:LookupBone(pr.spinbone) or nil
@@ -4095,6 +4204,9 @@ local function smhImport(ply, id, src, entName, ent, opts)
 
 	local op = opBefore(ply, id, ent.SPeditor_UID)
 	local uid = ent.SPeditor_UID
+	-- (r1.0 fix) flexes live in their own face track since b0.2.6: collect them here and write
+	-- a face key at every imported frame, otherwise SMH's face poser motion is lost
+	local faceKeys = {}
 	local tr = a.tracks[uid] or { keys = {}, order = {} }
 	a.tracks[uid] = tr
 	local count = 0
@@ -4147,6 +4259,7 @@ local function smhImport(ply, id, src, entName, ent, opts)
 				local id = flexKeyId(ent, f)
 				if id and w and math.abs(w) > 0.001 and id < ent:GetFlexNum() then st.flex[id] = w end
 			end
+			faceKeys[frame] = table.Copy(st.flex)
 		end
 		local sk = num(get("skin"))
 		if sk then st.skin = math.floor(sk) end
@@ -4169,6 +4282,17 @@ local function smhImport(ply, id, src, entName, ent, opts)
 	end
 	reorder(tr)
 	opAfter(ply, op, uid)
+	if next(faceKeys) then
+		local fid = SA.FaceTrack(uid)
+		opBefore(ply, id, fid)
+		local ftr = a.tracks[fid] or { keys = {}, order = {} }
+		a.tracks[fid] = ftr
+		for f, flex in pairs(faceKeys) do
+			ftr.keys[f] = { e = "linear", st = { kind = "face", pos = Vector(base.pos), ang = Angle(base.ang), flex = flex } }
+		end
+		reorder(ftr)
+		opAfter(ply, op, fid)
+	end
 	SA.SendSummary(ply)
 	SA.ApplyAll(ply, a.cur)
 	return nil, count

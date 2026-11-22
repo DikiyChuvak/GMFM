@@ -9,7 +9,7 @@ SPeditor.VersionPrev = "b0.2.7" -- the patch before this one
 -- every update since b0.1, newest first: version, release date, prefix of its news in the
 -- language files (About → What's new, b0.2.4)
 SPeditor.History = {
-	{ "r1.0", "2026-11-20", "about_r10_" },
+	{ "r1.0", "2026-11-22", "about_r10_" },
 	{ "b0.3", "2026-11-19", "about_b03_" },
 	{ "b0.2.7", "2026-11-05", "about_z" },
 	{ "b0.2.6", "2026-10-31", "about_y" },
@@ -81,6 +81,7 @@ SPeditor.Net = {
 	EnvInfo       = "GMFM_EnvInfo",
 	EnvLightmaps  = "GMFM_EnvLightmaps",
 	EnvMapSounds  = "GMFM_EnvMapSounds",
+	TlFlags       = "SPeditor_TlFlags", -- (r1.0) mute / solo of animation tracks
 }
 
 -- Extended settings of a spot light (shadows, falloff, beam shape).

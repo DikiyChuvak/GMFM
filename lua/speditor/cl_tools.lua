@@ -9,6 +9,35 @@ SPeditor — poster tools that SFM has but GMod lacks:
 SPeditor = SPeditor or {}
 local C = SPeditor.Client
 local L = SPeditor.L
+local UI = SPeditor.UI
+
+-- (r1.0) SFM-style influence of a look-at constraint: 1 — full turn, 0 — no turn
+function C.OpenAimStrength(src)
+	if not IsValid(src) then return end
+	local target = src:GetNW2Entity("SPeditor_AimAt")
+	if not IsValid(target) then return end
+	if IsValid(C.AimWin) then C.AimWin:Remove() end
+	local f = vgui.Create("DFrame")
+	C.AimWin = f
+	f:SetTitle(L("aim_strength"))
+	f:SetSize(440, 190)
+	f:Center()
+	f:MakePopup()
+	if f.GetTitleLabel and IsValid(f:GetTitleLabel()) then f:GetTitleLabel():SetFont("SPeditor.Bold") end
+	local hint = vgui.Create("DLabel", f)
+	hint:Dock(TOP)
+	hint:DockMargin(10, 8, 10, 0)
+	hint:SetFont("SPeditor.Small")
+	hint:SetText(L("aim_strength_hint"))
+	hint:SetTextColor(UI.PAL and UI.PAL.DIM or color_white)
+	hint:SetWrap(true)
+	hint:SetAutoStretchVertical(true)
+	local s = UI.Slider(f, L("aim_strength"), 0, 1, 2, src:GetNW2Float("SPeditor_AimWeight", 1))
+	s:DockMargin(10, 6, 10, 4)
+	s.OnValueChanged = function(_, v)
+		C.SendAim(src, target, src:GetNW2Int("SPeditor_AimBone", -1), nil, v)
+	end
+end
 
 ---------------------------------------------------------------------
 -- Aiming a camera / light at an object
@@ -67,6 +96,7 @@ function C.OpenAimMenu(src)
 			end
 		end
 		if IsValid(cur) then
+			menu:AddOption(L("aim_strength"), function() C.OpenAimStrength(src) end):SetIcon("icon16/control_sliders.png")
 			menu:AddOption(L("aim_follow_stop") .. "  (" .. C.DisplayName(cur) .. ")", function() C.SendAim(src, nil) end):SetIcon("icon16/cross.png")
 		end
 		menu:AddSpacer()

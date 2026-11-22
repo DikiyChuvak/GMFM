@@ -203,6 +203,69 @@ end
 ---------------------------------------------------------------------
 -- Timeline page
 ---------------------------------------------------------------------
+-- (r1.0) the tween machine as a small window: a step, a strength slider and a face switch.
+-- The menu of 25/50/100 % stays for quick steps; this is for everything in between.
+-- (r1.0) the tween machine as a small window: a step, a strength slider and a face switch.
+-- The menu of 25/50/100 % stays for quick steps; this is for everything in between.
+function UI.OpenTween(ents, frame, face)
+	if Dock.ShowPage("sa_tween") then return end
+	local W, H = 380, 250
+	local win, body = Dock.Create({ key = "sa_tween", id = "sa_tween", title = L("sa_tw_title"), w = W, h = H,
+		x = math.floor(ScrW() / 2 - W / 2), y = math.floor(ScrH() / 2 - H / 2), dockable = false,
+		icon = "icon16/arrow_switch.png" })
+	win.minW, win.minH = UI.S(340), UI.S(230)
+
+	local hint = UI.Label(body, L("sa_tw_hint"), COL.DIM)
+	hint:SetWrap(true)
+	hint:SetAutoStretchVertical(true)
+
+	local kinds = { "prev", "next", "relax", "push", "pull" }
+	local kind = kinds[1]
+	local cb = vgui.Create("DComboBox", body)
+	cb:Dock(TOP)
+	cb:DockMargin(6, 6, 6, 2)
+	cb:SetTall(UI.S(24))
+	cb:SetText(L("sa_tw_kind") .. ": " .. L("sa_tw_" .. kind))
+	for _, k in ipairs(kinds) do cb:AddChoice(L("sa_tw_" .. k), k, k == kind) end
+	cb.OnSelect = function(_, _, _, v) if v then kind = v end end
+	UI.Skin(cb)
+
+	local slider = UI.Slider(body, L("sa_tw_strength"), 1, 200, 0, 50)
+	local doFace = vgui.Create("DCheckBoxLabel", body)
+	doFace:Dock(TOP)
+	doFace:DockMargin(8, 4, 6, 2)
+	doFace:SetText(L("sa_tw_face"))
+	doFace:SetValue(face and true or false)
+	if IsValid(doFace.Label) then
+		doFace.Label:SetTextColor(COL.TEXT)
+		doFace.Label:SetFont("SPeditor.Small")
+	end
+
+	local foot = vgui.Create("DPanel", body)
+	foot:Dock(BOTTOM)
+	foot:SetTall(UI.S(34))
+	foot.Paint = function() end
+	local apply = vgui.Create("DButton", foot)
+	apply:Dock(RIGHT)
+	apply:DockMargin(4, 5, 8, 5)
+	apply:SetWide(UI.S(100))
+	apply:SetText(L("sa_tw_apply"))
+	UI.StyleButton(apply, true, 3)
+	apply.DoClick = function()
+		SA.Tween(kind, math.floor(slider:GetValue() + 0.5), ents, frame, doFace:GetChecked())
+		win:Close()
+	end
+	local close = vgui.Create("DButton", foot)
+	close:Dock(RIGHT)
+	close:DockMargin(4, 5, 4, 5)
+	close:SetWide(UI.S(80))
+	close:SetText(L("about_close"))
+	UI.StyleButton(close, nil, 3)
+	close.DoClick = function() win:Close() end
+	return win
+end
+
+
 local function buildTimeline(page)
 	local bar = vgui.Create("DPanel", page)
 	bar:Dock(TOP)
@@ -468,7 +531,14 @@ local function buildTimeline(page)
 				ids[#ids + 1] = i
 			end
 		end
-		table.sort(ids, function(x, y) return (ent:GetFlexName(x) or "") < (ent:GetFlexName(y) or "") end)
+		-- (sfm-faces) a right / left / multi set sorts by its shared name, so the halves stay together
+		local sortKey = {}
+		for _, i in ipairs(ids) do
+			local name = ent:GetFlexName(i) or ""
+			local side, _, base = C.FlexSideOf(name)
+			sortKey[i] = side and (base .. "\1" .. C.FlexSideRank[side]) or string.lower(name)
+		end
+		table.sort(ids, function(x, y) return sortKey[x] < sortKey[y] end)
 		-- (b0.2.6-misc.1) where the eyes look: a row of its own at the top
 		if string.find(str or "", "e0", 1, true) then partRow(ent, fid, "e0", L("sa_eyes_row"), nil, true) end
 		for _, i in ipairs(ids) do partRow(ent, fid, "f" .. i, ent:GetFlexName(i) or ("#" .. i), nil, true) end
@@ -649,8 +719,32 @@ local function buildTimeline(page)
 		-- the rows of one object: its track, the selected bone, its face; always = a row even
 		-- without keys (an object of a track, a selected object: a key can be set there)
 		-- (b0.2.7, TobyCat) the element tracks of an object that is open: one row per element its keys
-		-- change (SA.EL_ORDER); a row shows those keys. A key is one whole pose, so the keys are edited on
-		-- the object's row; here a click only moves the playhead
+		-- change (SA.EL_ORDER); a row shows those keys. (r1.0) a right click keys just this element:
+		-- the editor's partial keys ("p0", "b12", "f3", "a2"…) already store exactly one part
+		local function elementParts(ent, uid, id)
+			if id == "pos" then return "p0" end
+			if id == "bones" then
+				local str = SA.moving and SA.moving[uid]
+				local own = SA.OwnParts and SA.OwnParts(uid)
+				if own then str = str and (str .. "," .. own) or own end
+				return str
+			end
+			if id == "flex" then
+				local out = {}
+				if IsValid(ent) then
+					for i = 0, ent:GetFlexNum() - 1 do
+						if math.abs(SPeditor.FlexGet(ent, i)) > 0.001 then out[#out + 1] = "f" .. i end
+					end
+				end
+				return table.concat(out, ",")
+			end
+			if id == "eye" then return "e0" end
+			local map = {
+				lens = "a2", shake = "a3,a4,a5", fx = "a6",
+				color = "a2", light = "a3,a4,a5,a6,a7", moment = "a2,a3,a4",
+			}
+			return map[id]
+		end
 		local function elementRows(ent, uid, indent)
 			if not SA.elOpen[uid] then return end
 			local list = SA.tracks[uid] or {}
@@ -927,6 +1021,37 @@ local function buildTimeline(page)
 	local matFace = Material("icon16/emoticon_smile.png")
 	local matGroup = Material("icon16/folder_table.png")
 	local matOpen, matShut = Material("icon16/bullet_toggle_minus.png"), Material("icon16/bullet_toggle_plus.png")
+
+	-- (r1.0) Mute / Solo / Lock markers in the name column of an object (or its face) row.
+	-- M and S are sent to the server and change what plays; L only locks key editing here.
+	local FLAG_KEYS = { "mute", "solo", "lock" }
+	local FLAG_LETTERS = { "M", "S", "L" }
+	local FLAG_LANG = { "sa_tl_mute", "sa_tl_solo", "sa_tl_lock" }
+	local FLAG_COLORS = { Color(220, 90, 90), Color(230, 190, 70), Color(110, 160, 220) }
+	local function flagX(i) return NAME_W - 56 + (i - 1) * 17 end
+	local function rowBaseUID(row)
+		if not row then return 0 end
+		if row.owner then return row.owner end
+		return SA.IsFaceTrack(row.uid) and (row.uid - SA.FACE) or row.uid
+	end
+	local function drawTrackFlags(row, y, RH)
+		local uid = rowBaseUID(row)
+		if uid <= 0 then return end
+		for i, key in ipairs(FLAG_KEYS) do
+			local on = SA.TlFlag(uid, key)
+			local x = flagX(i)
+			surface.SetDrawColor(on and FLAG_COLORS[i] or Color(80, 80, 92))
+			surface.DrawRect(x, y + math.floor((RH - 12) / 2), 14, 12)
+			draw.SimpleText(FLAG_LETTERS[i], "SPeditor.Small", x + 7, y + RH / 2,
+				on and color_black or COL.TEXT, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+		end
+	end
+	local function flagAt(mx)
+		for i = 1, #FLAG_KEYS do
+			local x = flagX(i)
+			if mx >= x and mx <= x + 14 then return FLAG_KEYS[i] end
+		end
+	end
 
 	local function diamond(x, y, r, col)
 		draw.NoTexture()
@@ -1256,6 +1381,7 @@ local function buildTimeline(page)
 					tx = ax + is + 3
 				end
 				draw.SimpleText(row.name, "SPeditor.Small", tx, y + RH / 2, #row.keys > 0 and COL.TEXT or COL.DIM, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+				drawTrackFlags(row, y, RH)
 			end
 			-- segments between keys and the keys themselves. A baked animation has a key
 			-- every frame or two — hundreds per row: neighbouring segments of one kind are
@@ -1506,6 +1632,16 @@ local function buildTimeline(page)
 			if not IsValid(row.ent) then return end
 			if row.face then SA.SetFaceKey({ row.ent }, frame, nil, row.parts) else SA.SetKey({ row.ent }, frame, nil, row.parts) end
 		end):SetIcon("icon16/key_add.png")
+		-- (r1.0) mute / solo / lock — the same flags as the M / S / L boxes in the name column
+		if rowBaseUID(row) > 0 then
+			local base = rowBaseUID(row)
+			m:AddSpacer()
+			for i, key in ipairs(FLAG_KEYS) do
+				local o = m:AddOption(L(FLAG_LANG[i]), function() SA.ToggleTlFlag(base, key) end)
+				if o.SetChecked then o:SetChecked(SA.TlFlag(base, key)) end
+			end
+			m:AddSpacer()
+		end
 		-- the face of a body row: its own keys
 		if not row.face and not row.bone and IsValid(row.ent) and not C.IsAux(row.ent) and row.ent:GetFlexNum() > 0 and not SA.HasFaceTrack(row.ent) then
 			m:AddOption(L("sa_face_start") .. "  (" .. frame .. ")", function() SA.SetFaceKey({ row.ent }, frame) end):SetIcon("icon16/emoticon_smile.png")
@@ -1514,6 +1650,11 @@ local function buildTimeline(page)
 		-- selected objects (or this row's object when nothing is selected)
 		if not row.face and not row.bone and not row.elRow and IsValid(row.ent) and not C.IsAux(row.ent) then
 			local tw = m:AddSubMenu(L("sa_tw_menu"))
+			local sel = C.SelectionList()
+			tw:AddOption(L("sa_tw_open"), function()
+				UI.OpenTween(#sel > 0 and sel or { row.ent }, frame, false)
+			end):SetIcon("icon16/wrench.png")
+			tw:AddSpacer()
 			for _, kind in ipairs({ "prev", "next", "relax", "push", "pull" }) do
 				local sub = tw:AddSubMenu(L("sa_tw_" .. kind))
 				for _, pct in ipairs({ 25, 50, 100 }) do
@@ -1523,6 +1664,12 @@ local function buildTimeline(page)
 					end)
 				end
 			end
+		end
+		-- (r1.0) a face row gets the same machine, but only for the face track
+		if row.face and IsValid(row.ent) and row.ent:GetFlexNum() > 0 then
+			m:AddOption(L("sa_tw_open"), function()
+				UI.OpenTween({ row.ent }, frame, true)
+			end):SetIcon("icon16/emoticon_smile.png")
 		end
 		-- copied keys go back onto their own tracks, the first of them at this frame
 		local clip = {}
@@ -1901,6 +2048,14 @@ local function buildTimeline(page)
 			end
 		end
 		if mx < NAME_W then
+			-- (r1.0) the M / S / L boxes in the name column
+			if row and code == MOUSE_LEFT and mx >= NAME_W - 56 then
+				local flag = flagAt(mx)
+				if flag then
+					SA.ToggleTlFlag(rowBaseUID(row), flag)
+					return
+				end
+			end
 			if row and IsValid(row.ent) then
 				-- a track that can open out: the arrow, or a double click on the name, opens / folds it
 				if code == MOUSE_LEFT and row.canExpand then
@@ -1939,6 +2094,19 @@ local function buildTimeline(page)
 		end
 		-- (b0.2.7, TobyCat) an element track: a click moves the playhead to its key, nothing is edited here
 		if row and row.elRow then
+			if code == MOUSE_RIGHT then
+				local m = UI.Menu()
+				local parts = elementParts(row.ent, row.uid, row.el)
+				m:AddOption(L("sa_el_key") .. "  (" .. round(SA.frame) .. ")", function()
+					if not parts or parts == "" then
+						SPeditor.Notify("#sa_el_key_none", 0)
+						return
+					end
+					SA.SetKey({ row.ent }, round(SA.frame), nil, parts)
+				end):SetIcon("icon16/key_add.png")
+				m:Open()
+				return
+			end
 			if code == MOUSE_LEFT and mx >= NAME_W and not SA.rendering then
 				local ek = keyAt(row, mx, w)
 				SA.Seek(ek and ek.f or round(frameAt(mx, w)))
@@ -1954,6 +2122,8 @@ local function buildTimeline(page)
 		local ctrl = input.IsKeyDown(KEY_LCONTROL) or input.IsKeyDown(KEY_RCONTROL)
 		local shift = input.IsKeyDown(KEY_LSHIFT) or input.IsKeyDown(KEY_RSHIFT)
 		if k then
+			-- (r1.0) a locked track's keys cannot be moved or deleted from the timeline
+			if SA.TlFlag(rowBaseUID(row), "lock") then return end
 			-- a key outside the selection: it alone is selected (with Ctrl it joins the
 			-- selection); a key of the selection drags all of it
 			local was = isSel(row.uid, k.f, row.parts)

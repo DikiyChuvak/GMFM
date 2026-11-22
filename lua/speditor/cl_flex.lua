@@ -2,12 +2,61 @@
 SPeditor.Client = SPeditor.Client or {}
 local C = SPeditor.Client
 
+-- (sfm-faces) the FACS names of Valve's HL2 / L4D faces (inner_raiser, lowerer, wrinkler,
+-- corner_puller …) and of the L4D2 / TF2 animation faces (ScalpD, NostrilFlare, Platysmus) have
+-- their groups too; they used to land in Other
 local FLEX_GROUPS = {
-	{ name = "Brows", patterns = { "brow" } },
-	{ name = "Eyes",  patterns = { "lid", "eye", "blink", "squint", "wink" } },
-	{ name = "Nose",  patterns = { "nose", "sneer" } },
-	{ name = "Mouth", patterns = { "mouth", "lip", "smile", "frown", "jaw", "tongue", "teeth", "cheek", "puff", "dimple", "funnel", "pucker", "stretch" } },
+	{ name = "Brows", patterns = { "brow", "inner_raiser", "outer_raiser", "lowerer", "scalp" } },
+	{ name = "Eyes",  patterns = { "lid", "eye", "blink", "squint", "wink", "dilator" } },
+	{ name = "Nose",  patterns = { "nose", "nostril", "sneer", "wrinkler" } },
+	{ name = "Mouth", patterns = { "mouth", "lip", "smile", "frown", "jaw", "tongue", "teeth", "cheek", "puff", "dimple", "funnel", "pucker", "stretch",
+		"corner", "chin", "bite", "presser", "tightener", "platysm", "part", "upper_raiser" } },
 }
+
+-- (sfm-faces) Faces built for SFM split a slider into a right and a left half (right_CloseLid /
+-- left_CloseLid), sometimes with a third, multi_CloseLid; SFM shows the set as one slider with a
+-- balance knob. Returns the side ("right" / "left" / "multi") and the shared name, or nil.
+local SIDE_FORMS = {
+	{ "^right_(.+)$", "right" }, { "^left_(.+)$", "left" }, { "^multi_(.+)$", "multi" },
+	{ "^(.+)_right$", "right" }, { "^(.+)_left$", "left" },
+	{ "^r_(.+)$", "right" }, { "^l_(.+)$", "left" }, { "^(.+)_r$", "right" }, { "^(.+)_l$", "left" },
+}
+function C.FlexSideOf(name)
+	local lname = string.lower(name or "")
+	for _, f in ipairs(SIDE_FORMS) do
+		local base = string.match(lname, f[1])
+		if base then
+			-- the shared name as the model writes it (CloseLid, not closelid)
+			local s, e = string.find(lname, base, 1, true)
+			return f[2], string.sub(name, s, e), base
+		end
+	end
+end
+
+-- The sets of a flex list: [key] = { name, right = f, left = f, multi = f } for the names that have
+-- BOTH a right and a left half (sneer_left alone is no set); setOf[flex id] = key
+local SIDE_RANK = { right = 1, left = 2, multi = 3 }
+C.FlexSideRank = SIDE_RANK
+function C.FlexSets(list)
+	local sets, setOf = {}, {}
+	for _, f in ipairs(list) do
+		local side, name, key = C.FlexSideOf(f.name)
+		if side then
+			sets[key] = sets[key] or { name = name }
+			sets[key][side] = sets[key][side] or f
+		end
+	end
+	for key, s in pairs(sets) do
+		if s.right and s.left then
+			for side in pairs(SIDE_RANK) do
+				if s[side] then setOf[s[side].id] = key end
+			end
+		else
+			sets[key] = nil
+		end
+	end
+	return sets, setOf
+end
 
 function C.FlexGroupOf(name)
 	local lname = string.lower(name)

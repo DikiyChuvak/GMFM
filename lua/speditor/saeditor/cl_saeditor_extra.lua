@@ -110,6 +110,14 @@ function SA.OpenProc(ent)
 		cur.spinax = v
 		send()
 	end
+	-- (SFM rotator) a keyable control: the angle is stored in the scene, not derived from time
+	hint(body, L("sa_rot_key_hint"))
+	local keyRot = UI.Check(body, L("sa_rot_key"), (cur.rotMode or 0) > 0, function(on)
+		cur.rotMode = on and 1 or 0
+		send()
+	end)
+	keyRot:DockMargin(8, 2, 8, 2)
+	slider("rotDeg", -360, 360, 0)
 	-- the rotator turns the selected bone only (b0.2.6): a wheel, a screw, a track link
 	if not C.IsAux(ent) then
 		local bname = cur.spinbone or (C.selected == ent and C.selBone and C.selBone >= 0 and ent:GetBoneName(C.selBone)) or nil

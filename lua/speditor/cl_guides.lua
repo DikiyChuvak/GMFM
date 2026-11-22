@@ -114,6 +114,29 @@ UI.AddGuide({ id = "adopt", order = 1.7, icon = "icon16/world_add.png", title = 
 	{ "h", "Dupes from the game", "Дюпы из игры" },
 	{ "p", "File → Import dupe lists the duplicator files of garrysmod/data/duplicator/ (the game saves a dupe there). Pick one: its objects appear where you look, as scene objects, with their constraints and modifiers. Put your own dupe files in that folder and they show up at once.",
 		"Файл → Импорт дюпа показывает файлы дюпликатора из garrysmod/data/duplicator/ (туда игра сохраняет дюпы). Выберите файл: его объекты появятся там, куда вы смотрите, как объекты сцены, со своими связями и модификаторами. Свои файлы дюпов положите в эту папку — они сразу появятся в списке." },
+	{ "h", "glTF scene exchange", "Обмен сценой через glTF" },
+	{ "p", "File → Export glTF scene… writes a glTF 2.0 JSON to garrysmod/data/speditor/export/. It carries the objects of the scene with their names, places, turns and scales, the scene cameras, and — in each node's extras — the keys of its track (frame, position, easing, the parts keyed). Open it in Blender for the layout and cameras, then load the models there separately: GMod Lua cannot copy model geometry. The file uses the .json extension because GMod's data filesystem refuses .gltf.",
+		"Файл → «Экспорт сцены в glTF…» записывает JSON glTF 2.0 в garrysmod/data/speditor/export/. В нём объекты сцены с именами, местами, поворотами и масштабом, камеры сцены, а в extras каждого узла — ключи его дорожки (кадр, положение, сглаживание, ключевые части). Откройте файл в Blender ради раскладки и камер, а модели загрузите там отдельно: Lua GMod не умеет копировать геометрию моделей. Файл имеет расширение .json, потому что файловая система GMod не разрешает .gltf." },
+} })
+
+-- (r1.0) a read-only check of the scene before a render
+UI.AddGuide({ id = "diagnostics", order = 0.7, icon = "icon16/report_magnify.png", title = { en = "Scene diagnostics", ru = "Диагностика сцены" }, blocks = {
+	{ "p", "A missing model, a face with more sliders than the game can use, or too many shadow-casting lights can spoil a render without an obvious error. Help → Scene diagnostics… checks the scene and lists what it found. It only reads the scene — nothing is moved or deleted.",
+		"Не найденная модель, лицо с большим числом ползунков, чем может игра, или слишком много источников света с тенями могут испортить рендер без явной ошибки. Справка → «Диагностика сцены…» проверяет сцену и выводит список найденного. Она только читает сцену — ничего не двигается и не удаляется." },
+	{ "img", "speditor/help/diagnostics.jpg", "The diagnostics window: a clean scene reports no problems and shows the object count.",
+		"Окно диагностики: в исправной сцене проблем нет, указано только число объектов." },
+	{ "steps",
+		en = { "Finish posing and keying, then open Help → Scene diagnostics….",
+			"Missing models are named with the object and the path the game could not find — install the addon or pick another model.",
+			"A model with more than 96 flex controllers uses only the first 96: the rest cannot be keyed in this game.",
+			"More than 8 lights cannot all cast shadows — GMod's limit. Keys past the end of the animation and empty tracks are reported too.",
+			"Fix what is listed and run the check again before rendering." },
+		ru = { "Доведите позу и ключи до конца, затем откройте Справка → «Диагностика сцены…».",
+			"Не найденные модели указаны вместе с объектом и путём, который игра не нашла — установите аддон или выберите другую модель.",
+			"У модели с более чем 96 контроллерами лица работают только первые 96: остальные в этой игре не клюются.",
+			"Более 8 источников света не могут все давать тени — это предел GMod. Также сообщаются ключи за концом анимации и пустые дорожки.",
+			"Исправьте найденное и перед рендером повторите проверку." } },
+	{ "see", "interface", "the editor at a glance", "редактор с первого взгляда" },
 } })
 
 UI.AddGuide({ id = "posing", order = 2, icon = "icon16/arrow_rotate_clockwise.png", title = { en = "Posing: move, turn, IK, stretch, locks", ru = "Позирование: перенос, поворот, IK, растяжение, замки" }, blocks = {
@@ -356,6 +379,46 @@ UI.AddGuide({ id = "own_sounds", order = 8.5, icon = "icon16/sound.png", title =
 	{ "try", "Open the interface settings", "Открыть настройки интерфейса", fn = function() UI.OpenSettings("look") end },
 } })
 
+-- (sfm-faces) bringing Source Filmmaker models into the game: a copy in garrysmod/addons, or a mount
+UI.AddGuide({ id = "sfm_models", order = 8.6, section = "help", icon = "icon16/film.png", title = { en = "SFM models", ru = "Модели SFM" }, blocks = {
+	{ "p", "Source Filmmaker models are the same kind of .mdl files Garry's Mod uses, so GM:FM can pose and animate them. There are two ways to get them into the game: copy them into an addon folder, or mount SFM's folders so the game reads them from where they are.",
+		"Модели Source Filmmaker — это те же файлы .mdl, что и в Garry's Mod, поэтому GM:FM может их позировать и анимировать. Есть два способа добавить их в игру: скопировать в папку аддона или подключить папки SFM, чтобы игра читала их прямо оттуда." },
+	{ "h", "Way 1: copy them into an addon", "Способ 1: скопировать в аддон" },
+	{ "steps",
+		en = { "Find the model in SFM: Workshop downloads are in SourceFilmmaker\\game\\workshop, your own models in game\\usermod. A model is models\\…\\name.mdl with its .vvd, .dx90.vtx and .phy beside it; its textures are under materials\\.",
+			"Make a folder garrysmod\\addons\\<any name>\\ and copy the models and materials folders into it. Keep the paths as they are: models\\nikita488\\coach.mdl must stay models\\nikita488\\coach.mdl.",
+			"Restart Garry's Mod. The model browser lists the folder under Legacy addons." },
+		ru = { "Найдите модель в SFM: загрузки из Мастерской лежат в SourceFilmmaker\\game\\workshop, ваши собственные модели — в game\\usermod. Модель — это models\\…\\имя.mdl, рядом с ней .vvd, .dx90.vtx и .phy; её текстуры — в materials\\.",
+			"Создайте папку garrysmod\\addons\\<любое имя>\\ и скопируйте в неё папки models и materials. Пути не меняйте: models\\nikita488\\coach.mdl должна остаться models\\nikita488\\coach.mdl.",
+			"Перезапустите Garry's Mod. Браузер моделей покажет папку в разделе «Legacy-аддоны»." } },
+	{ "tip", "Purple and black checks instead of textures mean the model's materials were not copied, or were copied to a different path.",
+		"Фиолетово-чёрные клетки вместо текстур значат, что материалы модели не скопированы или скопированы не по тому пути." },
+	{ "h", "Way 2: mount SFM's folders", "Способ 2: подключить папки SFM" },
+	{ "p", "Garry's Mod also reads the folders listed in garrysmod\\cfg\\mount.cfg. Point it at SFM's workshop folder and every model you downloaded for SFM is in the game, with nothing copied; new downloads show up after a restart.",
+		"Garry's Mod также читает папки, перечисленные в garrysmod\\cfg\\mount.cfg. Укажите в нём папку workshop из SFM — и все модели, скачанные для SFM, появятся в игре без копирования; новые загрузки появятся после перезапуска." },
+	{ "steps",
+		en = { "Open garrysmod\\cfg\\mount.cfg in a text editor.",
+			"Between { and }, add a line with a name and the folder, for example:\n\"sfm_workshop\"  \"C:\\Program Files (x86)\\Steam\\steamapps\\common\\SourceFilmmaker\\game\\workshop\"\nUse the path of your own Steam library. Don't end it with a slash, and don't start the line with //.",
+			"For your own SFM models too, add a second line with another name for game\\usermod (\"sfm_usermod\").",
+			"Restart Garry's Mod: it reads mount.cfg only at startup. The models are mixed in with the game's own: search the model browser for a model's name, or find it under All models or the models/ folders." },
+		ru = { "Откройте garrysmod\\cfg\\mount.cfg в текстовом редакторе.",
+			"Между { и } добавьте строку с именем и папкой, например:\n\"sfm_workshop\"  \"C:\\Program Files (x86)\\Steam\\steamapps\\common\\SourceFilmmaker\\game\\workshop\"\nУкажите путь своей библиотеки Steam. Не ставьте слэш в конце и не начинайте строку с //.",
+			"Чтобы подключить и свои модели SFM, добавьте вторую строку с другим именем для game\\usermod (\"sfm_usermod\").",
+			"Перезапустите Garry's Mod: mount.cfg читается только при запуске. Модели смешаны с моделями самой игры: найдите модель по имени поиском в браузере моделей или в разделах «Все модели» и models/." } },
+	{ "tip", "Playing through Proton (Linux, Steam Deck)? The game sees your Linux files as drive Z:. Write the Linux path with Z: in front and backslashes: \"Z:\\home\\<you>\\.local\\share\\Steam\\steamapps\\common\\SourceFilmmaker\\game\\workshop\".",
+		"Играете через Proton (Linux, Steam Deck)? Игра видит файлы Linux как диск Z:. Запишите путь Linux с Z: впереди и обратными слэшами: \"Z:\\home\\<вы>\\.local\\share\\Steam\\steamapps\\common\\SourceFilmmaker\\game\\workshop\"." },
+	{ "p", "Mount the folders that hold downloaded models (workshop, usermod). SFM's game folders (tf, hl2…) hold those games' own models: mount the games themselves from the Garry's Mod main menu instead.",
+		"Подключайте папки со скачанными моделями (workshop, usermod). Игровые папки SFM (tf, hl2…) содержат модели самих игр: их лучше подключить из главного меню Garry's Mod." },
+	{ "h", "Their faces", "Их лица" },
+	{ "p", "Faces built for SFM split many sliders into a right and a left half (right_CloseLid, left_CloseLid, sometimes a third, multi_CloseLid). SFM shows such a set as one slider with a balance knob; the Animation Set Editor shows its halves under the shared name, right in red, left in green. Move both for the whole face, one of them for one side.",
+		"Лица, сделанные для SFM, делят многие ползунки на правую и левую половины (right_CloseLid, left_CloseLid, иногда и третий — multi_CloseLid). SFM показывает такой набор одним ползунком с ручкой баланса; Animation Set Editor показывает его половины под общим именем: правую красным, левую зелёным. Двигайте обе — для всего лица, одну — для одной стороны." },
+	{ "result", "SFM models spawn from the model browser like any other model, with their face sliders in the Animation Set Editor.",
+		"Модели SFM создаются из браузера моделей, как любые другие, а ползунки их лиц — в Animation Set Editor." },
+	{ "see", "sa_face", "keying the face", "ключи лица" },
+	{ "try", "Open the model browser", "Открыть браузер моделей", fn = function() UI.ToggleBrowser() end },
+} })
+
+
 UI.AddGuide({ id = "camera", order = 4, icon = "icon16/camera.png", title = { en = "Cameras and their effects", ru = "Камеры и их эффекты" }, blocks = {
 	{ "p", "A scene camera is the frame of the picture. Depth of field, exposure, vignette, colour curves and shaders belong to a camera and are seen in the Render window and the render.",
 		"Камера сцены — это кадр картинки. Глубина резкости, экспозиция, виньетка, цветовые кривые и шейдеры принадлежат камере и видны в окне «Рендер» и в рендере." },
@@ -396,6 +459,11 @@ UI.AddGuide({ id = "camera", order = 4, icon = "icon16/camera.png", title = { en
 	{ "h", "Following an actor", "Слежение за актёром" },
 	{ "p", "Object menu of a camera or a light → Aim at… → Keep looking at: it keeps turning to that object — the head of a character, the middle of a prop — while the animation moves either of them. Its place stays yours: keys, flying, attaching. Stop looking at — in the same menu.",
 		"Меню объекта у камеры или света → Навести на… → Следить за объектом: она всё время поворачивается к этому объекту — к голове персонажа, к середине пропа, — пока анимация двигает любого из них. Её место остаётся вашим: ключи, полёт, прикрепление. «Перестать следить» — в том же меню." },
+	{ "h", "Look-at strength", "Сила слежения" },
+	{ "p", "A look-at has an influence, as in SFM. While the camera or light follows an object, its menu shows Look-at strength…: drag the slider from 1 (turn all the way to the target) to 0 (keep the camera's own turn). A middle value lets you keep part of the composed angle while the actor moves. The value is stored with the object and is taken back by Undo.",
+		"У слежения есть сила, как в SFM. Пока камера или свет следят за объектом, в их меню появляется «Сила слежения…»: перетащите ползунок от 1 (поворот полностью к цели) до 0 (сохранить собственный поворот). Промежуточное значение сохраняет часть найденной композиции, когда актёр двигается. Значение хранится вместе с объектом и возвращается Отменой." },
+	{ "img", "speditor/help/aim_strength.jpg", "Look-at strength: 0.50 — the camera turns halfway toward the target.",
+		"Сила слежения: 0,50 — камера поворачивается наполовину к цели." },
 	{ "h", "Recording a camera", "Запись камеры" },
 	{ "p", "A camera can record its own moves: object menu of the camera → Record this camera's moves (or the red dot button of the Primary Viewport while you look through it). Then every move, turn and zoom of it — flying through it, the gizmo, the field of view — sets a key at the current frame, even with Auto key off. The viewport shows a blinking REC beside its name.",
 		"Камера может записывать свои движения: меню объекта у камеры → «Записывать движения этой камеры» (или красная кнопка-точка основного вьюпорта, пока вы смотрите через неё). Тогда каждый её перенос, поворот и зум — полёт через неё, гизмо, угол обзора — ставит ключ на текущем кадре, даже при выключенном автоключе. Во вьюпорте рядом с её именем мигает REC." },
@@ -464,6 +532,27 @@ UI.AddGuide({ id = "render", order = 5, icon = "icon16/picture.png", title = { e
 -- a0.8: a tour of the editor, a first animation from start to video, attaching, the look of
 -- an object, problems and answers
 ---------------------------------------------------------------------
+-- (r1.0) the new tools of this release, collected in one tab
+UI.AddGuide({ id = "r10_tools", order = 0.6, icon = "icon16/wrench_orange.png", title = { en = "Editor tools", ru = "Инструменты редактора" }, blocks = {
+	{ "p", "This tab collects the tools of this editor. Each of them is also described in its own guide: the timeline controls, scene diagnostics, glTF export, BVH mocap and the look-at strength are linked from About → What's new.",
+		"Здесь собраны инструменты редактора. Каждый из них описан и в отдельном гайде: элементы таймлайна, диагностика сцены, экспорт glTF, мокап BVH и сила слежения связаны со страницей «О программе → Что нового»." },
+	{ "h", "Pose layers", "Слои поз" },
+	{ "p", "Animation Set Editor → your object → Poses → Pose layers… opens a window with two saved poses and a weight. The upper pose is blended into the base one (bones, their offsets and scales, face sliders and ragdoll bodies); 0 keeps the base pose, 1 is entirely the upper pose. Press Apply the blend — the result is one ordinary pose, editable and undoable like any other.",
+		"Редактор набора анимаций → ваш объект → «Позы» → «Слои поз…» открывает окно с двумя сохранёнными позами и весом. Верхняя поза смешивается с основной (кости, их смещения и масштаб, ползунки лица и тела регдолла); 0 оставляет основную, 1 — полностью верхнюю. Нажмите «Применить смешивание» — результат будет обычной позой, которую можно править и отменять." },
+	{ "img", "speditor/help/pose_layers.jpg", "Pose layers: two poses and the weight of the upper one.",
+		"Слои поз: две позы и вес верхней." },
+	{ "h", "Render queue and a transparent background", "Очередь рендера и прозрачный фон" },
+	{ "p", "File → Render queue: all shots lists the scene cameras and renders a poster through each one in turn, so a shot list can be left to finish on its own. In the poster window, Transparent background (PNG) clears the render with alpha 0 and saves a PNG whose empty space stays transparent — useful for compositing a character over another shot.",
+		"Файл → «Очередь рендера: все планы» перечисляет камеры сцены и по очереди рендерит постер через каждую — список планов может дорисовываться сам. В окне постера «Прозрачный фон (PNG)» очищает рендер с альфой 0 и сохраняет PNG, у которого пустое место остаётся прозрачным — так удобно соединить персонажа с другим кадром." },
+	{ "h", "Render elements and blur", "Элементы рендера и размытие" },
+	{ "p", "In the poster window, Render elements (depth / AO / edges) saves three more PNGs next to the picture: the packed world depth, the ambient-occlusion mask (this needs View → Ambient occlusion on) and an edge map of the finished frame. The depth and AO are the same buffers the SFM-style camera effects use, so what you see in the render is what the files show. Motion blur, samples adds a separable blur pass to the finished picture before it is saved; 0 is off, 8 is a soft blur. It is an accumulation of blur passes, not a per-object velocity blur — GMod has no motion vectors.",
+		"В окне постера «Элементы рендера (глубина / AO / контуры)» сохраняет рядом с картинкой ещё три PNG: упакованную глубину мира, маску окклюзии окружения (нужно включить «Вид → Объёмные тени») и карту контуров готового кадра. Глубина и AO — те же буферы, что используют эффекты камеры в стиле SFM, поэтому файлы показывают именно то, что видно в рендере. «Размытие движения, сэмплы» добавляет проход раздельного размытия к готовой картинке перед сохранением: 0 — выключено, 8 — мягкое размытие. Это накопление проходов размытия, а не размытие по скорости объектов: у GMod нет векторов движения." },
+	{ "h", "Audio mixer and rig editor", "Аудиомикшер и редактор рига" },
+	{ "p", "Windows → Audio mixer shows every sound clip of the timeline with its volume, pitch and a mute switch; changes go through the same commands as edits in the Sounds window and are saved with the scene. Windows → Rig editor lists the bones of the selected model and saves a per-model rig profile in data/speditor/rigs/ — a first step toward a full rig editor for models with their own skeleton.",
+		"Окна → «Аудиомикшер» показывает все звуковые клипы таймлайна с громкостью, высотой и выключателем звука; правки идут через те же команды, что и в окне «Звуки», и сохраняются в сцене. Окна → «Редактор рига» перечисляет кости выделенной модели и сохраняет профиль рига в data/speditor/rigs/ — первый шаг к полноценному редактору для моделей со своим скелетом." },
+	{ "see", "diagnostics", "check the scene before a render", "проверка сцены перед рендером" },
+} })
+
 UI.AddGuide({ id = "interface", order = 0.5, icon = "icon16/application_view_tile.png", title = { en = "The editor at a glance", ru = "Редактор с первого взгляда" }, blocks = {
 	{ "p", "Open the editor with the context menu (hold C) → GM:FM, or the console command gmfm_toggle. It takes the whole screen; the game goes on around your scene. This is what is where:",
 		"Редактор открывается через контекстное меню (зажмите C) → GM:FM или консольной командой gmfm_toggle. Он занимает весь экран, игра продолжается вокруг вашей сцены. Что где находится:" },

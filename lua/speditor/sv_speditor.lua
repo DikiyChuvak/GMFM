@@ -712,17 +712,22 @@ function S.AimPoint(target, bone)
 	return target:LocalToWorld(target:OBBCenter())
 end
 
-function S.SetAim(ent, target, bone)
+function S.SetAim(ent, target, bone, weight)
 	if not IsValid(ent) or not S.IsAux(ent) or S.IsEffect(ent) then return false end
 	if not IsValid(target) or target == ent then
 		ent.SPeditor_Aim = nil
 		S.Aimed[ent] = nil
 		ent:SetNW2Entity("SPeditor_AimAt", NULL)
+		ent:SetNW2Float("SPeditor_AimWeight", 0)
 		return true
 	end
-	ent.SPeditor_Aim = { target = target, bone = math.floor(SPeditor.Num(bone, -1)) }
+	bone = math.floor(SPeditor.Num(bone, -1))
+	weight = math.Clamp(SPeditor.Num(weight, 1), 0, 1)
+	ent.SPeditor_Aim = { target = target, bone = bone, weight = weight }
 	S.Aimed[ent] = true
 	ent:SetNW2Entity("SPeditor_AimAt", target)
+	ent:SetNW2Int("SPeditor_AimBone", bone)
+	ent:SetNW2Float("SPeditor_AimWeight", weight)
 	S.AimFollow()
 	return true
 end
@@ -739,7 +744,16 @@ function S.AimFollow()
 			local pos, ang = ent:GetPos(), ent:GetAngles()
 			if point and point:DistToSqr(pos) > 1 then
 				local want = (point - pos):Angle()
-				want.r = S.IsCamera(ent) and 0 or ang.r
+				local w = a.weight or 1
+				-- (r1.0) the aim constraint has a strength: 1 turns all the way to the target,
+				-- 0 leaves the object's own turn untouched (SFM's influence slider)
+				if w < 1 then
+					want = Angle(ang.p + math.AngleDifference(want.p, ang.p) * w,
+						ang.y + math.AngleDifference(want.y, ang.y) * w,
+						S.IsCamera(ent) and ang.r or ang.r + math.AngleDifference(want.r, ang.r) * w)
+				else
+					want.r = S.IsCamera(ent) and 0 or ang.r
+				end
 				if math.abs(math.AngleDifference(want.p, ang.p)) > 0.01 or math.abs(math.AngleDifference(want.y, ang.y)) > 0.01
 					or math.abs(math.AngleDifference(want.r, ang.r)) > 0.01 then
 					S.SetTransform(ent, pos, want)
@@ -1764,7 +1778,8 @@ S.Receive("Aim", function(ply)
 	local ent    = S.ReadOwned(ply)
 	local target = S.ReadOwned(ply)
 	local bone   = net.ReadInt(16)
-	if ent then S.SetAim(ent, target, bone) end
+	local weight = net.ReadFloat()
+	if ent then S.SetAim(ent, target, bone, weight) end
 end)
 
 S.Receive("Scale", function(ply)

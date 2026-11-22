@@ -167,6 +167,11 @@ UI.AddGuide({ id = "sa_keys", order = 10, icon = "icon16/key.png", title = { en 
 		"Изменили позу, а она откатилась, когда головка сдвинулась? На кадре не было ключа: без автоключа правка между ключами не сохраняется. Нажмите K (или включите автоключ) до того, как двигать головку." },
 	{ "tip", "Left / Right arrows step a frame (Shift — half a second); held, they run the playhead on by themselves, faster and faster (b0.2.6) — no need to press for every frame. The bar under the tracks scrolls the time, Ctrl + wheel zooms.",
 		"Стрелки ← / → — на кадр (Shift — на полсекунды); если их держать, головка едет сама и всё быстрее (b0.2.6) — не нужно нажимать на каждый кадр. Полоса под дорожками прокручивает время, Ctrl + колесо — масштаб." },
+	{ "h", "Mute, Solo, Lock (r1.0)", "Выключить, Соло, Закрепить (r1.0)" },
+	{ "img", "speditor/help/timeline_flags.jpg", "The M, S and L boxes at the right of an object's name in the Motion Editor.",
+		"Кнопки M, S и L в конце имени объекта в Motion Editor." },
+	{ "p", "In the Motion Editor every object row has three small boxes at the right of its name. M (red) mutes the track: its keys stay, but it no longer takes part in playback. S (yellow) solos it: with any S on, only the soloed tracks play. L (blue) locks it: its keys cannot be dragged or deleted until unlocked. The same three switches are in the row's right click menu; they work on the face track too.",
+		"В Motion Editor у каждой строки объекта справа от имени есть три маленькие кнопки. M (красная) выключает дорожку: ключи остаются, но в воспроизведении она не участвует. S (жёлтая) включает соло: если есть хотя бы одно S, играют только соло-дорожки. L (синяя) закрепляет дорожку: её ключи нельзя двигать или удалять, пока не снимите закрепление. Те же три переключателя есть в меню строки ПКМ; они работают и с дорожкой лица." },
 	{ "h", "Three editors: Clip, Motion, Graph", "Три редактора: Clip, Motion, Graph" },
 	{ "p", "As in SFM, the buttons at the left end of the timeline (and F2, F3, F4) switch what it shows. Clip Editor — the film: the shots on a film strip, the FX clips and the sounds. Motion Editor — the keys of the objects and the time selection (the timeline as it always was). Graph Editor — the curves of the selected object or bone, with its channels on the left.",
 		"Как в SFM, кнопки у левого края таймлайна (и F2, F3, F4) переключают, что он показывает. Clip Editor — фильм: шоты на киноленте, FX-клипы и звуки. Motion Editor — ключи объектов и выделение времени (таймлайн, каким он был всегда). Graph Editor — кривые выделенного объекта или кости, слева — его каналы." },
@@ -195,9 +200,25 @@ UI.AddGuide({ id = "sa_elements", order = 10.3, icon = "icon16/key.png", title =
 		"Двойной клик по имени объекта на таймлайне открывает его дорожки элементов: по строке на каждую часть, которую меняют ключи объекта. Части: место и поворот, кости, масштаб, флексы, материал и цвет, скин и бодигруппы, глаза, физика, прикрепление, объектив, тряска и эффекты камеры, свет и момент эффекта. Двойной клик по имени закрывает их." },
 	{ "img", "speditor/help/tl_elements.jpg", "The element tracks of a character: the keys of each part (position, scale, flexes, material, skin).",
 		"Дорожки элементов персонажа: ключи каждой части (место, масштаб, флексы, материал, скин)." },
-	{ "p", "A row shows only the keys that change its part. A click on one of its keys moves the playhead to that frame. The keys are still edited on the object's row: a key holds the whole pose, so moving it moves all its parts together. Keys for each part on their own are not in this version.",
-		"Строка показывает только ключи, которые меняют её часть. Клик по одному из её ключей переносит курсор на его кадр. Сами ключи правятся на строке объекта: ключ хранит всю позу целиком, поэтому его перенос двигает все части вместе. Отдельных ключей на каждую часть в этой версии нет." },
+	{ "p", "A row shows only the keys that change its part. A click on one of its keys moves the playhead to that frame. A full key holds the whole pose and is edited on the object's row — moving it moves all its parts together.",
+		"Строка показывает только ключи, которые меняют её часть. Клик по одному из её ключей переносит курсор на его кадр. Полный ключ хранит всю позу целиком и правится на строке объекта — его перенос двигает все части вместе." },
+	{ "h", "A key of one element (r1.0)", "Ключ одного элемента (r1.0)" },
+	{ "p", "Right click an element row and choose Key this element at the playhead: only that part is written into the key — the place (p0), all moving bones, the face sliders (f…), the eyes, a camera's lens, shake or FX, a light's colour and other settings, or an effect's moment. Move the playhead, change the pose, and key the next element separately. The element rows then show exactly the frames that belong to each part; Undo takes the step back.",
+		"Правый клик по строке элемента → «Поставить ключ этого элемента на курсоре»: в ключ попадёт только эта часть — место (p0), все движущиеся кости, ползунки лица (f…), глаза, объектив / тряска / эффекты камеры, цвет и настройки света или момент эффекта. Переведите курсор, измените позу и поставьте ключ следующего элемента отдельно. В строках элементов будут видны именно кадры каждой части, а Отмена уберёт шаг." },
+	{ "img", "speditor/help/element_keys.jpg", "Element rows: the whole-pose keys and a separate key of the place at frame 132.",
+		"Строки элементов: ключи всей позы и отдельный ключ места на кадре 132." },
 	{ "see", "sa_keys", "the keys and the timeline", "ключи и таймлайн" },
+} })
+
+-- (r1.0) mocap import: a BVH is read locally and converted through the SMH bridge
+UI.AddGuide({ id = "bvh_import", order = 18.5, icon = "icon16/page_white_put.png", title = { en = "Mocap: BVH motion", ru = "Мокап: движение BVH" }, blocks = {
+	{ "p", "A BVH recording can bring motion into the scene. Put the .bvh file into garrysmod/data/speditor/mocap/, select an object in the Animation Set Editor and choose File → Import BVH motion…; pick the file, set the first frame and press Import onto the selected object.",
+		"Запись BVH может принести движение в сцену. Положите файл .bvh в garrysmod/data/speditor/mocap/, выделите объект в редакторе набора анимаций и выберите Файл → «Импорт движения BVH…»; выберите файл, укажите первый кадр и нажмите «Взять на выделенный объект»." },
+	{ "img", "speditor/help/bvh_window.jpg", "File → Import BVH motion: the files in data/speditor/mocap/ and the first frame.",
+		"Файл → «Импорт движения BVH…»: файлы из data/speditor/mocap/ и первый кадр." },
+	{ "p", "The file is read on your computer: GM:FM parses the joint hierarchy and the motion channels, matches joint names to the model's bones (right/left and ValveBiped prefixes are understood), writes an SMH save and imports it with the usual bridge. The keys appear on the object's track, and Undo takes them back. Only rotation and offset channels are used; BVH does not carry a mesh.",
+		"Файл читается у вас на компьютере: GM:FM разбирает иерархию суставов и каналы движения, сопоставляет имена суставов с костями модели (префиксы right/left и ValveBiped учитываются), записывает сохранение SMH и импортирует его через уже знакомый мост. Ключи появляются на дорожке объекта, а Отмена их убирает. Используются только каналы поворота и смещения; в BVH нет геометрии." },
+	{ "see", "sa_smh", "the SMH bridge", "мост SMH" },
 } })
 
 UI.AddGuide({ id = "sa_curves", order = 11, icon = "icon16/chart_curve.png", title = { en = "How objects move between keys (curves)", ru = "Как объект движется между ключами (кривые)" }, blocks = {
@@ -340,6 +361,9 @@ UI.AddGuide({ id = "sa_bones", order = 12, icon = "icon16/arrow_branch.png", tit
 	{ "h", "Several bones at once", "Несколько костей сразу" },
 	{ "p", "Shift + click (or Ctrl + click) a bone on the skeleton or in the bone tree adds it to the selection; one more click takes it out. The gizmo then moves, turns and scales all of them together, so five fingers can be posed in one go. Bones with physics are not in the group. A key (K, or the auto key after a drag) holds every bone of the group.",
 		"Shift + клик (или Ctrl + клик) по кости на скелете или в дереве костей добавляет её в выделение, ещё один клик убирает. Гизмо тогда двигает, поворачивает и масштабирует все кости вместе, так что пять пальцев позируются за раз. Кости с физикой в группу не входят. Ключ (K или автоключ после перетаскивания) записывает все кости группы." },
+	{ "h", "If a bone will not rotate", "Если кость не поворачивается" },
+	{ "p", "Check three switches first: the gizmo must be in Rotate mode (2), Stretch must be off (it turns the tool into a mover), and Auto pose / IK can take over hips, chest, head, hands and feet — turn them off for a plain turn of one bone. The locked bone menu (right click on the bone) must not be set to Lock. To move a limb at all with IK, keep IK on; to turn just that bone, switch it off.",
+		"Проверьте три переключателя: гизмо должно быть в режиме поворота (2), Stretch выключен (иначе инструмент работает как перенос), а Auto pose / IK могут перехватывать таз, грудь, голову, кисти и стопы — для обычного поворота одной кости выключите их. В меню кости (правый клик) не должен стоять Lock. Чтобы двигать конечность с IK, наоборот, держите IK включённым; чтобы повернуть именно кость — выключите." },
 } })
 
 UI.AddGuide({ id = "sa_cuts", order = 13, icon = "icon16/camera_go.png", title = { en = "Cameras of the animation and the player", ru = "Камеры анимации и плеер" }, blocks = {
@@ -639,6 +663,8 @@ UI.AddGuide({ id = "sa_smh", order = 18, icon = "icon16/arrow_switch.png", title
 	{ "see", "adopt", "your dupes and saves", "свои дупы и сейвы" },
 	{ "result", "Old SMH animations continue in SAeditor, and back.", "Старые анимации SMH продолжаются в SAeditor — и обратно." },
 	{ "h", "Face poser motion from SMH", "Движение face poser из SMH" },
+	{ "p", "(r1.0) Importing a save also creates keys in the object's own Face track, so the imported face motion plays independently of the body keys. Undo takes back the body and the face keys together.",
+		"(r1.0) При импорте сохранения ключи лица создаются и в отдельной дорожке «Лицо» объекта, поэтому пришедшее из SMH движение лица проигрывается независимо от ключей тела. Отмена убирает ключи тела и лица вместе." },
 	{ "p", "The face sliders of a Stop Motion Helper save are matched by the flex name as well as by number, so a face poser motion saved in SMH keys the face of the model in GM:FM.",
 		"Ползунки лица из сохранения Stop Motion Helper находят флекс и по имени, и по номеру, поэтому движение face poser, записанное в SMH, ставит ключи лицу модели в GM:FM." },
 } })
@@ -975,6 +1001,9 @@ UI.AddGuide({ id = "sa_rotator", order = 16.2, section = "anim", icon = "icon16/
 	{ "p", "The rotator turns the whole object by default. Select a bone and tick Turn only this bone in the rotator settings: just that bone turns, round its own origin, on the axis you pick (across, up or forward of the bone). For a wheel, a screw or a track link, select the bone of the wheel, not the root.",
 		"Ротатор по умолчанию крутит весь объект. Выберите кость и отметьте «Крутить только эту кость» в настройках ротатора: повернётся только она, вокруг собственной точки и по выбранной оси (поперёк, вверх или вперёд кости). Для колеса, винта или звена гусеницы выбирайте кость колеса, а не корень." },
 	{ "img", "speditor/help/rotator_bone.jpg", "Select a bone and tick Turn only this bone: the rotator turns just that bone.", "Выберите кость и отметьте «Крутить только эту кость»: ротатор крутит только её." },
+	{ "h", "Keyable rotator (SFM control)", "Управляемый ротатор (control как в SFM)" },
+	{ "p", "SFM's Create rotator script builds a 0..1 control, a channel and an expression that maps it to 0..360 degrees. GM:FM has the same idea in one checkbox: tick Keyable rotator and set Angle, degrees. The turn now comes from that number instead of from time — press K with Auto key on at several frames and the wheel turns exactly as you keyed it. The angle is saved with the scene and costs no per-frame calculation, so a hundred keyed wheels are no heavier than one.",
+		"Скрипт SFM Create rotator создаёт control 0..1, канал и выражение, переводящее его в 0..360 градусов. В GM:FM то же самое одним флажком: отметьте «Управляемый ротатор» и задайте «Угол, градусы». Поворот берётся из этого числа, а не из времени — включите автоключ, нажмите K на нескольких кадрах, и колесо повернётся именно так, как вы записали. Угол сохраняется в сцене и не требует вычислений каждый кадр, поэтому сто ключевых колёс не тяжелее одного." },
 } })
 
 UI.AddGuide({ id = "sa_fxclips", order = 11.7, section = "anim", icon = "icon16/film_add.png", title = { en = "FX clips: titles, film grain, colour", ru = "FX-клипы: титры, зерно плёнки, цвет" }, blocks = {
@@ -1070,5 +1099,10 @@ UI.AddGuide({ id = "sa_tween", order = 10.6, icon = "icon16/arrow_switch.png", t
 		"Почти правильную позу не нужно ставить заново. Переведите курсор между двумя ключами, выделите объекты и правым кликом по строке объекта выберите Твин выделенного здесь. Шаги: к предыдущему ключу, к следующему ключу, релакс (к середине между двумя ключами), push (от середины: поза приобретает больше собственной формы) и pull (обратно к середине). Каждый шаг на 25, 50 или 100 %." },
 	{ "p", "A step writes a key at the playhead, so the result plays like any key and Undo takes it back. The steps work on the objects' bodies (position, turn, bones, flexes); a face track is tweened by its own keys.",
 		"Шаг записывает ключ на курсоре, поэтому результат проигрывается как любой ключ, а Отмена его убирает. Шаги работают с телом объекта (место, поворот, кости, флексы); лицо твинится своими ключами." },
+	{ "h", "The strength slider (r1.0)", "Ползунок силы (r1.0)" },
+	{ "p", "25, 50 and 100 % are quick presets. For any value in between, right click the object's row → Tween the selection here → Tween… (strength slider): choose a step, drag Strength from 1 to 200 % and press Tween. Tick Tween the face of the selected objects to blend the face sliders and the eye aim of the objects' face tracks instead of their bodies — right clicking a Face row opens the same window with the tick already on.",
+		"25, 50 и 100 % — быстрые пресеты. Для любого промежуточного значения: ПКМ по строке объекта → Твин выделенного здесь → Твин… (ползунок силы): выберите шаг, поставьте Силу от 1 до 200 % и нажмите «Твинить». Отметьте «Твинить лицо выделенных объектов», чтобы смешать ползунки лица и направление взгляда вместо тела — ПКМ по строке «Лицо» открывает то же окно с уже включённой отметкой." },
+	{ "img", "speditor/help/tween_panel.jpg", "The tween window: the step, the strength slider and the face switch.",
+		"Окно твина: шаг, ползунок силы и переключатель лица." },
 	{ "see", "sa_keys", "the keys and the timeline", "ключи и таймлайн" },
 } })

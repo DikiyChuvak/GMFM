@@ -9,7 +9,7 @@ local CLIENT_FILES = {
 	"cl_net", "cl_webaudio", "cl_pac", "cl_keys", "cl_scene", "cl_history", "cl_camera", "cl_gizmo",
 	"cl_bone_manip", "cl_flex", "cl_ik", "cl_rig", "cl_autopose", "cl_fingers", "cl_shadows", "cl_lights", "cl_effects", "cl_tools", "cl_shaders", "cl_postfx", "cl_render", "cl_ssao", "cl_env", "cl_export",
 	"cl_ui_theme", "cl_ui_notify", "cl_ui_notify_custom", "cl_ui_themes", "cl_ui_userthemes", "cl_ui_settings", "cl_ui_dock", "cl_ui_soundpick", "cl_ui_lightpick", "cl_ui_main", "cl_ui_ase", "cl_ui_ev", "cl_ui_pages",
-	"cl_ui_preview", "cl_ui_model_list", "cl_presets", "cl_ui_props", "cl_ui_pac", "cl_ui_adopt", "cl_ui_render", "cl_ui_poster", "cl_ui_shaders", "cl_ui_env", "cl_ui_effects", "cl_ui_about", "cl_ui_report", "cl_ui_ref", "cl_selftest", "cl_shadertest", "cl_ui_guide", "cl_guides", "cl_ui_lang",
+	"cl_ui_preview", "cl_ui_model_list", "cl_presets", "cl_ui_props", "cl_ui_pac", "cl_ui_adopt", "cl_ui_render", "cl_ui_poster", "cl_ui_shaders", "cl_ui_env", "cl_ui_effects", "cl_ui_about", "cl_ui_report", "cl_ui_ref", "cl_diagnostics", "cl_gltf", "cl_bvh", "cl_renderqueue", "cl_audiomixer", "cl_rigeditor", "cl_selftest", "cl_shadertest", "cl_ui_guide", "cl_guides", "cl_ui_lang",
 	"cl_speditor", "cl_gamemode",
 }
 
@@ -70,3 +70,11 @@ end
 
 -- the old speditor_* / saeditor_* names keep working (sh_rename.lua)
 if SPeditor.RenameCompat then SPeditor.RenameCompat() end
+
+
+
+
+
+
+
+

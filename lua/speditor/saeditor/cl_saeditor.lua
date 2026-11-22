@@ -23,6 +23,40 @@ SA.playing = SA.playing or false
 if SA.loop == nil then SA.loop = true end
 if SA.autokey == nil then SA.autokey = false end
 
+-- (r1.0) timeline flags: mute / solo / lock per object UID. mute and solo go to the server
+-- (they change which tracks are applied); lock stays here (it forbids editing that row's keys).
+SA.tlFlags = SA.tlFlags or {}
+function SA.SendTlFlags()
+	COMP:NetStart("TlFlags")
+	local n = 0
+	for uid, f in pairs(SA.tlFlags) do
+		if f.mute or f.solo then n = n + 1 end
+	end
+	net.WriteUInt(math.min(n, 1023), 10)
+	for uid, f in pairs(SA.tlFlags) do
+		if f.mute or f.solo then
+			net.WriteUInt(uid, 32)
+			net.WriteBool(f.mute and true or false)
+			net.WriteBool(f.solo and true or false)
+		end
+	end
+	net.SendToServer()
+end
+function SA.TlFlag(uid, key)
+	local f = SA.tlFlags[uid]
+	return f and f[key] and true or false
+end
+function SA.ToggleTlFlag(uid, key)
+	local f = SA.tlFlags[uid]
+	if not f then f = {} SA.tlFlags[uid] = f end
+	f[key] = not f[key]
+	if not f.mute and not f.solo and not f.lock then SA.tlFlags[uid] = nil end
+	if key ~= "lock" then SA.SendTlFlags() end
+	if SA.RefreshRows then SA.RefreshRows() end
+	if SA.Seek then SA.Seek(SA.frame) end
+	return f[key]
+end
+
 -- the editor's render look of the viewport (cl_render.lua) asks whether the scene moves
 -- by itself and at which moment it is
 function C.ScenePlaying() return SA.playing or SA.rendering or false end
@@ -137,9 +171,35 @@ SA.ReceiveParts("Summary", function(t)
 				pe = pe or {}
 				pe[part] = e
 			end
-			keys[i] = { f = k[1], e = k[2], pos = Vector(k[3] or 0, k[4] or 0, k[5] or 0), only = set(k[6]), skip = set(k[7]), pe = pe,
-							-- the elements this key changes (b0.2.7, TobyCat): a bit per SA.EL_ORDER entry
-							el = tonumber(k[9]) or 0 }
+			local only = set(k[6])
+			local el = tonumber(k[9]) or 0
+			-- (r1.0) a partial key must still appear on its element row. Older servers send 0
+			-- for these keys, so work the bit out here from the parts the key stores.
+			if only and el == 0 then
+				local ent = SA.EntByUID and SA.EntByUID(tonumber(uid)) or nil
+				for part in pairs(only) do
+					local kind, idx = string.sub(part, 1, 1), tonumber(string.sub(part, 2))
+					local id
+					if kind == "p" and idx == 0 then id = "pos"
+					elseif kind == "p" then id = "phys"
+					elseif kind == "b" then id = "bones"
+					elseif kind == "f" then id = "flex"
+					elseif kind == "e" then id = "eye"
+					elseif kind == "a" and IsValid(ent) then
+						local kd = C.IsCamera(ent) and "camera" or (C.IsLight(ent) and "light" or (C.IsEffect(ent) and "effect" or nil))
+						local field = (SA.ATTRS[kd or ""] or {})[(idx or 0) + 1]
+						if kd == "camera" then
+							if field == "fov" then id = "lens" elseif field == "fx" then id = "fx" else id = "shake" end
+						elseif kd == "light" then
+							id = field == "col" and "color" or "light"
+						elseif kd == "effect" then id = "moment" end
+					end
+					for i2, name in ipairs(SA.EL_ORDER) do
+						if name == id then el = el + 2 ^ (i2 - 1) end
+					end
+				end
+			end
+			keys[i] = { f = k[1], e = k[2], pos = Vector(k[3] or 0, k[4] or 0, k[5] or 0), only = only, skip = set(k[7]), pe = pe, el = el }
 		end
 		tracks[tonumber(uid)] = keys
 	end
@@ -467,7 +527,7 @@ end
 -- (b0.2.7, the tween machine) one step for the objects at a frame, between the keys around it: kind
 -- "prev", "next", "relax", "push" or "pull"; pct — its strength in percent. The server writes the pose
 -- as a key; one undo step takes back all of them.
-function SA.Tween(kind, pct, ents, frame)
+function SA.Tween(kind, pct, ents, frame, face)
 	ents = ents or C.SelectionList()
 	if #ents == 0 then
 		SPeditor.Notify("#sa_need_sel", 0)
@@ -480,8 +540,15 @@ function SA.Tween(kind, pct, ents, frame)
 	for _, e in ipairs(ents) do
 		local uid = SA.UID(e)
 		if uid ~= 0 and IsValid(e) and not C.IsAux(e) then
-			sendKey(id, SA.OP.TWEEN, uid, frame, pct, kind)
-			n = n + 1
+			if face then
+				if e:GetFlexNum() > 0 then
+					sendKey(id, SA.OP.TWEEN_FACE, SA.FaceTrack(uid), frame, pct, kind)
+					n = n + 1
+				end
+			else
+				sendKey(id, SA.OP.TWEEN, uid, frame, pct, kind)
+				n = n + 1
+			end
 		end
 	end
 	if n == 0 then return end

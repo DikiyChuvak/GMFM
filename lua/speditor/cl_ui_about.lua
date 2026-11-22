@@ -81,6 +81,12 @@ local SA = function() return SPeditor.Component("saeditor").SA end
 local function page(id) return function() if not Dock.ShowPage(id) then SPeditor.Notify("#about_link_closed", 0) end end end
 local function topMenu(key) return function() UI.OpenTopMenu(key) end end
 UI.NewsLinks = {
+	-- r1.0 (test): the new timeline controls
+	about_r10_2 = { guides = { "sa_keys", "sa_tween" }, open = { { "sa_timeline", page("sa_timeline") } } },
+	about_r10_3 = { guides = { "sa_elements", "diagnostics", "sa_smh" }, open = {} },
+	about_r10_4 = { guides = { "r10_tools" }, open = {} },
+	about_r10_5 = { guides = { "r10_tools", "sa_render" }, open = { { "poster_title", function() UI.OpenPoster() end } } },
+	about_r10_6 = { guides = { "sfm_models", "sa_face" }, open = { { "win_ase", page("ase") } } },
 	-- b0.3: improvements from the GMFM-Misc fork
 	about_b03_2 = { guides = { "posing" }, open = { { "win_ase", page("ase") } } },
 	about_b03_3 = { guides = { "posing" } },

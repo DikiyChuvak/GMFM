@@ -61,6 +61,35 @@ anything unexpected in [issues](https://github.com/DikiyChuvak/GMFM/issues).
 - Removed a no-op `TrackFocus` wrapper, dead fallbacks, a one-element loop and a no-op call in
   the WebAudio page; bundle ignore patterns for folders absent from this repository are gone.
 
+**Animation tools**
+
+- Tween machine with a strength slider (1–200 %) and a face switch (`OP.TWEEN_FACE`);
+  mute / solo / lock switches on every timeline row (`SPeditor_TlFlags`).
+- Real per-element keys: right click an element row to key only that part; the client also
+  works out the element mask for partial keys sent by older servers.
+- Look-at constraints have a strength (influence) slider: 1 turns all the way to the target,
+  0 keeps the object's own angle.
+- BVH mocap import (`data/speditor/mocap/`) through the SMH bridge; pose layers blend two saved
+  poses with a weight; a keyable rotator (SFM's Create rotator) keeps its angle in the scene
+  instead of deriving it from time — no per-frame calculation.
+- SMH import now creates face keys in the face track; the SMH item is back in the File menu.
+
+**Rendering and utilities**
+
+- Posters can save render elements (depth, AO, edges) as PNG beside the picture, use a
+  transparent background, and blur the finished frame with a sample slider; a render queue
+  renders a poster through every scene camera in turn.
+- Windows → Scene diagnostics, Audio mixer and Rig editor; File → Export glTF scene.
+- GMFM-Misc additions: SFM-style right/left face slider groups and a How to Use guide for
+  bringing Source Filmmaker models into the game.
+- The File menu crash (`SetIcon` on a submenu) reported for b0.3 is fixed.
+- 46 illustrated How to Use tabs, About entries `about_r10_1…6`, and help screenshots taken
+  with the English interface.
+
+**Checks:** `luajit -bl` over all Lua, `lint_glua`, `SPeditor.SelfTest` (38/38),
+light and heavy poster renders, an SMH export/import round trip, and in-game UI checks
+(buttons, labels, screenshots) all pass.
+
 ### Run it from the source
 
 1. Unsubscribe from GM:FM on the Workshop (two copies of the addon would clash).

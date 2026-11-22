@@ -374,29 +374,32 @@ function C.SendFocusOn(cam, target)
 	net.SendToServer()
 end
 
-function C.SendAim(ent, target, bone, noHist)
+function C.SendAim(ent, target, bone, noHist, weight)
 	if not IsValid(ent) then return end
 	if not noHist then
 		local t0, ref = ent:GetNW2Entity("SPeditor_AimAt"), C.Ref(ent)
 		local tref0 = IsValid(t0) and C.Ref(t0) or nil
 		local tref1 = IsValid(target) and C.Ref(target) or nil
+		local w0 = ent:GetNW2Float("SPeditor_AimWeight", 1)
+		local bone0 = ent:GetNW2Int("SPeditor_AimBone", -1)
 		local ang0 = ent:GetAngles()
-		local function apply(tref, b)
+		local function apply(tref, b, w)
 			local e = C.Deref(ref)
-			if e then C.SendAim(e, tref and C.Deref(tref) or nil, b, true) end
+			if e then C.SendAim(e, tref and C.Deref(tref) or nil, b, true, w) end
 		end
 		C.PushHistory(IsValid(target) and "aim follow" or "aim stop",
 			function()
-				apply(tref0, -1)
+				apply(tref0, bone0, w0)
 				local e = C.Deref(ref)
 				if e and not tref0 then C.SendTransform(e, e:GetPos(), ang0, true) end
 			end,
-		function() apply(tref1, bone or -1) end)
+		function() apply(tref1, bone or -1, weight or 1) end)
 	end
 	net.Start(Net.Aim)
 	net.WriteEntity(ent)
 	net.WriteEntity(IsValid(target) and target or NULL)
 	net.WriteInt(bone or -1, 16)
+	net.WriteFloat(weight or 1)
 	net.SendToServer()
 end
 

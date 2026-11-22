@@ -23,6 +23,14 @@ local cvSamples = CreateClientConVar("gmfm_poster_samples", "64", true, false, "
 local cvSide    = CreateClientConVar("gmfm_poster_side", "0", true, false, "Poster: the long side in pixels (0 — the render size of the scene)", 0, 3840)
 local cvFormat  = CreateClientConVar("gmfm_poster_format", "png", true, false, "Poster: png or jpeg")
 local cvAuto    = CreateClientConVar("gmfm_poster_autosave", "1", true, false, "Poster: save by itself when all passes are in", 0, 1)
+-- (r1.0) render elements: save the depth, the ambient occlusion and an edge map beside the beauty
+local cvElems   = CreateClientConVar("gmfm_render_elements", "0", true, false,
+	"GM:FM renders: save depth / AO / edge passes as PNG files", 0, 1)
+-- (r1.0) motion blur by accumulating shifted copies of the finished picture
+local cvMblur   = CreateClientConVar("gmfm_render_mblur", "0", true, true,
+	"GM:FM posters: accumulated motion blur (samples)", 0, 16)
+local matBlur   = CreateMaterial("gmfm_poster_mblur", "UnlitGeneric", {
+	["$nolod"] = "1", ["$ignorez"] = "1" })
 
 local SAMPLES = { 16, 32, 64, 128, 256, 512 }
 local SIDES = { 0, 1280, 1920, 2560, 3840 }
@@ -73,11 +81,82 @@ function P.Start()
 	}
 end
 
+-- (r1.0, Phase 3) Save the auxiliary passes next to the picture. Called inside PostRender,
+-- so render.Capture is legal. A true normal buffer would need a new compiled shader; the third
+-- element is an edge map of the beauty pass (pp/sobel), which is what the game can produce.
+local function saveElements(job, base)
+	if not cvElems:GetBool() then return {} end
+	local R, out = SPeditor.Render, {}
+	local W, H = job.W, job.H
+	local aspect = job.opts and job.opts.aspect or (W / H)
+	local function grab(rt, name)
+		if not rt then return end
+		local ok, data = pcall(function()
+			render.PushRenderTarget(rt)
+			local d = render.Capture({ format = "png", x = 0, y = 0, w = W, h = H, alpha = false })
+			render.PopRenderTarget()
+			return d
+		end)
+		if ok and data and #data > 0 then
+			local p = "speditor/renders/" .. base .. "_" .. name .. ".png"
+			file.Write(p, data)
+			out[#out + 1] = name
+		end
+	end
+	local okD, depth = pcall(R.RenderDepth, job.src, W, H, aspect)
+	if okD then grab(depth, "depth") end
+	local okA, ao = pcall(R.SSAOMask, job.src, W, H, aspect, 16, os.time())
+	if okA then grab(ao, "ao") end
+	local okE = pcall(function()
+		local edge = GetRenderTarget("gmfm_element_edge_" .. W .. "x" .. H, W, H)
+		if not edge then return end
+		local mat = Material("pp/sobel")
+		if not mat then return end
+		mat:SetTexture("$basetexture", job.rt)
+		render.PushRenderTarget(edge)
+		render.Clear(0, 0, 0, 255, true, true)
+		render.SetMaterial(mat)
+		render.DrawScreenQuad()
+		render.PopRenderTarget()
+		grab(edge, "edge")
+	end)
+	return out
+end
+
 local function save(job)
 	if not job.rt then return end
-	local fmt = cvFormat:GetString() == "jpeg" and "jpeg" or "png"
-	render.PushRenderTarget(job.rt)
-	local data = render.Capture({ format = fmt, quality = 95, x = 0, y = 0, w = job.W, h = job.H, alpha = false })
+	local alpha = SPeditor.Render and SPeditor.Render.Transparent and SPeditor.Render.Transparent() or false
+	local fmt = alpha and "png" or (cvFormat:GetString() == "jpeg" and "jpeg" or "png")
+	local src = job.rt
+	local n = math.Clamp(cvMblur:GetInt(), 0, 16)
+	if n > 1 then
+		-- Accumulating shifted opaque copies through render.SetBlend gave a black frame in this
+		-- build; the game's own separable blur shaders work reliably in a render target.
+		local bx, by = Material("pp/blurx"), Material("pp/blury")
+		local a = GetRenderTarget("gmfm_poster_bx_" .. job.W .. "x" .. job.H, job.W, job.H)
+		local b = GetRenderTarget("gmfm_poster_by_" .. job.W .. "x" .. job.H, job.W, job.H)
+		if bx and by and a and b then
+			local cur = job.rt
+			for _ = 1, math.ceil(n / 2) do
+				bx:SetTexture("$basetexture", cur)
+				render.PushRenderTarget(a)
+				render.Clear(0, 0, 0, 255, true, true)
+				render.SetMaterial(bx)
+				render.DrawScreenQuad()
+				render.PopRenderTarget()
+				by:SetTexture("$basetexture", a)
+				render.PushRenderTarget(b)
+				render.Clear(0, 0, 0, 255, true, true)
+				render.SetMaterial(by)
+				render.DrawScreenQuad()
+				render.PopRenderTarget()
+				cur = b
+			end
+			src = b
+		end
+	end
+	render.PushRenderTarget(src)
+	local data = render.Capture({ format = fmt, quality = 95, x = 0, y = 0, w = job.W, h = job.H, alpha = alpha })
 	render.PopRenderTarget()
 	if not data or #data == 0 then
 		SPeditor.Notify(L("render_failed"), 1)
@@ -89,9 +168,13 @@ local function save(job)
 	local path = "speditor/renders/" .. string.gsub(base, " ", "_") .. "_poster_" .. os.date("%Y%m%d_%H%M%S") .. (fmt == "jpeg" and ".jpg" or ".png")
 	file.Write(path, data)
 	job.saved = path
+	local base = string.gsub(string.StripExtension(string.GetFileFromFilename(path)), "_poster_.*$", "")
+	local elems = saveElements(job, base)
 	SPeditor.Notify(string.format(L("render_saved"), path, job.W, job.H), 2)
 	if UI.ShowRenderDone then
-		UI.ShowRenderDone({ path = "garrysmod/data/" .. path, notes = { string.format(L("poster_done_note"), job.W, job.H, job.passes or job.n) } })
+		local notes = { string.format(L("poster_done_note"), job.W, job.H, job.passes or job.n) }
+		if #elems > 0 then notes[#notes + 1] = L("poster_elements") .. ": " .. table.concat(elems, ", ") end
+		UI.ShowRenderDone({ path = "garrysmod/data/" .. path, notes = notes })
 	end
 end
 
@@ -192,6 +275,22 @@ function UI.OpenPoster()
 	end, 90)
 	local auto = UI.Check(row, L("poster_autosave"), cvAuto:GetBool(), function(v) RunConsoleCommand("gmfm_poster_autosave", v and "1" or "0") end)
 	auto:Dock(LEFT)
+	local alpha = UI.Check(row, L("poster_alpha"), GetConVar("gmfm_render_alpha"):GetBool(), function(v)
+		RunConsoleCommand("gmfm_render_alpha", v and "1" or "0")
+	end)
+	alpha:Dock(LEFT)
+	alpha:DockMargin(8, 0, 0, 0)
+	local elems = UI.Check(row, L("poster_elements"), cvElems:GetBool(), function(v)
+		RunConsoleCommand("gmfm_render_elements", v and "1" or "0")
+	end)
+	elems:Dock(LEFT)
+	elems:DockMargin(8, 0, 0, 0)
+	local blur = UI.Slider(row, L("poster_mblur"), 0, 16, 0, cvMblur:GetInt(), function(v)
+		RunConsoleCommand("gmfm_render_mblur", tostring(math.floor(v)))
+	end)
+	blur:SetWide(UI.S(130))
+	blur:Dock(LEFT)
+	blur:DockMargin(10, 0, 0, 0)
 
 	local view = vgui.Create("DPanel", body)
 	view:Dock(FILL)
