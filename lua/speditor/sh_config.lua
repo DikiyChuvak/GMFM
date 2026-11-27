@@ -9,7 +9,7 @@ SPeditor.VersionPrev = "r1.0"   -- the patch before this one
 -- every update since b0.1, newest first: version, release date, prefix of its news in the
 -- language files (About → What's new, b0.2.4)
 SPeditor.History = {
-	{ "r1.1", "2026-11-26", "about_r11_" },
+	{ "r1.1", "2026-11-27", "about_r11_" },
 	{ "r1.0", "2026-11-22", "about_r10_" },
 	{ "b0.3", "2026-11-19", "about_b03_" },
 	{ "b0.2.7", "2026-11-05", "about_z" },
