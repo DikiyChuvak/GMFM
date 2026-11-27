@@ -16,9 +16,10 @@ credited) — message me on Steam first so I can look at what you have changed. 
 Chinese translation is by [fugui9527121](https://github.com/fugui9527121) — thank you!*
 
 This repository is the **full source code** of GM:FM — the addon, its gamemode, shaders and
-tools. Release **r1.1** is the default branch; the previous release, **r1.0**, stays on the
-`r1.0` tag, and `b0.3` is the last version before the r1.0 line. How to use the editor is
-explained inside the game: **Help → How to use** (illustrated guides with live demonstrations).
+tools. Release **r1.1** is the default branch and the version on the Steam Workshop; the
+previous release, **r1.0**, stays on the `r1.0` tag, and `b0.3` is the last version before the
+r1.0 line. How to use the editor is explained inside the game: **Help → How to use**
+(illustrated guides with live demonstrations).
 
 ## Changes and fixes (r1.1)
 
