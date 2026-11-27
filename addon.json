@@ -16,7 +16,6 @@
 		"tools/*",
 		"*.md",
 		".git*",
-		".claude/*",
 		"LICENSE",
 		"README*",
 		".cache/*"

@@ -84,6 +84,40 @@ function UI.OpenDiagnostics()
 	end
 	if lights > 8 then add(string.format(L("diag_lights"), lights)) end
 
+	-- Other addons that also take the frame or the camera: they are not errors, but when the
+	-- picture or the view behaves oddly they are the first to try switched off (with many
+	-- addons installed this is the usual source of conflicts).
+	local others = {}
+	for _, ev in ipairs({ "RenderScene", "CalcView" }) do
+		for id in pairs(hook.GetTable()[ev] or {}) do
+			local n = tostring(id)
+			if not (string.StartWith(n, "SPeditor") or string.StartWith(n, "GMFM")) then
+				others[#others + 1] = n .. " (" .. ev .. ")"
+			end
+		end
+	end
+	if #others > 0 then
+		table.sort(others)
+		local shown = {}
+		for i = 1, math.min(#others, 6) do shown[i] = others[i] end
+		local text = table.concat(shown, ", ") .. (#others > 6 and ", …" or "")
+		line(scroll, string.format(L("diag_hooks"), text), COL.DIM)
+		notes = notes + 1
+	end
+
+	-- the world itself: a map or addons with thousands of entities slow the game and the editor
+	local all = #ents.GetAll()
+	if all > 4000 then
+		line(scroll, string.format(L("diag_entities"), all), Color(235, 190, 90))
+	end
+
+	-- errors the editor caught since the game started (they also go into the report)
+	local errs = SPeditor.Errors and #(SPeditor.Errors.list or {}) or 0
+	if errs > 0 then
+		line(scroll, string.format(L("diag_errors"), errs), COL.DIM)
+		notes = notes + 1
+	end
+
 	if #issues == 0 then
 		line(scroll, L("diag_clean"), Color(120, 210, 120))
 	else

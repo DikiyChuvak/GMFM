@@ -26,4 +26,8 @@ end)
 -- a living player (its body was left where it fell — in the take)
 hook.Add("SPeditor_PlayerState", "GMFM.Mode", function(ply, on)
 	if on and SPeditor.FilmMode() and IsValid(ply) and not ply:Alive() then ply:Spawn() end
+	-- the filmmaker is not a target for NPCs while the editor is open
+	if SPeditor.FilmMode() and IsValid(ply) then
+		if on then ply:AddFlags(FL_NOTARGET) else ply:RemoveFlags(FL_NOTARGET) end
+	end
 end)

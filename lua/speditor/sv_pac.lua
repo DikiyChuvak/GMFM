@@ -24,6 +24,9 @@ local function list(ent) return ent.SPeditor_PAC or {} end
 function S.PACSync(ent, ply)
 	if not IsValid(ent) then return end
 	local items = list(ent)
+	-- the UID tells the client which object the index belonged to: a new object that gets the
+	-- index of a removed one must not inherit its outfits
+	local uid = ent.SPeditor_UID or 0
 	local function send(fn)
 		fn()
 		if ply then net.Send(ply) else net.Broadcast() end
@@ -31,6 +34,7 @@ function S.PACSync(ent, ply)
 	send(function()
 		net.Start(SPeditor.Net.PACSync)
 		net.WriteUInt(ent:EntIndex(), 16)
+		net.WriteUInt(uid, 32)
 		net.WriteUInt(0, 2)                -- 0: the list starts over
 		net.WriteUInt(#items, 4)
 	end)
@@ -38,6 +42,7 @@ function S.PACSync(ent, ply)
 		send(function()
 			net.Start(SPeditor.Net.PACSync)
 			net.WriteUInt(ent:EntIndex(), 16)
+			net.WriteUInt(uid, 32)
 			net.WriteUInt(1, 2)            -- 1: one more outfit
 			net.WriteString(it.name)
 			net.WriteUInt(#it.data, 16)
@@ -45,6 +50,21 @@ function S.PACSync(ent, ply)
 		end)
 	end
 end
+
+-- The object is gone: the clients drop its outfits. The UID keeps a new object that took the
+-- index from losing the outfits that are already its own (op 3 — forget).
+function S.PACForget(ent)
+	if not IsValid(ent) then return end
+	net.Start(SPeditor.Net.PACSync)
+	net.WriteUInt(ent:EntIndex(), 16)
+	net.WriteUInt(ent.SPeditor_UID or 0, 32)
+	net.WriteUInt(3, 2)
+	net.Broadcast()
+end
+
+SPeditor.Hook("EntityRemoved", "SPeditor.PAC", function(ent)
+	if ent.SPeditor_PAC then S.PACForget(ent) end
+end)
 
 local function cleanName(name)
 	name = string.sub(tostring(name or ""), 1, 96)

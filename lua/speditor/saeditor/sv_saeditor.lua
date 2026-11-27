@@ -108,6 +108,8 @@ function captureState(ent)
 
 	local pos, ang = S.GetTransform(ent)
 	local st = { kind = "prop", pos = Vector(pos), ang = Angle(ang), bones = {}, flex = {} }
+	-- materials changed by the game's own tool belong to this key too
+	if S.SyncSubMats then S.SyncSubMats(ent) end
 	if S.IsRagdoll(ent) then
 		st.phys = {}
 		for i = 1, ent:GetPhysicsObjectCount() - 1 do
@@ -275,7 +277,6 @@ local function applyProp(ent, a, b, u, noFace)
 	-- materials switch at a key like the skin, stretching moves (keys made before b0.2.3 have
 	-- neither, and the object keeps what it has)
 	if a.mat or a.stretch then
-		local look = ent.SPeditor_Look or {}
 		-- the key tables do not change between ticks: serialise them once, not on every evaluation
 		local sub, tints = a.sub or {}, a.tints or {}
 		if a.lookSigMat ~= a.mat or a.lookSigSub ~= sub or a.lookSigTints ~= tints then
@@ -286,16 +287,31 @@ local function applyProp(ent, a, b, u, noFace)
 		local sa, sb = a.stretch, b.stretch or a.stretch
 		local stv = sa and S.CanScale(ent) and lerpV(sa, sb, u) or nil
 		if sig and sig ~= ent.SA_LookSig then
-			look = table.Copy(look)
-			look.material = a.mat ~= "" and a.mat or nil
-			look.submats = next(a.sub or {}) and table.Copy(a.sub) or nil
-			look.tints = next(a.tints or {}) and table.Copy(a.tints) or nil
+			-- materials changed with the game's own tool since the last key are kept: this key
+			-- replaces only the slots it controls and the ones the key before it set
+			if S.SyncSubMats then S.SyncSubMats(ent) end
+			local look = table.Copy(ent.SPeditor_Look or {})
+			local merged = table.Copy(look.submats or {})
+			for slot in pairs(ent.SA_KeySubs or {}) do
+				if not sub[slot] then merged[slot] = nil end
+			end
+			for slot, m in pairs(sub) do merged[slot] = m end
+			look.submats = next(merged) and merged or nil
+			local keyMat = a.mat ~= "" and a.mat or nil
+			if keyMat then look.material = keyMat
+			elseif ent.SA_KeyMat then look.material = nil end
+			ent.SA_KeyMat = keyMat
+			local keyset = {}
+			for slot in pairs(sub) do keyset[slot] = true end
+			ent.SA_KeySubs = next(keyset) and keyset or nil
+			look.tints = next(tints) and table.Copy(tints) or nil
 			if stv then look.stretch = SPeditor.VecToTable(stv) end
 			S.ApplyLook(ent, look)
 			ent.SA_LookSig = sig
 		elseif stv and stv:DistToSqr(ent:GetNW2Vector("SPeditor_Stretch", ONE)) > 1e-8 then
 			local same = stv:DistToSqr(ONE) < 1e-6
 			ent:SetNW2Vector("SPeditor_Stretch", same and ONE or stv)
+			local look = ent.SPeditor_Look or {}
 			look.stretch = not same and SPeditor.VecToTable(stv) or nil
 			ent.SPeditor_Look = next(look) ~= nil and look or nil
 		end
@@ -1196,6 +1212,7 @@ function SA.ApplyAll(ply, frame, proc)
 		a.procOn = true
 	end
 	if next(a.world or {}) ~= nil then SA.ApplyWorld(a, frame) end
+	if S.IKFollow then S.IKFollow() end
 end
 
 ---------------------------------------------------------------------
@@ -1513,7 +1530,7 @@ function SA.SendSummary(ply)
 	local proc = {}
 	for uid, pr in pairs(a.proc or {}) do proc[tostring(uid)] = pr end
 	SA.SendParts(ply, "Summary", { fps = a.fps, frames = a.frames, loop = a.loop, bounce = a.bounce, tracks = tracks, moving = moving, sounds = a.sounds or {}, proc = proc,
-		cuts = a.cuts or {}, groups = a.groups or {}, marks = a.marks or {}, clips = a.clips or {} })
+		cuts = a.cuts or {}, groups = a.groups or {}, marks = a.marks or {}, markSets = a.markSets or {}, clips = a.clips or {} })
 end
 
 local function sendFrame(ply, serial)
@@ -1692,8 +1709,19 @@ local function setKey(ply, ent, frame, ease, face, parts, def, skip)
 	if face and parts then
 		-- (b0.2.6-misc.1) a key of some face sliders only (the row of a slider)
 		local now = captureFace(ent)
-		st = (old and old.st.kind == "face") and table.Copy(old.st) or emptyPart(now.pos, now.ang, "face")
-		for part in pairs(parts) do putPart(st, part, partValue(now, part)) end
+		-- (r1.1) the first face key of a track is the whole face, even when one slider was keyed:
+		-- a key of one slider alone left the other sliders without a base of their own, and the
+		-- expression changed as the playhead moved (the fallback was the live face)
+		local hasFull = false
+		for _, k in pairs(tr.keys) do
+			if k.st and k.st.kind == "face" and not k.st.only then hasFull = true break end
+		end
+		if not hasFull then
+			st = now
+		else
+			st = (old and old.st.kind == "face") and table.Copy(old.st) or emptyPart(now.pos, now.ang, "face")
+			for part in pairs(parts) do putPart(st, part, partValue(now, part)) end
+		end
 	elseif face then
 		st = captureFace(ent)
 	elseif parts and S.IsAux(ent) then
@@ -2128,6 +2156,130 @@ local function presetTrack(tr, preset, sel, strength, seed, extra)
 	return changed
 end
 
+-- Deep equality of two key states for "remove redundant keys": vectors and angles with a small
+-- tolerance, nested tables (bones, phys, flex, look, fx) key by key.
+local function stateSame(a, b)
+	if a == b then return true end
+	if isvector(a) or isvector(b) then
+		return isvector(a) and isvector(b) and a:DistToSqr(b) < 1e-4
+	end
+	if isangle(a) or isangle(b) then
+		return isangle(a) and isangle(b) and math.abs(math.AngleDifference(a.p, b.p)) < 0.01
+			and math.abs(math.AngleDifference(a.y, b.y)) < 0.01 and math.abs(math.AngleDifference(a.r, b.r)) < 0.01
+	end
+	if isnumber(a) or isnumber(b) then
+		return isnumber(a) and isnumber(b) and math.abs(a - b) < 1e-3
+	end
+	if istable(a) and istable(b) then
+		for k, v in pairs(a) do
+			-- caches the evaluation writes into a key state (applyProp's material signature, the
+			-- resolved flag): they say nothing about the pose
+			if k ~= "lookSig" and k ~= "lookSigMat" and k ~= "lookSigSub" and k ~= "lookSigTints" and k ~= "resolved" then
+				if not stateSame(v, b[k]) then return false end
+			end
+		end
+		for k in pairs(b) do
+			if a[k] == nil and k ~= "lookSig" and k ~= "lookSigMat" and k ~= "lookSigSub" and k ~= "lookSigTints" and k ~= "resolved" then
+				return false
+			end
+		end
+		return true
+	end
+	return a == b
+end
+
+-- "Remove redundant keys": inside the time selection, a full key whose state equals both its
+-- neighbours is dropped (a static stretch). Keys of some parts only (bone keys, slider rows) are
+-- left alone — their channels are not touched by a whole-track operation.
+local function compressTrack(tr, sel)
+	if not tr or #tr.order == 0 then return 0 end
+	local list = cacheOf(tr).full
+	local lo, hi, removed = sel[1], sel[4], 0
+	local i = 2
+	while i < #list do
+		local fa, fb, fc = list[i - 1], list[i], list[i + 1]
+		local ka, kb, kc = tr.keys[fa], tr.keys[fb], tr.keys[fc]
+		if kb and kb.st and fb >= lo and fb <= hi and ka and kc then
+			if stateSame(ka.st, kb.st) and stateSame(kb.st, kc.st) then
+				tr.keys[fb] = nil
+				table.remove(list, i)
+				removed = removed + 1
+			else
+				i = i + 1
+			end
+		else
+			i = i + 1
+		end
+	end
+	if removed > 0 then
+		for j = #tr.order, 1, -1 do
+			if not tr.keys[tr.order[j]] then table.remove(tr.order, j) end
+		end
+		tr.stamp = (tr.stamp or 0) + 1
+		if next(tr.keys) then reorder(tr) end
+	end
+	return removed
+end
+
+-- "Resample": sample the whole track at `step` frames inside the selection and replace its keys
+-- there. Only whole tracks: a track with per-bone / per-slider keys would lose its channels.
+local function resampleTrack(ent, tr, sel, step, noFace)
+	if not tr or #tr.order == 0 then return 0, false end
+	if cacheOf(tr).has then return 0, false end
+	local kind = tr.keys[tr.order[1]].st.kind
+	local grab = (kind == "face") and captureFace or capture
+	local lo, hi = sel[1], sel[4]
+	step = math.Clamp(math.floor(tonumber(step) or 1), 1, 120)
+	local frames = {}
+	for f = lo, hi, step do frames[#frames + 1] = f end
+	if frames[#frames] ~= hi then frames[#frames + 1] = hi end
+	if #frames + #tr.order > SA.MAX_KEYS then return 0, false end
+	-- what the animation gives at every sample, and the easing of a key already there
+	local samples, ease = {}, {}
+	for _, f in ipairs(frames) do
+		applyTrack(ent, tr, f, noFace)
+		local st = grab(ent)
+		st.resolved = nil
+		-- a body track never holds the face when a Face track of the object exists
+		if noFace then st.flex = {} st.eye = nil end
+		samples[f] = st
+		local k = tr.keys[f]
+		if k then ease[f] = { e = k.e, bz = k.bz } end
+	end
+	-- replace the keys inside the selection with the samples
+	for j = #tr.order, 1, -1 do
+		local f = tr.order[j]
+		if f >= lo and f <= hi then
+			tr.keys[f] = nil
+			table.remove(tr.order, j)
+		end
+	end
+	for _, f in ipairs(frames) do
+		local e = ease[f]
+		tr.keys[f] = { e = e and e.e or "linear", bz = e and e.bz, st = samples[f] }
+	end
+	reorder(tr)
+	tr.stamp = (tr.stamp or 0) + 1
+	return #frames, true
+end
+
+-- "Keep only the selection": every key outside the time selection goes (a mask over the range).
+-- Part keys go whole: their frame is outside anyway.
+local function maskTrack(tr, sel)
+	if not tr or #tr.order == 0 then return 0 end
+	local lo, hi, removed = sel[1], sel[4], 0
+	for j = #tr.order, 1, -1 do
+		local f = tr.order[j]
+		if f < lo or f > hi then
+			tr.keys[f] = nil
+			table.remove(tr.order, j)
+			removed = removed + 1
+		end
+	end
+	if removed > 0 then tr.stamp = (tr.stamp or 0) + 1 end
+	return removed
+end
+
 local function motionKey(ply, ent, uid, frame, sel, face)
 	local a = anim(ply)
 	local tr = a.tracks[uid]
@@ -2355,9 +2507,28 @@ local function cleanMarks(list)
 end
 SA.CleanMarks = cleanMarks
 
+-- Bookmark sets (SFM's BookmarkSet): named lists of the same bookmarks, kept beside the current
+-- ones. The client edits the whole list; a scene keeps it.
+local MAX_MARKSETS = 32
+local function cleanMarkSets(list)
+	local out = {}
+	for _, s in ipairs(istable(list) and list or {}) do
+		if #out >= MAX_MARKSETS then break end
+		if istable(s) then
+			local name = isstring(s.name) and string.sub(string.gsub(s.name, "[%c]", ""), 1, 48) or ""
+			out[#out + 1] = { name = name ~= "" and name or ("Set " .. (#out + 1)), marks = cleanMarks(s.marks) }
+		end
+	end
+	return out
+end
+
 COMP:NetReceive("Marks", function(ply)
 	anim(ply).marks = cleanMarks(SPeditor.ReadTable())
 	SA.SendSummary(ply)
+end)
+
+COMP:NetReceive("MarkSets", function(ply)
+	anim(ply).markSets = cleanMarkSets(SPeditor.ReadTable())
 end)
 
 -- FX clips of the timeline (b0.2 round 6, cl_saeditor_fxclips.lua): { { k = kind, a = from,
@@ -2819,6 +2990,24 @@ COMP:NetReceive("Key", function(ply)
 		if sel and table.HasValue(SA.PRESETS, preset) then
 			presetTrack(tr, preset, sel, math.Clamp(arg, 1, 200) / 100, uid % 9973, tonumber(extra))
 		end
+	elseif action == OP.EXT and (arg == OP.REDUNDANT or arg == OP.RESAMPLE or arg == OP.MASK) then
+		-- action 0 keeps the 4-bit Key message: arg is the sub-kind, frame — the step (resample)
+		local sel = SA.ParseTimeSel(str, a.frames)
+		if arg == OP.REDUNDANT then
+			if sel and tr then compressTrack(tr, sel) end
+		elseif arg == OP.MASK then
+			if sel and tr then
+				maskTrack(tr, sel)
+				if next(tr.keys) == nil then a.tracks[uid] = nil end
+			end
+		else
+			local face = SA.IsFaceTrack(uid)
+			local ent = S.FindUID(ply, face and (uid - SA.FACE) or uid)
+			if sel and IsValid(ent) and tr then
+				local noFace = not face and a.tracks[SA.FaceTrack(ent.SPeditor_UID)] ~= nil
+				resampleTrack(ent, tr, sel, frame, noFace)
+			end
+		end
 	elseif action == OP.EASE then
 		-- "ease|f1,f2,…": one kind for several keys of the track
 		local list = string.match(str, "|(.*)$")
@@ -3206,7 +3395,7 @@ COMP:Hook("SPeditor_PlayerCleanup", function(ply)
 	local a = anim(ply)
 	worldRest(a)
 	a.tracks, a.sounds, a.playing, a.cur, a.proc, a.procOn, a.cuts, a.world, a.groups = {}, {}, false, 0, {}, nil, {}, {}, {}
-	a.marks, a.clips = {}, {}
+	a.marks, a.markSets, a.clips = {}, {}, {}
 	SA.Ops[ply] = nil
 	if IsValid(ply) then SA.SendSummary(ply) end
 end)
@@ -3376,13 +3565,13 @@ COMP:SceneData(function(ply, ctx)
 			world.items[tostring(id)] = { c = w.c, k = k }
 		end
 	end
-	return { version = 1, cuts = next(cuts) and cuts or nil, groups = next(groups) and groups or nil, marks = a.marks and #a.marks > 0 and a.marks or nil, clips = a.clips and #a.clips > 0 and a.clips or nil, fps = a.fps, frames = a.frames, loop = a.loop, bounce = a.bounce, tracks = tracks, faces = next(faces) and faces or nil,
+	return { version = 1, cuts = next(cuts) and cuts or nil, groups = next(groups) and groups or nil, marks = a.marks and #a.marks > 0 and a.marks or nil, markSets = a.markSets and #a.markSets > 0 and a.markSets or nil, clips = a.clips and #a.clips > 0 and a.clips or nil, fps = a.fps, frames = a.frames, loop = a.loop, bounce = a.bounce, tracks = tracks, faces = next(faces) and faces or nil,
 		sounds = sounds, proc = next(proc) and proc or nil, world = world }
 end, function(ply, data, ctx)
 	local a = anim(ply)
 	worldRest(a)
 	a.tracks, a.sounds, a.playing, a.cur, a.proc, a.procOn, a.cuts, a.world, a.groups = {}, {}, false, 0, {}, nil, {}, {}, {}
-	a.marks, a.clips = {}, {}
+	a.marks, a.markSets, a.clips = {}, {}, {}
 	SA.Ops[ply] = nil
 	if data then
 		for index, pr in pairs(istable(data.proc) and data.proc or {}) do
@@ -3455,6 +3644,7 @@ end, function(ply, data, ctx)
 		end
 		a.cuts = cleanCuts(cuts, a.frames)
 		a.marks = cleanMarks(data.marks)
+		a.markSets = cleanMarkSets(data.markSets)
 		a.clips = cleanClips(data.clips)
 		local groups = {}
 		for _, g in ipairs(istable(data.groups) and data.groups or {}) do

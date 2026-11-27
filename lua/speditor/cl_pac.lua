@@ -23,6 +23,7 @@ local C   = SPeditor.Client
 local L   = SPeditor.L
 
 PAC.data = PAC.data or {}      -- [entity index] = { { name, data }, ... }  (as the server keeps them)
+PAC.uid = PAC.uid or {}        -- [entity index] = UID of the object the outfits belong to
 PAC.dirty = PAC.dirty or {}    -- [entity index] = true: to be put on again
 
 function PAC.Available()
@@ -46,7 +47,12 @@ function PAC.Files()
 end
 
 function PAC.List(ent)
-	return IsValid(ent) and PAC.data[ent:EntIndex()] or {}
+	if not IsValid(ent) then return {} end
+	local idx = ent:EntIndex()
+	-- an index reused by another object must not show the outfits of the one before it
+	local uid = PAC.uid[idx]
+	if uid and uid ~= 0 and ent:GetNW2Int("SPeditor_UID", 0) ~= uid then return {} end
+	return PAC.data[idx] or {}
 end
 
 function PAC.OpenEditor()
@@ -99,7 +105,17 @@ function PAC.Clear(ent) if IsValid(ent) then sendOp(ent, 2) end end
 
 net.Receive(SPeditor.Net.PACSync, function()
 	local idx = net.ReadUInt(16)
+	local uid = net.ReadUInt(32)
 	local op = net.ReadUInt(2)
+	if op == 3 then
+		-- the object is gone: drop its outfits, but only if the index is still its own
+		if PAC.uid[idx] == uid then
+			PAC.data[idx] = nil
+			PAC.uid[idx] = nil
+			PAC.dirty[idx] = nil
+		end
+		return
+	end
 	if op == 0 then
 		local n = net.ReadUInt(4)
 		PAC.data[idx] = (n > 0) and {} or nil
@@ -109,6 +125,7 @@ net.Receive(SPeditor.Net.PACSync, function()
 		PAC.data[idx] = PAC.data[idx] or {}
 		table.insert(PAC.data[idx], { name = name, data = data })
 	end
+	PAC.uid[idx] = uid
 	PAC.dirty[idx] = true
 end)
 
@@ -213,7 +230,14 @@ timer.Create("SPeditor.PAC", 0.2, 0, function()
 	hookReset()
 	for idx, items in pairs(PAC.data) do
 		local ent = Entity(idx)
-		if IsValid(ent) and (PAC.dirty[idx] or ent.SPeditor_PACFor ~= items) then
+		local want = PAC.uid[idx] or 0
+		local have = IsValid(ent) and ent:GetNW2Int("SPeditor_UID", 0) or 0
+		if IsValid(ent) and want ~= 0 and have ~= 0 and have ~= want then
+			-- the index now belongs to another object: these outfits are not its
+			PAC.data[idx] = nil
+			PAC.uid[idx] = nil
+			PAC.dirty[idx] = nil
+		elseif IsValid(ent) and (want == 0 or have == want) and (PAC.dirty[idx] or ent.SPeditor_PACFor ~= items) then
 			PAC.dirty[idx] = nil
 			ent.SPeditor_PACFor = items
 			local ok, err = pcall(putOn, ent, items)

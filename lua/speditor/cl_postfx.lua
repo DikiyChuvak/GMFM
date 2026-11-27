@@ -129,6 +129,10 @@ define({ id = "ssao", cat = "sfm", scene = true, params = {
 			{ key = "radius", label = "fxp_ssao_radius", min = 1, max = 128, default = 15, decimals = 1 },
 			{ key = "strength", label = "fxp_ssao_strength", min = 0.1, max = 10, default = 1 },
 			{ key = "bias", label = "fxp_ssao_bias", min = 0, max = 0.01, default = 0.0005, decimals = 4 },
+			-- SFM's AOTint: the colour the occlusion darkens towards (white — neutral)
+			{ key = "tintr", label = "fxp_ssao_tintr", min = 0, max = 1, default = 1 },
+			{ key = "tintg", label = "fxp_ssao_tintg", min = 0, max = 1, default = 1 },
+			{ key = "tintb", label = "fxp_ssao_tintb", min = 0, max = 1, default = 1 },
 } })
 
 local GRID = 48

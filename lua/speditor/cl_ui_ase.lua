@@ -514,6 +514,7 @@ function UI.BuildASE(body)
 			end
 			presetHeader(L("sec_actions"))
 			presetRow(L("aim_at"), function() C.OpenAimMenu(ent) end)
+			presetRow(L("light_master"), function() C.TintSelectedLights() end)
 			return
 		end
 
@@ -1279,11 +1280,16 @@ function UI.BuildASE(body)
 			bm:AddSpacer()
 			bm:AddOption(L("attach_point"), function() C.SendAttach(ent, tgt, -100) end):SetIcon("icon16/arrow_inout.png")
 			bm:AddOption(L("attach_orient"), function() C.SendAttach(ent, tgt, -1000) end):SetIcon("icon16/arrow_rotate_clockwise.png")
+			bm:AddOption(L("attach_rot"), function() C.SendAttach(ent, tgt, -2000) end):SetIcon("icon16/arrow_turn_right.png")
 			if bones then
 				local pm = bm:AddSubMenu(L("attach_point_bone"))
 				-- (b0.2.6) every bone: a finger, hair, a bone of a model without physics (SFM)
 				for _, b in ipairs(C.GetBoneList(tgt)) do
 					pm:AddOption((string.gsub(b.name, "^ValveBiped%.Bip01_", "")), function() C.SendAttach(ent, tgt, -100 - (b.id + 1)) end)
+				end
+				local rm = bm:AddSubMenu(L("attach_rot_bone"))
+				for _, b in ipairs(C.GetBoneList(tgt)) do
+					rm:AddOption((string.gsub(b.name, "^ValveBiped%.Bip01_", "")), function() C.SendAttach(ent, tgt, -2000 - (b.id + 1)) end)
 				end
 			end
 		end

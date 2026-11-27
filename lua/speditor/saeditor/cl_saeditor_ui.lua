@@ -179,6 +179,13 @@ function SA.TimeSelMenu(frame)
 		m:AddOption(L("sa_tsel_apply"), function() SA.SetKey() end):SetIcon("icon16/key_add.png")
 		-- SFM's procedural presets over the keys inside the selection (b0.2)
 		SA.PresetMenu(m:AddSubMenu(L("sa_presets")), true)
+		m:AddOption(L("sa_tsel_redundant"), function() SA.CompressKeys() end):SetIcon("icon16/key_delete.png")
+		m:AddOption(L("sa_tsel_mask"), function() SA.MaskKeys() end):SetTooltip(L("sa_tsel_mask_tip"))
+		local rs = m:AddSubMenu(L("sa_tsel_resample"))
+		for _, step in ipairs({ 1, 2, 3, 5, 10 }) do
+			rs:AddOption(string.format(L("sa_tsel_resample_n"), step), function() SA.ResampleKeys(step) end)
+				:SetTooltip(L("sa_tsel_resample_tip"))
+		end
 		m:AddOption(L("sa_tsel_select_keys"), function()
 			clearSel()
 			for uid, keys in pairs(SA.tracks) do
@@ -425,6 +432,7 @@ local function buildTimeline(page)
 		if SA.HasKey(uid, f) then SA.DeleteKey(uid, f) end
 	end)
 	UI.IconButton(bar, "icon16/bullet_red.png", L("sa_autokey"), function() SA.autokey = not SA.autokey end, function() return SA.autokey end)
+	UI.IconButton(bar, "icon16/arrow_branch.png", L("sa_bone_keys"), function() SA.ToggleBoneKeys() end, function() return SA.BoneKeysOn() end)
 	UI.IconButton(bar, "icon16/user_gray.png", L("sa_ghosts"), function() SA.ToggleGhosts() end, function() return SA.GhostsOn() end)
 	UI.IconButton(bar, "icon16/time.png", L("sa_tsel_tip"), function() SA.TimeSelMenu(round(SA.frame)) end, function() return SA.timeSel ~= nil end)
 	sep()

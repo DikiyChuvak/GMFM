@@ -37,6 +37,34 @@ local function vpSize()
 	return math.Clamp(ScrW(), 1280, 4096), math.Clamp(ScrH(), 1024, 4096)
 end
 
+-- The scene inside a viewport can be drawn at a share of the viewport's pixels: 100 % is the
+-- sharpest, 50 % is visibly softer and much faster (a 4K screen, many addons, a heavy map). The
+-- windows, the gizmo and the final render keep their own resolution.
+local cvViewportScale = CreateClientConVar("gmfm_vp_scale", "1", true, false,
+	"GM:FM: the viewport picture resolution (1 = full, 0.5 = half)", 0.5, 1)
+function R.ViewportScale() return math.Clamp(cvViewportScale:GetFloat(), 0.5, 1) end
+function R.ViewportSize()
+	local w, h = vpSize()
+	local s = R.ViewportScale()
+	return math.max(math.floor(w * s + 0.5), 64), math.max(math.floor(h * s + 0.5), 64)
+end
+
+-- The Render look (the photo button of the viewport bar) used to ask for its targets at every
+-- 64 px step: while a splitter was dragged a new set of render targets was made for each step,
+-- and the game never frees a render target. The sizes are put on a ladder, so one session keeps
+-- a few sets; the picture is shot at the nearest size and still drawn into the same rectangle
+-- (the frame proportions are kept).
+local LOOK_SIZES = { 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096 }
+local function lookLadder(w, h, maxW, maxH)
+	local best = LOOK_SIZES[1]
+	for _, v in ipairs(LOOK_SIZES) do
+		if math.abs(v - w) < math.abs(best - w) then best = v end
+	end
+	best = math.Clamp(best, 64, math.max(maxW, 64))
+	h = math.Clamp(math.floor(best * h / math.max(w, 1) + 0.5), 64, math.max(maxH, 64))
+	return best, h
+end
+
 -- Frame exposure. In HDR the engine adjusts brightness to what the main
 -- camera sees (auto exposure), and this adjustment is shared by all views:
 -- bringing the work camera close to a lit object made both viewports and the
@@ -280,8 +308,8 @@ local function renderScene(rt, src, rw, rh, pass, wrap2D, fullbright, aspect)
 	-- objects beside them (round 7: a car and a soldier "drawn" on a wall in the preview)
 	if ok and pass ~= "export" and R.ViewportAO and R.ViewportAO(src, fullbright) then
 		local aw, ah = math.max(math.floor(rw / 64) * 64, 64), math.max(math.floor(rh / 64) * 64, 64)
-		local okAO, mask = pcall(R.SSAOMask, src, aw, ah, aspect or (rw / rh), 1)
-		if okAO and mask then R.MultiplyAORect(mask, rw, rh) end
+		local okAO, mask, tint = pcall(R.SSAOMask, src, aw, ah, aspect or (rw / rh), 1)
+		if okAO and mask then R.MultiplyAORect(mask, rw, rh, tint) end
 	end
 	-- the camera's bloom (SFM's bloomScale, round 8): a viewport through a scene camera shows it as
 	-- SFM's does — it was only in the preview and the render, and changing it "did nothing"
@@ -377,15 +405,24 @@ local function shootLook()
 	-- the height must be stepped too: a freely resized viewport changed it every pixel and made
 	-- a new set of render targets for each height (the game never frees them)
 	local ph = math.Clamp(math.max(math.floor((pw / aspect) / 64) * 64, 64), 16, VP_H)
+	pw, ph = lookLadder(pw, ph, VP_W, VP_H)
 	local fx = FX and FX.For(src.ent) or nil
 	local now = RealTime()
+	local vscale = R.ViewportScale()
 	local o, a = src.origin, src.angles
-	local sig = string.format("%.1f %.1f %.1f %.2f %.2f %.2f %.2f %d %s %s", o.x, o.y, o.z, a.p, a.y, a.r, src.fov, pw,
-		tostring(C.SceneTime and C.SceneTime() or 0), tostring(src.ent))
+	local sig = string.format("%.1f %.1f %.1f %.2f %.2f %.2f %.2f %d %s %s %.2f", o.x, o.y, o.z, a.p, a.y, a.r, src.fov, pw,
+		tostring(C.SceneTime and C.SceneTime() or 0), tostring(src.ent), vscale)
 	if sig ~= look.sig then look.sig, look.changed = sig, now end
 	local busy = (C.ScenePlaying and C.ScenePlaying()) or input.IsMouseDown(MOUSE_LEFT) or input.IsMouseDown(MOUSE_RIGHT)
 	if busy then look.changed = now end
 	local resting = now - (look.changed or 0) >= LOOK_REST
+	-- while the picture moves a lower viewport resolution is drawn (the setting in Appearance →
+	-- Performance); the full frame at rest keeps the full one
+	if not resting and vscale < 0.999 then
+		pw = math.Clamp(math.floor(pw * vscale / 64) * 64, 64, VP_W)
+		ph = math.Clamp(math.floor((pw / aspect) / 64) * 64, 64, VP_H)
+		pw, ph = lookLadder(pw, ph, VP_W, VP_H)
+	end
 	-- the full frame is shot once per rest
 	if resting and look.full and look.fullAt and look.fullAt >= look.changed then return end
 
@@ -544,7 +581,7 @@ function R.Viewport(src, w, h, pass, frozen)
 			return ix, iy, iw, ih
 		end
 	end
-	local VP_W, VP_H = vpSize()
+	local VP_W, VP_H = R.ViewportSize()
 	local rt = getRT("vp_" .. pass .. "_" .. VP_W .. "x" .. VP_H, VP_W, VP_H)
 	local st = vpFrames[pass] or {}
 	vpFrames[pass] = st
@@ -602,7 +639,7 @@ function R.EarlyPrimary()
 	local _, _, iw, ih = C.FitRect(st.w, st.h, C.GetAspect())
 	if iw < 4 or ih < 4 then return false end
 	src = C.FrameSource(src, iw / ih, "primary")
-	local VP_W, VP_H = vpSize()
+	local VP_W, VP_H = R.ViewportSize()
 	local rt = getRT("vp_primary_" .. VP_W .. "x" .. VP_H, VP_W, VP_H)
 	local s = math.min(1, VP_W / iw, VP_H / ih)
 	st.rw, st.rh = math.max(math.floor(iw * s), 16), math.max(math.floor(ih * s), 16)
@@ -1132,8 +1169,8 @@ function R.EngineLensToRT(W, H, aspect)
 		local fov = math.deg(2 * math.atan(math.tan(math.rad(math.Clamp(c.src.fov, 1, 170)) / 2) / lens.k))
 		local s = { origin = c.src.origin, angles = c.src.angles, fov = fov, ent = c.src.ent, lens = { lens.ox, lens.oy, lens.focus } }
 		-- one pass of it, with the noise of this lens pass: the passes average it out
-		local mask = R.SSAOMask and R.SSAOMask(s, W, H, aspect, 1, lens.i)
-		if mask then R.MultiplyAO(rt, mask) end
+		local mask, tint = R.SSAOMask and R.SSAOMask(s, W, H, aspect, 1, lens.i)
+		if mask then R.MultiplyAO(rt, mask, tint) end
 	end
 	return rt
 end
@@ -1304,8 +1341,8 @@ function R.RenderBase(src, W, H, opts)
 				if soft > 0 then Lt.Jitter(i, n) end
 				renderScene(frame, s, sw, sh, "export", true, opts.fullbright, opts.aspect)
 				if passAO then
-					local mask = R.SSAOMask(s, sw, sh, opts.aspect, 1, i)
-					if mask then R.MultiplyAO(frame, mask) end
+					local mask, tint = R.SSAOMask(s, sw, sh, opts.aspect, 1, i)
+					if mask then R.MultiplyAO(frame, mask, tint) end
 				end
 				opaqueAlpha(frame)
 

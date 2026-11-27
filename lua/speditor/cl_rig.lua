@@ -279,4 +279,26 @@ function Rig.ChainMenu(m, ent, bone)
 		sub:AddSpacer()
 		sub:AddOption(L("rig_chain_clear"), function() Rig.SetCustom(ent:GetModel(), name, nil, nil) end):SetIcon("icon16/cross.png")
 	end
+	-- a persistent IK target: this bone follows an object every tick (P1)
+	local ikm = m:AddSubMenu(L("ik_target"))
+	if IsValid(ent:GetNW2Entity("SPeditor_IKAt")) then
+		ikm:AddOption(L("ik_target_stop"), function() C.SendIKTarget(ent, bone, nil) end):SetIcon("icon16/cross.png")
+	end
+	for _, o in ipairs(C.Objects()) do
+		if IsValid(o.ent) and o.ent ~= ent then
+			ikm:AddOption(C.DisplayName(o.ent), function() C.SendIKTarget(ent, bone, o.ent) end)
+				:SetChecked(ent:GetNW2Entity("SPeditor_IKAt") == o.ent)
+		end
+	end
+	-- aim this single bone at an object (P1)
+	local am = m:AddSubMenu(L("bone_aim"))
+	if ent:GetNW2Int("SPeditor_AimSrc", -1) == bone and IsValid(ent:GetNW2Entity("SPeditor_AimAt")) then
+		am:AddOption(L("bone_aim_stop"), function() C.SendBoneAim(ent, bone, nil) end):SetIcon("icon16/cross.png")
+	end
+	for _, o in ipairs(C.Objects()) do
+		if IsValid(o.ent) and o.ent ~= ent then
+			am:AddOption(C.DisplayName(o.ent), function() C.SendBoneAim(ent, bone, o.ent) end)
+				:SetChecked(ent:GetNW2Int("SPeditor_AimSrc", -1) == bone and ent:GetNW2Entity("SPeditor_AimAt") == o.ent)
+		end
+	end
 end

@@ -3,12 +3,13 @@
 SPeditor = SPeditor or {}
 SPeditor.Name     = "GM:FM"
 SPeditor.FullName = "Garry's Mod Filmmaker"
-SPeditor.Version = "r1.0"
-SPeditor.VersionBase = "b0.2"   -- the release the patch builds on: About lists its news under the patch's
-SPeditor.VersionPrev = "b0.2.7" -- the patch before this one
+SPeditor.Version = "r1.1"
+SPeditor.VersionBase = "r1.0"   -- the release the patch builds on: About lists its news under the patch's
+SPeditor.VersionPrev = "r1.0"   -- the patch before this one
 -- every update since b0.1, newest first: version, release date, prefix of its news in the
 -- language files (About → What's new, b0.2.4)
 SPeditor.History = {
+	{ "r1.1", "2026-11-26", "about_r11_" },
 	{ "r1.0", "2026-11-22", "about_r10_" },
 	{ "b0.3", "2026-11-19", "about_b03_" },
 	{ "b0.2.7", "2026-11-05", "about_z" },
@@ -64,6 +65,8 @@ SPeditor.Net = {
 	Attach        = "SPeditor_Attach",
 	Outfit        = "SPeditor_Outfit",      -- b0.2.4: put a saved outfit on a character (cl_presets.lua)
 	Aim           = "SPeditor_Aim",
+	BoneAim       = "SPeditor_BoneAim",
+	IKTarget      = "SPeditor_IKTarget",
 	FocusOn       = "SPeditor_FocusOn",
 	Look          = "SPeditor_Look",
 	CameraFX      = "SPeditor_CameraFX",

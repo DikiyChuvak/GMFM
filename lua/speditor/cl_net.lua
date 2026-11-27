@@ -322,7 +322,7 @@ function C.SendAttach(ent, parent, bone, noHist)
 		if ent:GetNW2Bool("SPeditor_Merge", false) then b0 = -2 end      -- worn (S.WEAR)
 		-- a constraint (b0.2): the code carries its kind (S.AttachCode on the server)
 		local mode0 = ent:GetNW2String("SPeditor_AttachMode", "")
-		if mode0 == "point" then b0 = -100 - (b0 + 1) elseif mode0 == "orient" then b0 = -1000 - (b0 + 1) end
+		if mode0 == "point" then b0 = -100 - (b0 + 1) elseif mode0 == "orient" then b0 = -1000 - (b0 + 1) elseif mode0 == "rot" then b0 = -2000 - (b0 + 1) end
 		local ref, pref0 = C.Ref(ent), IsValid(p0) and C.Ref(p0) or nil
 		local pref1 = IsValid(parent) and C.Ref(parent) or nil
 		local b1 = bone or -1
@@ -374,8 +374,55 @@ function C.SendFocusOn(cam, target)
 	net.SendToServer()
 end
 
-function C.SendAim(ent, target, bone, noHist, weight)
+-- Persistent IK target (P1): the hand/foot bone of a ragdoll follows an object every tick.
+function C.SendIKTarget(ent, bone, target, noHist)
 	if not IsValid(ent) then return end
+	if not noHist then
+		local t0, b0 = ent:GetNW2Entity("SPeditor_IKAt"), ent:GetNW2Int("SPeditor_IKBone", -1)
+		local ref = C.Ref(ent)
+		local tref0 = IsValid(t0) and C.Ref(t0) or nil
+		local tref1 = IsValid(target) and C.Ref(target) or nil
+		local function apply(e, tref, b)
+			if e then C.SendIKTarget(e, b or -1, tref and C.Deref(tref) or nil, true) end
+		end
+		C.PushHistory(IsValid(target) and "ik target" or "ik target stop",
+			function() apply(C.Deref(ref), tref0, b0) end,
+			function() apply(C.Deref(ref), tref1, bone or -1) end)
+	end
+	net.Start(Net.IKTarget)
+	net.WriteEntity(ent)
+	net.WriteUInt(math.max(math.floor(tonumber(bone) or 0), 0), 16)
+	net.WriteEntity(IsValid(target) and target or NULL)
+	net.SendToServer()
+end
+
+-- Aim one bone at an object (P1): the whole object keeps its place, only this bone turns.
+function C.SendBoneAim(ent, src, target, targetBone, weight, noHist)
+	if not IsValid(ent) or not src or src < 0 or src >= ent:GetBoneCount() then return end
+	if not noHist then
+		local t0, b0 = ent:GetNW2Entity("SPeditor_AimAt"), ent:GetNW2Int("SPeditor_AimBone", -1)
+		local w0 = ent:GetNW2Float("SPeditor_AimWeight", 1)
+		local src0 = ent:GetNW2Int("SPeditor_AimSrc", -1)
+		local ref = C.Ref(ent)
+		local tref0 = IsValid(t0) and C.Ref(t0) or nil
+		local tref1 = IsValid(target) and C.Ref(target) or nil
+		local function apply(e, tref, s, b, w)
+			if e then C.SendBoneAim(e, s or -1, tref and C.Deref(tref) or nil, b, w, true) end
+		end
+		C.PushHistory(IsValid(target) and "bone aim" or "bone aim stop",
+			function() apply(C.Deref(ref), tref0, src0, b0, w0) end,
+			function() apply(C.Deref(ref), tref1, src, targetBone or -1, weight or 1) end)
+	end
+	net.Start(Net.BoneAim)
+	net.WriteEntity(ent)
+	net.WriteUInt(src, 16)
+	net.WriteEntity(IsValid(target) and target or NULL)
+	net.WriteInt(targetBone or -1, 16)
+	net.WriteFloat(weight or 1)
+	net.SendToServer()
+end
+
+function C.SendAim(ent, target, bone, noHist, weight)	if not IsValid(ent) then return end
 	if not noHist then
 		local t0, ref = ent:GetNW2Entity("SPeditor_AimAt"), C.Ref(ent)
 		local tref0 = IsValid(t0) and C.Ref(t0) or nil

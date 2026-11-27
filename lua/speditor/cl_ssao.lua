@@ -61,18 +61,23 @@ function R.SSAOParams(src)
 	local cam = src and src.ent
 	local mode = IsValid(cam) and cam.GetCamAO and math.floor(cam:GetCamAO() + 0.5) or 0
 	local radius, strength, bias = cvRadius:GetFloat(), cvStrength:GetFloat(), cvBias:GetFloat()
-	if mode == 2 then return false, radius, strength, bias end
+	local tint = color_white
+	if mode == 2 then return false, radius, strength, bias, tint end
 	local FX = SPeditor.FX
 	local fx = IsValid(cam) and FX and C.GetCameraFX and C.GetCameraFX(cam) or nil
 	if fx and FX.IsOn(fx, "ssao") then
-		return true, FX.Get(fx, "ssao", "radius"), FX.Get(fx, "ssao", "strength"), FX.Get(fx, "ssao", "bias")
+		local r, g, b = FX.Get(fx, "ssao", "tintr"), FX.Get(fx, "ssao", "tintg"), FX.Get(fx, "ssao", "tintb")
+		if (r and r < 0.999) or (g and g < 0.999) or (b and b < 0.999) then
+			tint = Color(math.Clamp(r or 1, 0, 1) * 255, math.Clamp(g or 1, 0, 1) * 255, math.Clamp(b or 1, 0, 1) * 255)
+		end
+		return true, FX.Get(fx, "ssao", "radius"), FX.Get(fx, "ssao", "strength"), FX.Get(fx, "ssao", "bias"), tint
 	end
 	if mode == 1 then
 		if cam:GetAORadius() > 0 then radius = cam:GetAORadius() end
 		if cam:GetAOStrength() > 0 then strength = cam:GetAOStrength() end
-		return true, radius, strength, bias
+		return true, radius, strength, bias, tint
 	end
-	return cvOn:GetBool(), radius, strength, bias
+	return cvOn:GetBool(), radius, strength, bias, tint
 end
 
 -- Occlusion in the viewports (b0.2.6, SFM shows it while you work): gmfm_vp_ssao 0 — none,
@@ -248,6 +253,10 @@ local matAccum = CreateMaterial("gmfm_ao_accum", "UnlitGeneric", { ["$nolod"] = 
 ---------------------------------------------------------------------
 local depthPass = false
 local bandDiv = 1            -- (b0.2.6-misc.1) the packed depth's pass: its fog ends at SSAO_FAR / bandDiv
+-- The scene is drawn with a material override of our own in the depth pass. Per-slot material
+-- overrides added on top of it (cl_scene.lua, the look of an object) crashed the engine in
+-- DrawModel (found by the self-test with every camera effect at once): objects keep their
+-- ordinary draw while this is true.
 function R.DepthPassActive() return depthPass end
 
 local function depthFog()
@@ -408,13 +417,13 @@ local function seedOf(i)
 end
 
 function R.SSAOMask(src, W, H, aspect, passes, seed)
-	local on, rad, str, bias = R.SSAOParams(src)
-	if not on or not src then return nil end
-	if not shadersReady() then return nil end
+	local on, rad, str, bias, tint = R.SSAOParams(src)
+	if not on or not src then return nil, tint end
+	if not shadersReady() then return nil, tint end
 	ensureMats()
 	aspect = aspect or (W / H)
 	local depth = R.RenderDepth(src, W, H, aspect)
-	if not depth then return nil end
+	if not depth then return nil, tint end
 	local a, b = aoRT(1, W, H), aoRT(2, W, H)
 	local tx = math.tan(math.rad(math.Clamp(src.fov, 1, 170)) / 2)
 
@@ -485,7 +494,7 @@ function R.SSAOMask(src, W, H, aspect, passes, seed)
 		texel(matSfmBlur, W, H)
 		pass(a, matSfmBlur)
 		R.lastAO, R.lastDepth = a, depth
-		return a
+		return a, tint
 	end
 
 	local radius = math.Clamp(rad, 2, 256)
@@ -513,35 +522,42 @@ function R.SSAOMask(src, W, H, aspect, passes, seed)
 	pass(a, matBlur)
 
 	R.lastAO, R.lastDepth = a, depth
-	return a
+	return a, tint
 end
 
 -- the picture in the pushed render target (its rectangle 0, 0, w, h) times the visibility
-function R.MultiplyAORect(mask, w, h)
+function R.MultiplyAORect(mask, w, h, tint)
 	if not mask then return end
+	tint = tint or color_white
+	matShow:SetVector("$color2", Vector(tint.r / 255, tint.g / 255, tint.b / 255))
 	render.OverrideBlend(true, BLEND_DST_COLOR, BLEND_ZERO, BLENDFUNC_ADD, BLEND_ZERO, BLEND_ONE, BLENDFUNC_ADD)
 	matShow:SetTexture("$basetexture", mask)
 	render.SetMaterial(matShow)
 	render.DrawScreenQuadEx(0, 0, w, h)
 	render.OverrideBlend(false)
+	matShow:SetVector("$color2", Vector(1, 1, 1))
 end
 
 -- the frame times the visibility
-function R.MultiplyAO(rt, mask)
+function R.MultiplyAO(rt, mask, tint)
 	if not rt or not mask then return rt end
+	tint = tint or color_white
 	render.PushRenderTarget(rt)
+	matShow:SetVector("$color2", Vector(tint.r / 255, tint.g / 255, tint.b / 255))
 	render.OverrideBlend(true, BLEND_DST_COLOR, BLEND_ZERO, BLENDFUNC_ADD, BLEND_ZERO, BLEND_ONE, BLENDFUNC_ADD)
 	matShow:SetTexture("$basetexture", mask)
 	render.SetMaterial(matShow)
 	render.DrawScreenQuad()
 	render.OverrideBlend(false)
 	render.PopRenderTarget()
+	matShow:SetVector("$color2", Vector(1, 1, 1))
 	return rt
 end
 
 -- rt — the frame (W x H) of the view src; it is darkened in place. Returns rt.
 function R.ApplySSAO(rt, src, W, H, aspect, passes)
 	if not rt then return rt end
-	return R.MultiplyAO(rt, R.SSAOMask(src, W, H, aspect, passes))
+	local mask, tint = R.SSAOMask(src, W, H, aspect, passes)
+	return R.MultiplyAO(rt, mask, tint)
 end
 

@@ -44,7 +44,7 @@ end
 ---------------------------------------------------------------------
 function C.AimAt(src, target)
 	if not (IsValid(src) and IsValid(target)) or src == target then return false end
-	if not C.IsAux(src) then return false end
+	if not SPeditor.IsEditable(src) then return false end
 	local center = C.CenterOf(target)
 	if not center then return false end
 	local pos, oldAng = src:GetPos(), src:GetAngles()
@@ -137,6 +137,24 @@ function C.SpawnLightRig(target)
 	spawn(40,  35, Color(255, 244, 224), 3.0, 45)   -- key: warm, strong
 	spawn(-45, 15, Color(201, 226, 255), 1.2, 60)   -- fill: cool, soft
 	spawn(180, 30, Color(255, 255, 255), 2.5, 45)   -- rim: backlight from behind
+	spawn(0, -12, Color(255, 226, 200), 0.8, 90)    -- bounce: dim, warm, from below/front
+end
+
+-- The master colour of a light rig: the lights of the rig are selected (Shift + click), and
+-- one colour is given to all of them, keeping each light's own radius, brightness and cone.
+function C.TintSelectedLights()
+	local lights = {}
+	for _, e in ipairs(C.SelectionList()) do
+		if IsValid(e) and C.IsLight(e) then lights[#lights + 1] = e end
+	end
+	if #lights == 0 then SPeditor.Notify("#light_master_need", 1) return end
+	UI.OpenColorPopup(L("light_master"), Color(255, 244, 224), function(col)
+		for _, e in ipairs(lights) do
+			if IsValid(e) then
+				C.SendLightEdit(e, e:GetLightType(), col, e:GetLightRadius(), e:GetLightBrightness(), e:GetLightFOV(), nil, true)
+			end
+		end
+	end)
 end
 
 ---------------------------------------------------------------------

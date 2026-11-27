@@ -265,6 +265,49 @@ function SA.RenameMark(f, name)
 	commitMarks(list, "sa bookmark rename")
 end
 
+---------------------------------------------------------------------
+-- Bookmark sets (SFM's BookmarkSet): named copies of the current bookmarks, kept with the
+-- animation; a set is loaded into the ruler (undoable) or deleted. The server keeps the list.
+---------------------------------------------------------------------
+local function sendMarkSets()
+	COMP:NetStart("MarkSets")
+	SPeditor.WriteTable(SA.markSets or {})
+	net.SendToServer()
+end
+
+function SA.SaveMarkSet(name)
+	name = string.Trim(name or "")
+	if name == "" then name = "Set " .. #(SA.markSets or {}) + 1 end
+	name = string.sub(name, 1, 48)
+	if #(SA.marks or {}) == 0 then SPeditor.Notify("#sa_markset_empty", 1) return end
+	SA.markSets = SA.markSets or {}
+	local set = { name = name, marks = copyMarks(SA.marks) }
+	local replaced = false
+	for i, s in ipairs(SA.markSets) do
+		if s.name == name then SA.markSets[i] = set replaced = true break end
+	end
+	if not replaced then
+		if #SA.markSets >= 32 then table.remove(SA.markSets, 1) end
+		SA.markSets[#SA.markSets + 1] = set
+	end
+	sendMarkSets()
+	hook.Run("SAeditor_Changed")
+	SPeditor.Notify(string.format(SPeditor.L("sa_markset_saved"), name), 2)
+end
+
+function SA.LoadMarkSet(i)
+	local s = SA.markSets and SA.markSets[i]
+	if not s then return end
+	commitMarks(s.marks, "sa bookmark set")
+end
+
+function SA.DeleteMarkSet(i)
+	if not (SA.markSets and SA.markSets[i]) then return end
+	table.remove(SA.markSets, i)
+	sendMarkSets()
+	hook.Run("SAeditor_Changed")
+end
+
 function SA.MoveMark(from, to)
 	to = math.floor(to + 0.5)
 	local i = SA.MarkAt(from)
@@ -312,6 +355,19 @@ function SA.MarkMenu(f)
 			go:AddOption(string.format("%d  %s", b.f, b.name), function() SA.Seek(b.f) end)
 		end
 		m:AddOption(L("sa_mark_clear"), function() SA.ClearMarks() end):SetIcon("icon16/cross.png")
+	end
+	-- bookmark sets: named copies of the current bookmarks (kept with the animation)
+	m:AddSpacer()
+	m:AddOption(L("sa_markset_save"), function()
+		Derma_StringRequest(L("sa_marksets"), L("sa_markset_name"), "", function(name) SA.SaveMarkSet(name) end)
+	end):SetIcon("icon16/flag_green.png")
+	if #(SA.markSets or {}) > 0 then
+		local sm = m:AddSubMenu(L("sa_marksets"))
+		for i, s in ipairs(SA.markSets) do
+			local sub = sm:AddSubMenu(string.format("%s  (%d)", s.name, #s.marks))
+			sub:AddOption(L("sa_markset_load"), function() SA.LoadMarkSet(i) end):SetIcon("icon16/flag_blue.png")
+			sub:AddOption(L("sa_markset_delete"), function() SA.DeleteMarkSet(i) end):SetIcon("icon16/cross.png")
+		end
 	end
 	m:Open()
 	return m

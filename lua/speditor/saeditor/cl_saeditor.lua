@@ -23,6 +23,12 @@ SA.playing = SA.playing or false
 if SA.loop == nil then SA.loop = true end
 if SA.autokey == nil then SA.autokey = false end
 
+-- (b0.2.x, back in r1.1) "Bone keys": K keys only the selected bone and a key of the whole body
+-- leaves the bones that have keys of their own alone. Off: K keys the whole pose (b0.3).
+local cvBoneKeys = CreateClientConVar("gmfm_bone_keys", "0", true, false, "SAeditor: a key set while a bone is selected holds only that bone", 0, 1)
+function SA.BoneKeysOn() return cvBoneKeys:GetBool() end
+function SA.ToggleBoneKeys() RunConsoleCommand("gmfm_bone_keys", cvBoneKeys:GetBool() and "0" or "1") end
+
 -- (r1.0) timeline flags: mute / solo / lock per object UID. mute and solo go to the server
 -- (they change which tracks are applied); lock stays here (it forbids editing that row's keys).
 SA.tlFlags = SA.tlFlags or {}
@@ -81,8 +87,9 @@ end
 ---------------------------------------------------------------------
 -- Bone keys (a0.6): a key may hold only some parts of a model, and each part moves between its
 -- own keys (as in SFM). Auto key after a drag keys only the bones the drag moved, and a bone's
--- row on the timeline keys that bone alone; K keys the whole pose. (b0.2.6-misc.1: the Bone keys mode
--- that once switched this on is gone, the opened-out tracks do its work.)
+-- row on the timeline keys that bone alone. K keys the whole pose unless the Bone keys toggle
+-- (gmfm_bone_keys, back in r1.1) is on: then K keys the selected bone, and a key of the whole
+-- object leaves the bones that have keys of their own alone (skip).
 -- A part is "p<i>" — physics body i of a ragdoll ("p0" — its root, the whole ragdoll) — or
 -- "b<i>" — the offset of bone i.
 ---------------------------------------------------------------------
@@ -240,6 +247,19 @@ SA.ReceiveParts("Summary", function(t)
 	end
 	table.sort(marks, function(x, y) return x.f < y.f end)
 	SA.marks = marks
+	-- bookmark sets: named lists of the same bookmarks
+	local sets = {}
+	for _, s in ipairs(istable(t.markSets) and t.markSets or {}) do
+		if istable(s) then
+			local list = {}
+			for _, m in ipairs(istable(s.marks) and s.marks or {}) do
+				if tonumber(m.f) then list[#list + 1] = { f = tonumber(m.f), name = tostring(m.name or "") } end
+			end
+			table.sort(list, function(x, y) return x.f < y.f end)
+			sets[#sets + 1] = { name = tostring(s.name or ""), marks = list }
+		end
+	end
+	SA.markSets = sets
 	-- FX clips (cl_saeditor_fxclips.lua): the server has checked them
 	SA.fxClips = istable(t.clips) and t.clips or {}
 	SA.frame = math.min(SA.frame, SA.frames)
@@ -489,6 +509,19 @@ SA.MotionSel = motionSel
 -- ents — list of objects (the selection by default), frame — the current one by default;
 -- parts — a bone key of these parts ("p3,b14", SA.BoneParts) for every object of the list
 function SA.SetKey(ents, frame, quiet, parts)
+	-- "Bone keys" on: K with a bone selected keys that bone alone (the mode b0.3 removed and
+	-- players asked back). Off — K keys the whole pose.
+	if not ents and not parts and SA.BoneKeysOn() then
+		local list, seen = {}, {}
+		for _, b in ipairs(C.SelectedBones()) do
+			local p = SA.BoneParts(C.selected, b)
+			for part in string.gmatch(p or "", "[^,]+") do
+				if not seen[part] then seen[part] = true list[#list + 1] = part end
+			end
+		end
+		parts = #list > 0 and table.concat(list, ",") or nil
+		if parts then ents = { C.selected } end
+	end
 	ents = ents or C.SelectionList()
 	if #ents == 0 then
 		if not quiet then SPeditor.Notify("#sa_need_sel", 0) end
@@ -507,17 +540,20 @@ function SA.SetKey(ents, frame, quiet, parts)
 	local ts = motionSel(frame)
 	for _, e in ipairs(ents) do
 		local uid = SA.UID(e)
-		-- a time selection takes the edit over it, also from auto key's keys of some parts only
-		-- (b0.2.6-misc.1: those bypassed the Motion Editor); the parts the edit did not change stay
-		if uid ~= 0 and ts then
+		-- a time selection takes the edit over it; a key of one bone stays a key of that bone
+		if uid ~= 0 and ts and not parts then
 			sendKey(id, OP.MOTION, uid, frame, 0, SA.TimeSelString(ts))
 		elseif uid ~= 0 then
 			local def = "def:" .. SA.NewEase()
+			-- "Bone keys" on: a key of the whole object leaves the bones that have keys of their
+			-- own to those keys, or a key of the body would flatten their motion
+			local own = not parts and SA.BoneKeysOn() and SA.OwnParts(uid)
+			if own then def = "skip:" .. own .. "|" .. def end
 			sendKey(id, OP.SET, uid, frame, 0, parts and ("parts:" .. parts .. "|" .. def) or def)
 		end
 	end
 	pushHistory("sa key", id)
-	if ts then
+	if ts and not parts then
 		if not quiet then SPeditor.Notify("#sa_motion_set|" .. ts[1] .. "|" .. ts[4], 3) end
 		return
 	end
@@ -813,6 +849,81 @@ function SA.ApplyPreset(preset, strength)
 	pushHistory("sa preset " .. preset, id)
 end
 
+-- A track whose keys all hold the whole object (no per-bone/per-slider keys, no own motions):
+-- only such tracks are resampled — a partial track would lose its channels when baked.
+local function fullOnly(keys)
+	for _, k in ipairs(keys) do
+		if k.only or k.skip or (k.pe and next(k.pe)) then return false end
+	end
+	return true
+end
+
+-- The time selection's tracks of the selected objects: body and face track.
+local function selectionTracks(ents)
+	local out, seen = {}, {}
+	for _, e in ipairs(ents or C.SelectionList()) do
+		local uid = SA.UID(e)
+		if uid ~= 0 then
+			for _, u in ipairs({ uid, SA.FaceTrack(uid) }) do
+				if SA.tracks[u] and not seen[u] then seen[u] = true out[#out + 1] = u end
+			end
+		end
+	end
+	return out
+end
+
+-- Remove keys that hold the same state as both neighbours (a static stretch) inside the time
+-- selection. The server compares the whole state per track; partial keys are left alone.
+function SA.CompressKeys(ents)
+	local sel = SA.timeSel
+	if not sel then SPeditor.Notify("#sa_tsel_need", 0) return end
+	local list = selectionTracks(ents)
+	if #list == 0 then SPeditor.Notify("#sa_preset_nokeys", 1) return end
+	local id = nextOp()
+	for _, uid in ipairs(list) do sendKey(id, OP.EXT, uid, 0, OP.REDUNDANT, SA.TimeSelString(sel)) end
+	pushHistory("sa redundant", id)
+end
+
+-- Bake a track's whole motion into a key every `step` frames inside the time selection (imported
+-- mocap, recorded takes). Tracks with per-bone / per-slider keys are skipped and counted.
+function SA.ResampleKeys(step, ents)
+	local sel = SA.timeSel
+	if not sel then SPeditor.Notify("#sa_tsel_need", 0) return end
+	step = math.Clamp(math.floor(tonumber(step) or 1), 1, 120)
+	local id = nextOp()
+	local n, skip = 0, 0
+	for _, uid in ipairs(selectionTracks(ents)) do
+		local keys = SA.tracks[uid]
+		local samples = math.floor((sel[4] - sel[1]) / step) + 2
+		if not fullOnly(keys) then
+			skip = skip + 1
+		elseif #keys + samples > SA.MAX_KEYS then
+			skip = skip + 1
+		else
+			sendKey(id, OP.EXT, uid, step, OP.RESAMPLE, SA.TimeSelString(sel))
+			n = n + 1
+		end
+	end
+	if n == 0 then
+		SPeditor.Notify(skip > 0 and ("#sa_tsel_resample_skip|" .. skip) or "#sa_preset_nokeys", 1)
+		return
+	end
+	pushHistory("sa resample", id)
+	if skip > 0 then SPeditor.Notify("#sa_tsel_resample_skip|" .. skip, 0) else SPeditor.Notify("#sa_tsel_resample_done|" .. n, 3) end
+end
+
+-- Keep only the keys inside the time selection on the selected tracks (a mask over the range);
+-- every key outside is cut away. Undoable.
+function SA.MaskKeys(ents)
+	local sel = SA.timeSel
+	if not sel then SPeditor.Notify("#sa_tsel_need", 0) return end
+	local list = selectionTracks(ents)
+	if #list == 0 then SPeditor.Notify("#sa_preset_nokeys", 1) return end
+	local id = nextOp()
+	for _, uid in ipairs(list) do sendKey(id, OP.EXT, uid, 0, OP.MASK, SA.TimeSelString(sel)) end
+	pushHistory("sa mask", id)
+end
+
 function SA.SetEaseMany(list, ease)
 	if #list == 0 then return end
 	local id = nextOp()
@@ -999,25 +1110,11 @@ COMP:Hook("SPeditor_HistoryPushed", function(label)
 		end
 		if #body > 0 then SA.SetKey(body, nil, true) end
 		if #face > 0 then
-			-- (b0.2.6-misc.1) a slider edit keys only the sliders that were moved (the lips, not the
-			-- brows too); a preset or a reset changes the whole face and keys all of it
-			local edited = C.editedFlex or {}
+			-- (r1.1) A face edit keys the whole face: an expression is a combination of sliders, and
+			-- keys of one slider alone left the others to jump between their own keys — players saw
+			-- the expression change as the playhead moved. Right click a slider's row to key one slider.
 			C.editedFlex = {}
-			local whole = {}
-			for _, e in ipairs(face) do
-				local ids = label == "flex" and edited[e]
-				if label == "eyes" then
-					-- (b0.2.6-misc.1) where the eyes look: the Eyes row of the face track only
-					SA.SetFaceKey({ e }, nil, true, "e0")
-				elseif ids and next(ids) then
-					local list = {}
-					for id in pairs(ids) do list[#list + 1] = "f" .. id end
-					SA.SetFaceKey({ e }, nil, true, table.concat(list, ","))
-				else
-					whole[#whole + 1] = e
-				end
-			end
-			if #whole > 0 then SA.SetFaceKey(whole, nil, true) end
+			SA.SetFaceKey(face, nil, true)
 		end
 		C.editedCam = {}
 	end)

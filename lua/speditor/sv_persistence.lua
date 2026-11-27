@@ -40,6 +40,15 @@ local function withMeta(ent, d)
 		d.aimBone = (aim.bone >= 0) and aim.target:GetBoneName(aim.bone) or ""
 	end
 	if IsValid(ent.SPeditor_FocusOn) then d.focusUID = ent.SPeditor_FocusOn.SPeditor_UID end
+	-- a bone that aims at the target (P1): its name, and the target bone stays in aimBone
+	local aim = ent.SPeditor_Aim
+	if aim and IsValid(aim.target) and aim.srcBone then d.aimSrc = ent:GetBoneName(aim.srcBone) end
+	-- persistent IK target (P1): the object a hand/foot follows, by UID and the end bone's name
+	local ik = ent.SPeditor_IK
+	if ik and IsValid(ik.target) then
+		d.ikUID = ik.target.SPeditor_UID
+		d.ikBone = ent:GetBoneName(ik.bone)
+	end
 	d.name   = ent.SPeditor_Name
 	d.pac    = S.PACSave and S.PACSave(ent) or nil      -- PAC3 outfits (sv_pac.lua)
 	d.hidden = ent:GetNW2Bool("SPeditor_Hidden", false)
@@ -202,17 +211,24 @@ function S.RestoreItem(ply, it)
 		local parent = tonumber(it.attachUID) and S.FindUID(ply, tonumber(it.attachUID))
 		if parent then S.AttachByName(ent, parent, it.attachBone, it.attachWear, it.attachMode, it.attachOff) end
 		local target = tonumber(it.aimUID) and S.FindUID(ply, tonumber(it.aimUID))
-		if target then S.AimByName(ent, target, it.aimBone) end
+		if target then S.AimByName(ent, target, it.aimBone, it.aimSrc) end
 		local focus = tonumber(it.focusUID) and S.FindUID(ply, tonumber(it.focusUID))
 		if focus then S.SetFocusOn(ent, focus) end
+		local ikTarget = tonumber(it.ikUID) and S.FindUID(ply, tonumber(it.ikUID))
+		if ikTarget and isstring(it.ikBone) then
+			local bone = ent:LookupBone(it.ikBone) or -1
+			if bone >= 0 then S.SetIKTarget(ent, bone, ikTarget) end
+		end
 	end
 	return ent
 end
 
-function S.AimByName(ent, target, boneName)
+function S.AimByName(ent, target, boneName, srcName)
 	local bone = -1
 	if type(boneName) == "string" and boneName ~= "" then bone = target:LookupBone(boneName) or -1 end
-	return S.SetAim(ent, target, bone)
+	local src = -1
+	if type(srcName) == "string" and srcName ~= "" then src = ent:LookupBone(srcName) or -1 end
+	return S.SetAim(ent, target, bone, nil, src)
 end
 
 -- off: six numbers, the offset from a bone the client draws (withMeta; b0.2.6)
@@ -220,7 +236,7 @@ function S.AttachByName(ent, parent, boneName, wear, mode, off)
 	if wear == true then return S.Attach(ent, parent, S.WEAR) end
 	local bone = -1
 	if type(boneName) == "string" and boneName ~= "" then bone = parent:LookupBone(boneName) or -1 end
-	if mode ~= "point" and mode ~= "orient" then mode = nil end
+	if mode ~= "point" and mode ~= "orient" and mode ~= "rot" then mode = nil end
 	local o = nil
 	if istable(off) and #off == 6 then o = { p = Vector(off[1], off[2], off[3]), a = Angle(off[4], off[5], off[6]) } end
 	return S.Attach(ent, parent, S.AttachCode(bone, mode), o)
@@ -304,6 +320,9 @@ S.Receive("SceneSave", function(ply)
 		local aim = ent.SPeditor_Aim
 		it.aimUID = nil
 		it.aimTo = aim and IsValid(aim.target) and indexOf[aim.target] or nil
+		local ik = ent.SPeditor_IK
+		it.ikUID = nil
+		it.ikTo = ik and IsValid(ik.target) and indexOf[ik.target] or nil
 		it.focusUID = nil
 		it.focusTo = IsValid(ent.SPeditor_FocusOn) and indexOf[ent.SPeditor_FocusOn] or nil
 		-- the skeleton the scene was made with (a0.9): an addon that replaces the model (character
@@ -372,9 +391,14 @@ S.Receive("SceneLoad", function(ply)
 		local parent = type(it) == "table" and tonumber(it.attachTo) and spawned[tonumber(it.attachTo)]
 		if spawned[i] and parent then S.AttachByName(spawned[i], parent, it.attachBone, it.attachWear, it.attachMode, it.attachOff) end
 		local target = type(it) == "table" and tonumber(it.aimTo) and spawned[tonumber(it.aimTo)]
-		if spawned[i] and target then S.AimByName(spawned[i], target, it.aimBone) end
+		if spawned[i] and target then S.AimByName(spawned[i], target, it.aimBone, it.aimSrc) end
 		local focus = type(it) == "table" and tonumber(it.focusTo) and spawned[tonumber(it.focusTo)]
 		if spawned[i] and focus then S.SetFocusOn(spawned[i], focus) end
+		local ikTarget = type(it) == "table" and tonumber(it.ikTo) and spawned[tonumber(it.ikTo)]
+		if spawned[i] and ikTarget and isstring(it.ikBone) then
+			local bone = spawned[i]:LookupBone(it.ikBone) or -1
+			if bone >= 0 then S.SetIKTarget(spawned[i], bone, ikTarget) end
+		end
 		local on = type(it) == "table" and tonumber(it.fxOnTo) and spawned[tonumber(it.fxOnTo)]
 		if spawned[i] and on and on.SPeditor_UID and S.IsEffect(spawned[i]) then spawned[i]:SetNW2Int("SPeditor_FxOn", on.SPeditor_UID) end
 	end

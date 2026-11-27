@@ -321,7 +321,12 @@ local function buildLook(page)
 	local rates = {}
 	for _, v in ipairs(UI.VP2_REFRESH or {}) do rates[#rates + 1] = { v, UI.Vp2RefreshText(v) } end
 	combo(page, L("uis_vp2"), "gmfm_vp2_refresh", rates)
+	combo(page, L("uis_vp_scale"), "gmfm_vp_scale", { { 1, "100 %" }, { 0.85, "85 %" }, { 0.75, "75 %" }, { 0.5, "50 %" } })
 	check(page, L("uis_fx_main"), "gmfm_fx_mainframe")
+	local scNote = UI.Label(page, L("uis_vp_scale_note"), COL.DIM)
+	scNote:SetWrap(true)
+	scNote:SetAutoStretchVertical(true)
+	scNote:DockMargin(10, 0, 10, 4)
 	local perf = UI.Label(page, L("uis_perf_note"), COL.DIM)
 	perf:SetWrap(true)
 	perf:SetAutoStretchVertical(true)

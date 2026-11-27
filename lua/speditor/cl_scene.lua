@@ -141,6 +141,13 @@ local STUDIO_SHADOWDEPTH = STUDIO_SHADOWDEPTHTEXTURE or 0x40000000
 -- engine reports for a loaded material include its internal flags and defaults, which do not
 -- make a working material again.
 local tintCache = {}
+-- Materials are never freed by the game (CreateMaterial keeps each one for the whole session).
+-- The colour mixer sends a new colour at every step of a drag, and each step made a material of
+-- its own: after a long session thousands of them stayed in memory. Past this many the nearest
+-- colour of the same material is used instead of a new one (it is a preview tint, the difference
+-- is not visible); a scene with a few hundred tinted slots is far below the limit.
+local TINT_MAX = 256
+local tintList = {}
 local function readVMT(path, depth)
 	local raw = file.Read("materials/" .. path .. ".vmt", "GAME")
 	if not raw then return nil end
@@ -184,6 +191,18 @@ function C.TintMaterial(path, col)
 	local key = string.format("%s|%d,%d,%d", path, col[1], col[2], col[3])
 	local m = tintCache[key]
 	if m ~= nil then return m or nil end
+	if #tintList >= TINT_MAX then
+		local best, bestD
+		for _, e in ipairs(tintList) do
+			if e.path == path then
+				local d = (e.r - col[1]) ^ 2 + (e.g - col[2]) ^ 2 + (e.b - col[3]) ^ 2
+				if not bestD or d < bestD then best, bestD = e.mat, d end
+			end
+		end
+		-- no material of this one yet: leave the slot as it is rather than make one more
+		tintCache[key] = best or false
+		return best
+	end
 	tintCache[key] = false
 	local shader, kv = readVMT(path)
 	if not shader then return nil end
@@ -207,6 +226,7 @@ function C.TintMaterial(path, col)
 	local ok, mat = pcall(CreateMaterial, "speditor_tint3_" .. util.CRC(key), shader, kv)
 	if not ok or not mat or mat:IsError() then return nil end
 	tintCache[key] = mat
+	tintList[#tintList + 1] = { path = path, r = col[1], g = col[2], b = col[3], mat = mat }
 	return mat
 end
 
@@ -253,7 +273,16 @@ end
 -- the draw of an object with a look of its own: no shadow in the spot lights' shadow maps,
 -- coloured material slots
 local function noShadowDraw(self, flags)
-	if self.SPNoShadow and flags and bit.band(flags, STUDIO_SHADOWDEPTH) ~= 0 then return end
+	-- Shadow maps and the SSAO depth pass draw the scene with a material override of their own.
+	-- Adding per-slot overrides on top of it crashed the engine in a native DrawModel (the
+	-- self-test found it with every camera effect at once): there the object is drawn plain.
+	local R = SPeditor.Render
+	local shadowPass = flags ~= nil and bit.band(flags, STUDIO_SHADOWDEPTH) ~= 0
+	if shadowPass or (R and R.DepthPassActive and R.DepthPassActive()) then
+		if self.SPNoShadow and shadowPass then return end
+		self:DrawModel(flags)
+		return
+	end
 	local t = self.SPTintMats
 	if t then
 		for idx, mat in pairs(t) do render.MaterialOverrideByIndex(idx, mat) end

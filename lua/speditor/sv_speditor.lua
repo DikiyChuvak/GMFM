@@ -569,10 +569,11 @@ S.WEAR = -2
 -- POINT: only the place follows (the offset is kept in the world), the object's own turn stays;
 -- ORIENT: only the turn follows, the place stays. Code of bone b (-1 — the whole object):
 -- S.POINT - (b + 1) and S.ORIENT - (b + 1).
-S.POINT, S.ORIENT = -100, -1000
+S.POINT, S.ORIENT, S.ROT = -100, -1000, -2000
 function S.AttachCode(bone, mode)
 	if mode == "point" then return S.POINT - (bone + 1) end
 	if mode == "orient" then return S.ORIENT - (bone + 1) end
+	if mode == "rot" then return S.ROT - (bone + 1) end
 	return bone
 end
 
@@ -590,7 +591,9 @@ function S.Attach(ent, parent, bone, off)
 
 	bone = math.floor(SPeditor.Num(bone, -1))
 	local mode
-	if bone <= S.ORIENT then
+	if bone <= S.ROT then
+		mode, bone = "rot", S.ROT - bone - 1
+	elseif bone <= S.ORIENT then
 		mode, bone = "orient", S.ORIENT - bone - 1
 	elseif bone <= S.POINT then
 		mode, bone = "point", S.POINT - bone - 1
@@ -683,6 +686,11 @@ function S.AttachFollow()
 			elseif a.mode == "orient" then
 				local own = S.GetTransform(ent)
 				pos = own
+			elseif a.mode == "rot" then
+				-- rotation constraint: only the yaw follows the parent (a hinge around the vertical);
+				-- the object keeps its own place, pitch and roll
+				local opos, oang = S.GetTransform(ent)
+				pos, ang = opos, Angle(oang.p, fa.y + (a.lang and a.lang.y or 0), oang.r)
 			end
 			if SPeditor.ValidVec(pos) and SPeditor.ValidAng(ang) then S.SetTransform(ent, pos, ang) end
 		end
@@ -698,8 +706,6 @@ SPeditor.Hook("Think", "SPeditor.AttachFollow", function() S.AttachFollow() end)
 ---------------------------------------------------------------------
 S.Aimed = S.Aimed or {}     -- [ent] = true
 
--- the point an object is looked at: a bone of a ragdoll (its physics body), by default the
--- head; the middle of anything else
 function S.AimPoint(target, bone)
 	if not IsValid(target) then return nil end
 	if S.IsRagdoll(target) then
@@ -712,22 +718,26 @@ function S.AimPoint(target, bone)
 	return target:LocalToWorld(target:OBBCenter())
 end
 
-function S.SetAim(ent, target, bone, weight)
-	if not IsValid(ent) or not S.IsAux(ent) or S.IsEffect(ent) then return false end
+function S.SetAim(ent, target, bone, weight, srcBone)
+	if not IsValid(ent) or not SPeditor.IsEditable(ent) then return false end
 	if not IsValid(target) or target == ent then
 		ent.SPeditor_Aim = nil
 		S.Aimed[ent] = nil
 		ent:SetNW2Entity("SPeditor_AimAt", NULL)
 		ent:SetNW2Float("SPeditor_AimWeight", 0)
+		ent:SetNW2Int("SPeditor_AimSrc", -1)
 		return true
 	end
 	bone = math.floor(SPeditor.Num(bone, -1))
 	weight = math.Clamp(SPeditor.Num(weight, 1), 0, 1)
-	ent.SPeditor_Aim = { target = target, bone = bone, weight = weight }
+	srcBone = math.floor(SPeditor.Num(srcBone, -1))
+	if srcBone < 0 or srcBone >= ent:GetBoneCount() then srcBone = -1 end
+	ent.SPeditor_Aim = { target = target, bone = bone, weight = weight, srcBone = srcBone >= 0 and srcBone or nil }
 	S.Aimed[ent] = true
 	ent:SetNW2Entity("SPeditor_AimAt", target)
 	ent:SetNW2Int("SPeditor_AimBone", bone)
 	ent:SetNW2Float("SPeditor_AimWeight", weight)
+	ent:SetNW2Int("SPeditor_AimSrc", srcBone)
 	S.AimFollow()
 	return true
 end
@@ -739,6 +749,32 @@ function S.AimFollow()
 		if not a or not IsValid(a.target) then
 			-- the target is gone: the object keeps the direction it had
 			if IsValid(ent) then S.SetAim(ent, nil) else S.Aimed[ent] = nil end
+		elseif a.srcBone then
+			-- a single bone aims: its manip turn is worked out from its world turn and its parent
+			local m = ent:GetBoneMatrix(a.srcBone)
+			local point = S.AimPoint(a.target, a.bone)
+			if m and point then
+				local bp, ba = m:GetTranslation(), m:GetAngles()
+				if point:DistToSqr(bp) > 1 then
+					local pb = ent:GetBoneParent(a.srcBone)
+					local pm = pb and pb >= 0 and ent:GetBoneMatrix(pb)
+					local pa = pm and pm:GetAngles() or ent:GetAngles()
+					local want = (point - bp):Angle()
+					want.r = ba.r
+					local w = a.weight or 1
+					if w < 1 then
+						want = Angle(ba.p + math.AngleDifference(want.p, ba.p) * w,
+							ba.y + math.AngleDifference(want.y, ba.y) * w, ba.r)
+					end
+					local IK = SPeditor.IK
+					local manip = ent:GetManipulateBoneAngles(a.srcBone)
+					if IK then
+						local newManip = IK.ManipFor({ a0 = ba, parentAng = pa, m0ang = manip }, want, pa)
+						S.SetBoneManip(ent, a.srcBone, ent:GetManipulateBonePosition(a.srcBone), newManip,
+							ent:GetManipulateBoneScale(a.srcBone))
+					end
+				end
+			end
 		else
 			local point = S.AimPoint(a.target, a.bone)
 			local pos, ang = ent:GetPos(), ent:GetAngles()
@@ -762,6 +798,136 @@ function S.AimFollow()
 		end
 	end
 end
+
+---------------------------------------------------------------------
+-- Persistent IK target (P1, SFM's IK constraint): a hand or a foot of a ragdoll follows an
+-- object every tick — the shoulder-elbow-hand (or thigh-knee-foot) chain is solved with the
+-- same two-link maths the posing tool uses, and the physics bodies are placed. The target is
+-- saved with the scene and comes back on undo/duplicate.
+---------------------------------------------------------------------
+S.IKTargets = S.IKTargets or {}       -- [ragdoll] = true
+
+local function ikUpBody(ent, bone)
+	local b = ent:GetBoneParent(bone)
+	local guard = 0
+	while b and b >= 0 and guard < 256 do
+		local pi = SPeditor.PhysOfBone(ent, b)
+		if pi then return pi, b end
+		b = ent:GetBoneParent(b)
+		guard = guard + 1
+	end
+end
+
+-- end physics body + end bone, the middle and the root above it (the bodies IK moves)
+local function ikChain(ent, bone)
+	local ep = SPeditor.PhysOfBoneUp(ent, bone)
+	if not ep then return nil end
+	local endBone = ent:TranslatePhysBoneToBone(ep) or bone
+	local mp, midBone = ikUpBody(ent, endBone)
+	if not mp then return nil end
+	local rp, rootBone = ikUpBody(ent, midBone)
+	if not rp then return nil end
+	return ep, endBone, mp, midBone, rp, rootBone
+end
+
+function S.ClearIKTarget(ent)
+	if not IsValid(ent) then return end
+	ent.SPeditor_IK = nil
+	S.IKTargets[ent] = nil
+	ent:SetNW2Entity("SPeditor_IKAt", NULL)
+	ent:SetNW2Int("SPeditor_IKBone", -1)
+end
+
+function S.SetIKTarget(ent, bone, target)
+	if not IsValid(ent) or not S.IsRagdoll(ent) then return false end
+	if not IsValid(target) or target == ent then
+		S.ClearIKTarget(ent)
+		return true
+	end
+	bone = math.floor(SPeditor.Num(bone, -1))
+	local ep, endBone, mp, midBone, rp, rootBone = ikChain(ent, bone)
+	if not ep then return false end
+	ent.SPeditor_IK = { target = target, bone = endBone, ep = ep, mp = mp, rp = rp,
+		midBone = midBone, rootBone = rootBone }
+	S.IKTargets[ent] = true
+	ent:SetNW2Entity("SPeditor_IKAt", target)
+	ent:SetNW2Int("SPeditor_IKBone", endBone)
+	return true
+end
+
+local function placeBody(p, pos, ang)
+	if not IsValid(p) then return end
+	p:EnableMotion(false)
+	p:SetPos(pos)
+	p:SetAngles(ang)
+	p:Wake()
+end
+
+function S.IKFollow()
+	if next(S.IKTargets) == nil then return end
+	local IK = SPeditor.IK
+	for ent in pairs(S.IKTargets) do
+		local d = IsValid(ent) and ent.SPeditor_IK
+		if not d or not IsValid(d.target) then
+			if IsValid(ent) then S.ClearIKTarget(ent) else S.IKTargets[ent] = nil end
+		else
+			local count = ent:GetPhysicsObjectCount()
+			local endP = d.ep < count and ent:GetPhysicsObjectNum(d.ep)
+			local midP = d.mp < count and ent:GetPhysicsObjectNum(d.mp)
+			local rootP = d.rp < count and ent:GetPhysicsObjectNum(d.rp)
+			local tp = S.AimPoint(d.target)
+			if IK and IsValid(endP) and IsValid(midP) and IsValid(rootP) and tp then
+				local rp, ra = rootP:GetPos(), rootP:GetAngles()
+				local mp, ma = midP:GetPos(), midP:GetAngles()
+				local ep, ea = endP:GetPos(), endP:GetAngles()
+				local midNew, endNew = IK.Solve(rp, mp, ep, tp)
+				local rootNew = IK.RotateAngle(ra, mp - rp, midNew - rp)
+				local midNewAng = IK.RotateAngle(ma, ep - mp, endNew - midNew)
+				local _, targetAng = S.GetTransform(d.target)
+				local endNewAng = targetAng or IK.RotateAngle(ea, ep - mp, endNew - midNew)
+				-- bones below the end (toes, fingers) ride with it rigidly
+				local tails = {}
+				for j = 0, count - 1 do
+					if j ~= d.ep and j ~= d.mp and j ~= d.rp and SPeditor.PhysOfBone(ent, ent:TranslatePhysBoneToBone(j) or -1) == j then
+						local b, under, guard = ent:TranslatePhysBoneToBone(j), false, 0
+						while b and b >= 0 and guard < 256 do
+							if b == d.bone then under = true break end
+							b = ent:GetBoneParent(b)
+							guard = guard + 1
+						end
+						local q = under and ent:GetPhysicsObjectNum(j)
+						if IsValid(q) then tails[#tails + 1] = { q, WorldToLocal(q:GetPos(), q:GetAngles(), ep, ea) } end
+					end
+				end
+				placeBody(rootP, rp, rootNew)
+				placeBody(midP, midNew, midNewAng)
+				placeBody(endP, endNew, endNewAng)
+				for _, t in ipairs(tails) do
+					local pos, ang = LocalToWorld(t[2], t[3], endNew, endNewAng)
+					placeBody(t[1], pos, ang)
+				end
+				ent.SPeditor_Placed = true
+			end
+		end
+	end
+end
+
+SPeditor.Hook("Think", "SPeditor.IKFollow", function() S.IKFollow() end)
+SPeditor.Hook("EntityRemoved", "SPeditor.IK", function(ent)
+	if S.IKTargets[ent] then S.IKTargets[ent] = nil end
+end)
+
+S.Receive("IKTarget", function(ply)
+	local ent = S.ReadOwned(ply)
+	local bone = net.ReadUInt(16)
+	local target = S.ReadOwned(ply)
+	if not IsValid(ent) or not S.IsRagdoll(ent) then return end
+	if not target then
+		S.ClearIKTarget(ent)
+		return
+	end
+	if not S.SetIKTarget(ent, bone, target) then S.Notice(ply, "#ik_bad_chain", 1) end
+end)
 
 ---------------------------------------------------------------------
 -- Ragdoll guard. Addons that drive ragdolls by themselves (active ragdolls such as Fedhoria,
@@ -1077,7 +1243,41 @@ function S.ApplyLook(ent, d)
 	ent.SPeditor_Look = next(look) ~= nil and look or nil
 end
 
+-- Materials set by another tool (the game's Material / SubMaterial tool calls SetSubMaterial
+-- on the entity directly and does not go through the editor): bring them into the object's
+-- look, so that a key, a preset and the scene file keep them instead of the old paths.
+function S.SyncSubMats(ent)
+	if not IsValid(ent) or S.IsAux(ent) then return end
+	local look = ent.SPeditor_Look or {}
+	local changed = false
+	-- the whole material of the model, if another tool set one
+	local mat = string.lower(string.Trim(string.gsub(ent:GetMaterial() or "", "\\", "/")))
+	mat = string.gsub(mat, "%.vmt$", "")
+	if (look.material or "") ~= mat then
+		look.material = mat ~= "" and mat or nil
+		changed = true
+	end
+	local cur = {}
+	for i = 0, math.min(#(ent:GetMaterials() or {}), ENGINE_SUBMATS) - 1 do
+		local m = ent:GetSubMaterial(i)
+		if m and m ~= "" then cur[tostring(i)] = string.lower(m) end
+	end
+	for i, m in string.gmatch(ent:GetNW2String("SPeditor_SubMats", ""), "(%d+):([^;]+)") do cur[i] = m end
+	local old = look.submats or {}
+	local same = true
+	for k, v in pairs(cur) do if old[k] ~= v then same = false break end end
+	if same then
+		for k in pairs(old) do if cur[k] == nil then same = false break end end
+	end
+	if not same then
+		look.submats = next(cur) and cur or nil
+		changed = true
+	end
+	if changed then ent.SPeditor_Look = next(look) ~= nil and look or nil end
+end
+
 function S.CaptureLook(ent)
+	S.SyncSubMats(ent)
 	return ent.SPeditor_Look and table.Copy(ent.SPeditor_Look) or nil
 end
 
@@ -1692,7 +1892,9 @@ S.Receive("Duplicate", function(ply)
 	local a = ent.SPeditor_Attach
 	if a and IsValid(a.parent) then S.Attach(copy, a.parent, a.wear and S.WEAR or S.AttachCode(a.bone, a.mode)) end
 	local aim = ent.SPeditor_Aim
-	if aim and IsValid(aim.target) then S.SetAim(copy, aim.target, aim.bone) end
+	if aim and IsValid(aim.target) then S.SetAim(copy, aim.target, aim.bone, aim.weight, aim.srcBone) end
+	local ik = ent.SPeditor_IK
+	if ik and IsValid(ik.target) then S.SetIKTarget(copy, ik.bone, ik.target) end
 	S.SendSpawned(ply, copy)
 end)
 
@@ -1780,6 +1982,16 @@ S.Receive("Aim", function(ply)
 	local bone   = net.ReadInt(16)
 	local weight = net.ReadFloat()
 	if ent then S.SetAim(ent, target, bone, weight) end
+end)
+
+-- Aim one bone at an object (P1): the bone's manip turn is worked out from its world turn.
+S.Receive("BoneAim", function(ply)
+	local ent    = S.ReadOwned(ply)
+	local src    = net.ReadUInt(16)
+	local target = S.ReadOwned(ply)
+	local bone   = net.ReadInt(16)
+	local weight = net.ReadFloat()
+	if ent and src < ent:GetBoneCount() then S.SetAim(ent, target, bone, weight, src) end
 end)
 
 S.Receive("Scale", function(ply)

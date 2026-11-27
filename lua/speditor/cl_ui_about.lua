@@ -81,6 +81,20 @@ local SA = function() return SPeditor.Component("saeditor").SA end
 local function page(id) return function() if not Dock.ShowPage(id) then SPeditor.Notify("#about_link_closed", 0) end end end
 local function topMenu(key) return function() UI.OpenTopMenu(key) end end
 UI.NewsLinks = {
+	-- r1.1: demos gone, PAC3 leak, materials from other tools, BVH bones, FAQ
+	about_r11_1 = {},
+	about_r11_2 = { guides = { "pac3" }, open = { { "win_ase", page("ase") } } },
+	about_r11_3 = { guides = { "props" }, open = {} },
+	about_r11_4 = { guides = { "bvh_import" }, open = {} },
+	about_r11_5 = { guides = { "faq" }, open = {} },
+	about_r11_6 = { guides = { "sa_bones" }, open = {} },
+	about_r11_7 = { guides = { "sa_face" }, open = {} },
+	about_r11_8 = { guides = { "interface" }, open = {} },
+	about_r11_9 = { guides = { "gmfm_mode" }, open = {} },
+	about_r11_10 = { guides = { "sa_motion" }, open = {} },
+	about_r11_11 = { guides = { "attach", "lights", "sa_keys", "camera" }, open = {} },
+	about_r11_12 = { guides = { "sa_bones", "constraints" }, open = {} },
+	about_r11_13 = { guides = { "faq" }, open = {} },
 	-- r1.0 (test): the new timeline controls
 	about_r10_2 = { guides = { "sa_keys", "sa_tween" }, open = { { "sa_timeline", page("sa_timeline") } } },
 	about_r10_3 = { guides = { "sa_elements", "diagnostics", "sa_smh" }, open = {} },
@@ -103,7 +117,6 @@ UI.NewsLinks = {
 	about_y9 = { guides = { "sa_cuts", "sa_motion", "sa_curves" }, open = { { "sa_timeline", page("sa_timeline") } } },
 	about_y10 = { guides = { "camera", "effects" }, open = { { "win_ase", page("ase") }, { "win_effects", function() UI.ToggleEffects() end } } },
 	about_y11 = { guides = { "camera" }, open = {} },
-	about_y12 = { guides = { "sa_rec" }, open = { { "sa_dm_title", function() SA().OpenDemoImport() end } } },
 	about_y13 = { guides = { "render" }, open = {} },
 	about_y14 = { guides = { "render", "camera" }, open = {} },
 	about_y15 = { guides = { "render" }, open = {} },
@@ -289,20 +302,22 @@ function UI.OpenAbout()
 		for i = 1, 40 do
 			local key = prefix .. i
 			local str = L(key)
-			if str == key then break end
-			text(parent or scroll, "•  " .. str, COL.TEXT, nil, 4)
-			-- (b0.2.5) where to read about it and where to find it
-			local nl = UI.NewsLinks[key]
-			if nl and parent then
-				for _, gid in ipairs(nl.guides or {}) do
-					local title = UI.GuideTitle and UI.GuideTitle(gid)
-					if title then link(parent, "→  " .. L("about_link_guide") .. ": " .. title, function() UI.OpenGuide(gid) end) end
-				end
-				for _, o in ipairs(nl.open or {}) do
-					link(parent, "→  " .. L("about_link_open") .. ": " .. L(o[1]), function()
-						local ok = pcall(o[2])
-						if not ok then SPeditor.Notify("#about_link_fail", 1) end
-					end)
+			-- a gap in the list (a removed entry) does not hide the news after it
+			if str ~= key then
+				text(parent or scroll, "•  " .. str, COL.TEXT, nil, 4)
+				-- (b0.2.5) where to read about it and where to find it
+				local nl = UI.NewsLinks[key]
+				if nl and parent then
+					for _, gid in ipairs(nl.guides or {}) do
+						local title = UI.GuideTitle and UI.GuideTitle(gid)
+						if title then link(parent, "→  " .. L("about_link_guide") .. ": " .. title, function() UI.OpenGuide(gid) end) end
+					end
+					for _, o in ipairs(nl.open or {}) do
+						link(parent, "→  " .. L("about_link_open") .. ": " .. L(o[1]), function()
+							local ok = pcall(o[2])
+							if not ok then SPeditor.Notify("#about_link_fail", 1) end
+						end)
+					end
 				end
 			end
 		end
